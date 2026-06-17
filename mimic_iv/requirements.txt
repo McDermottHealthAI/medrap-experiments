@@ -1,0 +1,4 @@
+# Core library — pinned to the commit used for these experiments.
+# To reproduce: pip install -r requirements.txt
+medrap @ git+https://github.com/McDermottHealthAI/MedRAP.git@342be76becb4cb538a884c888d2fa8b728a20547
+medrap-analysis @ git+https://github.com/McDermottHealthAI/medrap-analysis.git@a40e1559c88f60dd8f3d2ba9bd3ca2b534ad8ec2
