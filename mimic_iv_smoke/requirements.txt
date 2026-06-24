@@ -1,0 +1,5 @@
+# Core library — pinned to the commit used for this smoke test.
+# Tracks PR #77 (feat/preprocess-rare-code-filtering), which is not yet merged
+# to main. Bump this pin to a main commit once that PR lands.
+# To reproduce: pip install -r requirements.txt
+medrap @ git+https://github.com/McDermottHealthAI/MedRAP.git@354040ada09cbdc03155035f9e54f43cb1ade1a7
