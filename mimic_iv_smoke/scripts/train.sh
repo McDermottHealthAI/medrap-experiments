@@ -7,8 +7,8 @@
 # against the post-refactor MedRAP CLI. Same architecture and task family,
 # but:
 #   - `medrap-train` (flat CLI), not `medrap train`.
-#   - tensorized_cohort_dir points at this experiment's own output from
-#     scripts/prepare_meds_data.sh, not the lab-shared pre-tensorized dir.
+#   - reuses the existing lab-shared tensorized cohort at the same path as
+#     mimic_iv/ — no need to re-run medrap-preprocess or MTD_preprocess.
 #   - task labels are reused as-is from ../mimic_iv (label prep is
 #     untouched by the MedRAP refactor, no need to regenerate).
 #   - no GCS upload tail (not carrying that forward without confirming
@@ -29,7 +29,6 @@
 #
 # Prerequisites (run once before this script):
 #   sbatch scripts/prepare_retrieval.sh
-#   sbatch scripts/prepare_meds_data.sh
 #   sbatch ../mimic_iv/scripts/prepare_multi_task_labels_slurm.sh   (if not already run)
 #
 # Usage:
@@ -55,7 +54,7 @@ REPO_DIR="${SLURM_SUBMIT_DIR}"
 VENV="${REPO_DIR}/.venv/bin/activate"
 
 RETRIEVAL_DB="${REPO_DIR}/data/retrieval_db"
-TENSORIZED_DIR="${REPO_DIR}/data/tensorized"
+TENSORIZED_DIR="/groups/mm6677_gp/data/MIMIC_MEDS/MEDS_cohort/processed"
 MT_LABELS_DIR="${MT_LABELS_DIR:-${REPO_DIR}/../mimic_iv/data/mt_labels/top25_7d}"
 NUM_TASKS=25
 
