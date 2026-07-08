@@ -1,0 +1,7 @@
+[project]
+name = "mimic-iv-smoke"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "medrap @ git+https://github.com/McDermottHealthAI/MedRAP.git@47be1bc9101bec290fa5d9c3721e2ca2a11d3a33",
+]
