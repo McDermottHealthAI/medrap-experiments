@@ -35,13 +35,16 @@ echo "Node:    $(hostname)"
 echo "GPU:     $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || echo n/a)"
 echo "Start:   $(date)"
 
+RETRIEVAL_DB="${REPO_DIR}/data/retrieval_db"
+mkdir -p "${RETRIEVAL_DB}"
+
 medrap-prepare-retrieval-dataset \
   prep.source.path=MedRAG/textbooks prep.source.split=train \
   prep.document.fields='[title,content]' \
   prep.tokenizer.pretrained_model_name_or_path=Qwen/Qwen3-Embedding-0.6B \
   prep.embedder.model_name_or_path=Qwen/Qwen3-Embedding-0.6B prep.embedder.device=cuda \
   prep.index.source_id_column=id \
-  prep.output.output_dir=data/retrieval_db \
+  "prep.output.output_dir=${RETRIEVAL_DB}" \
   prep.index.max_length=256 \
   prep.index.tokenization_batch_size=512 \
   prep.index.embedding_batch_size=256 \
