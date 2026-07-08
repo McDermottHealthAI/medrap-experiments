@@ -29,7 +29,11 @@
 set -euo pipefail
 
 REPO_DIR="${SLURM_SUBMIT_DIR}"
+VENV="${REPO_DIR}/.venv/bin/activate"  # created by: cd mimic_iv_smoke && uv sync
+
 cd "${REPO_DIR}"
+# shellcheck source=/dev/null
+source "${VENV}"
 mkdir -p logs
 
 # --- parse optional --num-docs N argument ---

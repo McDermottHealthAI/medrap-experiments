@@ -9,8 +9,12 @@ reusing the existing lab-shared tensorized cohort and multi-task labels directly
 ## Setup
 
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
+
+This creates `.venv/` and installs `medrap` along with all its dependencies.
+`torch` is pulled from the PyTorch CUDA 12.8 wheel index (configured in
+`pyproject.toml`) rather than PyPI, which does not host the CUDA builds.
 
 ## Scripts
 

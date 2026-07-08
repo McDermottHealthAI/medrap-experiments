@@ -1,0 +1,21 @@
+[project]
+name = "mimic-iv-smoke"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "medrap @ git+https://github.com/McDermottHealthAI/MedRAP.git@47be1bc9101bec290fa5d9c3721e2ca2a11d3a33",
+]
+
+[tool.uv]
+# torch is not published on PyPI for CUDA builds; route it through the
+# PyTorch CUDA 12.8 wheel index (matches L40S GPUs on the Columbia cluster).
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
+torchaudio = { index = "pytorch-cu128" }

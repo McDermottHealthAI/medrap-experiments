@@ -51,7 +51,7 @@
 set -euo pipefail
 
 REPO_DIR="${SLURM_SUBMIT_DIR}"
-VENV="${REPO_DIR}/.venv/bin/activate"
+VENV="${REPO_DIR}/.venv/bin/activate"  # created by: cd mimic_iv_smoke && uv sync
 
 RETRIEVAL_DB="${REPO_DIR}/data/retrieval_db"
 TENSORIZED_DIR="/groups/mm6677_gp/data/MIMIC_MEDS/MEDS_cohort/processed"
