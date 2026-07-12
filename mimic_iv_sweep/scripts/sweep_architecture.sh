@@ -7,8 +7,9 @@
 #   patient-only   RoPE encoder → masked-mean pooling → head
 #                  (no retrieval; fusion=passthrough, k=8 but ignored)
 #   retrieval      RoPE + cross-attention medium + k=8 retrieved docs
-#   marginalized   same as retrieval but with marginalized BCE loss
-#                  (training/loss=multitask_binary_bce_marginalized)
+#   marginalized   same as retrieval but with marginalized_retrieval=true,
+#                  per-document fusion (cross_attention_perdoc_medium), and
+#                  marginalized BCE loss (multitask_binary_bce_marginalized)
 #
 # Array index → (N, architecture):
 #   0 → N=25,  patient-only
@@ -131,8 +132,10 @@ elif [[ "${ARCH}" == "retrieval" ]]; then
         "$@"
 
 elif [[ "${ARCH}" == "marginalized" ]]; then
-    # Marginalized retrieval: same as standard but with marginalized BCE loss.
-    # MarginalizedRetrievalSupervisedLoss marginalizes over retrieved docs.
+    # Marginalized retrieval: requires marginalized_retrieval=true and a fusion
+    # module with produces_per_document_state=True (cross_attention_perdoc_medium,
+    # not cross_attention_medium) so the model emits per-doc logits for
+    # MultiTaskBCEMarginalizedLoss to marginalize over.
     medrap-train \
         "${COMMON_ARGS[@]}" \
         query_projector=sequence_mean_1024 \
@@ -144,7 +147,8 @@ elif [[ "${ARCH}" == "marginalized" ]]; then
         retrieval_encoder=token_feature \
         retrieval_encoder.vocab_size=151936 \
         retrieval_encoder.embedding_dim=64 \
-        fusion=cross_attention_medium \
+        fusion=cross_attention_perdoc_medium \
+        marginalized_retrieval=true \
         head.in_dim=256 \
         training/loss=multitask_binary_bce_marginalized \
         "training.loss.num_tasks=${N}" \
