@@ -22,7 +22,7 @@ This creates `.venv/` and installs `medrap` and all dependencies (including
 
 ### Phase 1 — Task-count sweep (`sweep_task_count.sh`)
 
-Fixed architecture (RoPE encoder + cross-attention medium fusion, k=8, lr=1e-3,
+Fixed architecture (RoPE encoder + cross-attention medium fusion, k=4, lr=1e-3,
 3 epochs). Varies N ∈ {10, 25, 50, 100, 250, 500} to measure how jointly
 training more prediction targets affects per-task AUROC.
 
@@ -33,7 +33,7 @@ Fixed N ∈ {25, 100}. Compares three architectures:
 | Variant | Description |
 | --- | --- |
 | `patient_only` | RoPE encoder → masked-mean pooling → head; no retrieval |
-| `retrieval` | RoPE + cross-attention medium fusion, k=8 retrieved docs |
+| `retrieval` | RoPE + cross-attention medium fusion, k=4 retrieved docs |
 | `marginalized` | Same as `retrieval` but with `multitask_binary_bce_marginalized` loss |
 
 ### Phase 3 — Hyperparameter sweep (`sweep_hparams.sh`)

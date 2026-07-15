@@ -3,7 +3,7 @@
 # SLURM array: Task-count sweep
 # ------------------------------------------------------------
 # Trains the same architecture (RoPE encoder + cross-attention
-# medium fusion, k=8) across N ∈ {10, 25, 50, 100, 250, 500}
+# medium fusion, k=4) across N ∈ {10, 25, 50, 100, 250, 500}
 # multi-task targets to measure how performance scales with the
 # number of jointly-learned prediction targets.
 #
@@ -68,7 +68,7 @@ medrap-train \
     retriever=hf_dataset \
     "retriever.dataset_path=${RETRIEVAL_DB}" \
     retriever.doc_ids_column=null \
-    retriever.k=8 \
+    retriever.k=4 \
     retrieval_encoder=token_feature \
     retrieval_encoder.vocab_size=151936 \
     retrieval_encoder.embedding_dim=64 \

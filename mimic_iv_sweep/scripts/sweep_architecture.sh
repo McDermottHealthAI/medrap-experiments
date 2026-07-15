@@ -5,8 +5,8 @@
 # Compares three architectures at N=25 and N=100 tasks:
 #
 #   patient-only   RoPE encoder → masked-mean pooling → head
-#                  (no retrieval; fusion=passthrough, k=8 but ignored)
-#   retrieval      RoPE + cross-attention medium + k=8 retrieved docs
+#                  (no retrieval; fusion=passthrough, k=4 but ignored)
+#   retrieval      RoPE + cross-attention medium + k=4 retrieved docs
 #   marginalized   same as retrieval but with marginalized_retrieval=true,
 #                  per-document fusion (cross_attention_perdoc_medium), and
 #                  marginalized BCE loss (multitask_binary_bce_marginalized)
@@ -101,18 +101,23 @@ COMMON_ARGS=(
 )
 
 if [[ "${ARCH}" == "patient_only" ]]; then
-    # No retrieval: passthrough fusion ignores any retrieved docs.
-    # head.in_dim matches the rope encoder output (128).
+    # No retrieval: passthrough fusion ignores any retrieved docs. head.in_dim
+    # matches the rope encoder output (128). model.forward() calls
+    # query_projector(encoder_out) unconditionally even when fusion=passthrough
+    # discards its output, so query_projector.in_dim must still match the rope
+    # encoder's 128-dim output -- the default query_projector config's in_dim=1
+    # crashes on the first forward pass otherwise (mat1/mat2 shape mismatch).
     medrap-train \
         "${COMMON_ARGS[@]}" \
         fusion=passthrough \
+        query_projector.in_dim=128 \
         head.in_dim=128 \
         training/loss=multitask_binary_bce \
         "wandb_run_name=sweep-arch-${ARCH}-n${N}-${SLURM_ARRAY_JOB_ID:-local}_${IDX}" \
         "$@"
 
 elif [[ "${ARCH}" == "retrieval" ]]; then
-    # Standard retrieval: RoPE + cross-attention medium + k=8.
+    # Standard retrieval: RoPE + cross-attention medium + k=4.
     # head.in_dim matches cross_attention_medium d_model (256).
     medrap-train \
         "${COMMON_ARGS[@]}" \
@@ -121,7 +126,7 @@ elif [[ "${ARCH}" == "retrieval" ]]; then
         retriever=hf_dataset \
         "retriever.dataset_path=${RETRIEVAL_DB}" \
         retriever.doc_ids_column=null \
-        retriever.k=8 \
+        retriever.k=4 \
         retrieval_encoder=token_feature \
         retrieval_encoder.vocab_size=151936 \
         retrieval_encoder.embedding_dim=64 \
@@ -143,7 +148,7 @@ elif [[ "${ARCH}" == "marginalized" ]]; then
         retriever=hf_dataset \
         "retriever.dataset_path=${RETRIEVAL_DB}" \
         retriever.doc_ids_column=null \
-        retriever.k=8 \
+        retriever.k=4 \
         retrieval_encoder=token_feature \
         retrieval_encoder.vocab_size=151936 \
         retrieval_encoder.embedding_dim=64 \
