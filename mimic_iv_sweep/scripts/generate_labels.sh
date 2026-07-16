@@ -40,7 +40,14 @@ N=${NS[$IDX]}
 REPO_DIR="${SLURM_SUBMIT_DIR}"
 VENV="${REPO_DIR}/.venv/bin/activate"  # created by: cd mimic_iv_sweep && uv sync
 
-MEDS_DATA_DIR="/groups/mm6677_gp/data/MIMIC_MEDS/MEDS_cohort"
+# NOTE: task codes/labels must be sampled from the *filtered* population that
+# training actually sees (min_subjects_per_code/min_events_per_subject
+# already applied), not the raw MEDS_cohort/data root -- otherwise positive
+# rates are diluted by sparse/single-visit subjects that never make it into
+# the tensorized training cohort, and the whole point of the multi-split
+# rate/count filter (McDermottHealthAI/MedRAP#89) is undermined by measuring
+# the wrong denominator population.
+MEDS_DATA_DIR="/groups/mm6677_gp/data/MIMIC_MEDS/MEDS_cohort/intermediate"
 TENSORIZED_DIR="/groups/mm6677_gp/data/MIMIC_MEDS/MEDS_cohort/processed"
 OUTPUT_DIR="${REPO_DIR}/data/tasks/n${N}"
 
