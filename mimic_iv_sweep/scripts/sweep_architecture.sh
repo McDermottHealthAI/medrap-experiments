@@ -2,7 +2,7 @@
 # ============================================================
 # SLURM array: Architecture ablation
 # ------------------------------------------------------------
-# Compares three architectures at N=25 and N=100 tasks:
+# Compares three architectures at N=8 and N=32 tasks:
 #
 #   patient-only   RoPE encoder → masked-mean pooling → head
 #                  (no retrieval; fusion=passthrough, k=4 but ignored)
@@ -12,21 +12,21 @@
 #                  marginalized BCE loss (multitask_binary_bce_marginalized)
 #
 # Array index → (N, architecture):
-#   0 → N=25,  patient-only
-#   1 → N=25,  retrieval
-#   2 → N=25,  marginalized
-#   3 → N=100, patient-only
-#   4 → N=100, retrieval
-#   5 → N=100, marginalized
+#   0 → N=8,  patient-only
+#   1 → N=8,  retrieval
+#   2 → N=8,  marginalized
+#   3 → N=32, patient-only
+#   4 → N=32, retrieval
+#   5 → N=32, marginalized
 #
 # Prerequisites:
 #   sbatch scripts/prepare_retrieval.sh
-#   sbatch --array=1,3 scripts/generate_labels.sh  # N=25 (idx 1), N=100 (idx 3)
+#   sbatch --array=3,5 scripts/generate_labels.sh  # N=8 (idx 3), N=32 (idx 5)
 #
 # Usage:
 #   cd mimic_iv_sweep
 #   sbatch scripts/sweep_architecture.sh
-#   sbatch --array=0-2 scripts/sweep_architecture.sh   # N=25 only
+#   sbatch --array=0-2 scripts/sweep_architecture.sh   # N=8 only
 # ============================================================
 
 #SBATCH --job-name=sweep-arch
@@ -44,7 +44,7 @@ set -euo pipefail
 
 IDX=${SLURM_ARRAY_TASK_ID}
 
-NS=(25 25 25 100 100 100)
+NS=(8 8 8 32 32 32)
 ARCHS=(patient_only retrieval marginalized patient_only retrieval marginalized)
 
 N=${NS[$IDX]}

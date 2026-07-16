@@ -3,7 +3,7 @@
 # SLURM array: Generate multi-task binary code-occurrence labels
 #              for each task-count N in the sweep.
 # ------------------------------------------------------------
-# Submits one job per N value {10, 25, 50, 100, 250, 500}.
+# Submits one job per N value {1, 2, 4, 8, 16, 32}.
 # Each job calls `medrap-preprocess` with the already-tensorized
 # lab cohort (tensorized_dir), so only the task-generation stage
 # runs (MEDS-transforms and MTD_preprocess are skipped).
@@ -34,7 +34,7 @@ set -euo pipefail
 
 IDX=${SLURM_ARRAY_TASK_ID}
 
-NS=(10 25 50 100 250 500)
+NS=(1 2 4 8 16 32)
 N=${NS[$IDX]}
 
 REPO_DIR="${SLURM_SUBMIT_DIR}"

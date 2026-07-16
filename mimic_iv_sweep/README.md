@@ -23,12 +23,19 @@ This creates `.venv/` and installs `medrap` and all dependencies (including
 ### Phase 1 — Task-count sweep (`sweep_task_count.sh`)
 
 Fixed architecture (RoPE encoder + cross-attention medium fusion, k=4, lr=1e-3,
-3 epochs). Varies N ∈ {10, 25, 50, 100, 250, 500} to measure how jointly
+3 epochs). Varies N ∈ {1, 2, 4, 8, 16, 32} to measure how jointly
 training more prediction targets affects per-task AUROC.
+
+N is kept small: task codes are sampled from a long-tailed clinical
+vocabulary, and only a handful of codes (e.g. Blood Pressure, Weight, BMI)
+have enough in-window positive volume for a stable per-task AUROC given the
+current anchor-sampling scheme (see `scripts/check_task_balance.py`) --
+requesting a large N mostly adds low-count, noise-dominated tasks rather
+than signal.
 
 ### Phase 2 — Architecture ablation (`sweep_architecture.sh`)
 
-Fixed N ∈ {25, 100}. Compares three architectures:
+Fixed N ∈ {8, 32}. Compares three architectures:
 
 | Variant | Description |
 | --- | --- |
@@ -38,7 +45,7 @@ Fixed N ∈ {25, 100}. Compares three architectures:
 
 ### Phase 3 — Hyperparameter sweep (`sweep_hparams.sh`)
 
-Fixed N=25, RoPE + cross-attention, 3 epochs. Full grid:
+Fixed N=8, RoPE + cross-attention, 3 epochs. Full grid:
 k ∈ {4, 8, 16, 32} × lr ∈ {1e-4, 1e-3, 3e-3} → 12 jobs.
 
 ## Running the sweep
@@ -54,20 +61,20 @@ sbatch scripts/prepare_retrieval.sh
 
 ```bash
 sbatch scripts/generate_labels.sh          # all 6 N values in parallel
-# or a subset, e.g. only N=25 and N=100:
-sbatch --array=1,3 scripts/generate_labels.sh
+# or a subset, e.g. only N=8 and N=32:
+sbatch --array=3,5 scripts/generate_labels.sh
 ```
 
 Label N values and their array indices:
 
 | Index | N |
 | --- | --- |
-| 0 | 10 |
-| 1 | 25 |
-| 2 | 50 |
-| 3 | 100 |
-| 4 | 250 |
-| 5 | 500 |
+| 0 | 1 |
+| 1 | 2 |
+| 2 | 4 |
+| 3 | 8 |
+| 4 | 16 |
+| 5 | 32 |
 
 ### Step 3 — Run the sweeps
 
@@ -91,19 +98,19 @@ mimic_iv_sweep/
 ├── data/
 │   ├── retrieval_db/          # FAISS index + HF dataset (prepare_retrieval.sh)
 │   └── tasks/
-│       ├── n10/tasks/         # {train,tuning,held_out}.parquet + metadata
-│       ├── n25/tasks/
+│       ├── n1/tasks/          # {train,tuning,held_out}.parquet + metadata
+│       ├── n2/tasks/
 │       └── ...
 ├── logs/                      # SLURM stdout/stderr per array job
 └── outputs/
     ├── task_count/
-    │   ├── n10/               # checkpoints + W&B run
-    │   ├── n25/
+    │   ├── n1/                # checkpoints + W&B run
+    │   ├── n2/
     │   └── ...
     ├── architecture/
-    │   ├── patient_only_n25/
-    │   ├── retrieval_n25/
-    │   ├── marginalized_n25/
+    │   ├── patient_only_n8/
+    │   ├── retrieval_n8/
+    │   ├── marginalized_n8/
     │   └── ...
     └── hparams/
         ├── k4_lr1e-4/

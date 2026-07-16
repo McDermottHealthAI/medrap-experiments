@@ -15,7 +15,7 @@ Two severities:
     just a signal that task has less learning signal than the ideal band tasks.
 
 Usage:
-    python scripts/check_task_balance.py data/tasks/n25 [--min-rate 0.01] [--max-rate 0.5]
+    python scripts/check_task_balance.py data/tasks/n8/tasks [--min-rate 0.01] [--max-rate 0.5]
 """
 
 import argparse
@@ -27,7 +27,7 @@ import polars as pl
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("tasks_dir", type=Path, help="e.g. data/tasks/n25")
+    parser.add_argument("tasks_dir", type=Path, help="e.g. data/tasks/n8/tasks")
     parser.add_argument("--min-rate", type=float, default=0.01, help="ideal-band lower bound")
     parser.add_argument("--max-rate", type=float, default=0.5, help="ideal-band upper bound")
     args = parser.parse_args()

@@ -3,13 +3,19 @@
 # SLURM array: Task-count sweep
 # ------------------------------------------------------------
 # Trains the same architecture (RoPE encoder + cross-attention
-# medium fusion, k=4) across N ∈ {10, 25, 50, 100, 250, 500}
+# medium fusion, k=4) across N ∈ {1, 2, 4, 8, 16, 32}
 # multi-task targets to measure how performance scales with the
 # number of jointly-learned prediction targets.
 #
+# N is kept small because task codes are sampled from a long-tailed clinical
+# vocabulary: only a handful of codes (e.g. Blood Pressure, Weight, BMI) have
+# enough in-window positive volume for a stable per-task AUROC given the
+# current anchor-sampling scheme (see check_task_balance.py) -- requesting a
+# large N mostly adds low-count, noise-dominated tasks rather than signal.
+#
 # Array index → N:
-#   0 → 10    1 → 25    2 → 50
-#   3 → 100   4 → 250   5 → 500
+#   0 → 1     1 → 2     2 → 4
+#   3 → 8     4 → 16    5 → 32
 #
 # Prerequisites (run once before this array):
 #   sbatch scripts/prepare_retrieval.sh
@@ -18,7 +24,7 @@
 # Usage:
 #   cd mimic_iv_sweep
 #   sbatch scripts/sweep_task_count.sh
-#   # run a single index, e.g. N=100:
+#   # run a single index, e.g. N=8:
 #   sbatch --array=3 scripts/sweep_task_count.sh
 # ============================================================
 
@@ -37,7 +43,7 @@ set -euo pipefail
 
 IDX=${SLURM_ARRAY_TASK_ID}
 
-NS=(10 25 50 100 250 500)
+NS=(1 2 4 8 16 32)
 N=${NS[$IDX]}
 
 REPO_DIR="${SLURM_SUBMIT_DIR}"

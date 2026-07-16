@@ -3,7 +3,7 @@
 # SLURM array: Hyperparameter sweep
 # ------------------------------------------------------------
 # Explores k (retrieval neighbours) × lr (learning rate) at
-# the best mid-scale configuration (N=25, RoPE + cross-attention
+# the best mid-scale configuration (N=8, RoPE + cross-attention
 # medium, 3 epochs).
 #
 # Grid: k ∈ {4, 8, 16, 32} × lr ∈ {1e-4, 1e-3, 3e-3} → 12 jobs
@@ -16,7 +16,7 @@
 #
 # Prerequisites:
 #   sbatch scripts/prepare_retrieval.sh
-#   sbatch --array=1 scripts/generate_labels.sh   # N=25 (index 1)
+#   sbatch --array=3 scripts/generate_labels.sh   # N=8 (index 3)
 #
 # Usage:
 #   cd mimic_iv_sweep
@@ -45,7 +45,7 @@ LRS=(1e-4 1e-3 3e-3 1e-4 1e-3 3e-3 1e-4 1e-3 3e-3 1e-4 1e-3 3e-3)
 
 K=${KS[$IDX]}
 LR=${LRS[$IDX]}
-N=25
+N=8
 
 REPO_DIR="${SLURM_SUBMIT_DIR}"
 VENV="${REPO_DIR}/.venv/bin/activate"  # created by: cd mimic_iv_sweep && uv sync
