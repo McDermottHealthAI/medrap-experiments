@@ -35,7 +35,7 @@ than signal.
 
 ### Phase 2 — Architecture ablation (`sweep_architecture.sh`)
 
-Fixed N ∈ {8, 32}. Compares three architectures:
+Fixed N ∈ {1, 8, 32}. Compares three architectures:
 
 | Variant | Description |
 | --- | --- |
