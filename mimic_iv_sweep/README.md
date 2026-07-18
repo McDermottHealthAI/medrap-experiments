@@ -48,6 +48,24 @@ Fixed N ∈ {1, 8, 32}. Compares three architectures:
 Fixed N=8, RoPE + cross-attention, 3 epochs. Full grid:
 k ∈ {4, 8, 16, 32} × lr ∈ {1e-4, 1e-3, 3e-3} → 12 jobs.
 
+### Phase 4 — Marginalized retrieval, random tasks (`sweep_marginalized_n1248.sh`)
+
+`marginalized` architecture only (RoPE + per-document cross-attention +
+`marginalized_retrieval=true` + `multitask_binary_bce_marginalized` loss),
+N ∈ {1, 2, 4, 8}, on task labels generated with the medrap task sampler after
+[MedRAP#92](https://github.com/McDermottHealthAI/MedRAP/pull/92) — task codes
+sampled uniformly at random from the train split, no positive-rate/count
+filtering. Logs per-task AUROC every validation pass
+(`training.module.validation_auroc_log_per_task=true`), not just the mean.
+
+This is a first pass to see whether marginalized retrieval trains cleanly on
+unfiltered random tasks before deciding how to extend the comparison (e.g.
+adding a matched `patient_only` arm). `sweep_architecture.sh`'s `marginalized`
+runs at N=25/100 (see W&B `sweep-arch-marginalized-*`) currently show AUROC in
+the 0.45–0.64 range — worse than or barely above the `patient_only`/`retrieval`
+arms at the same N — so treat this phase as investigative, not a settled
+result.
+
 ## Running the sweep
 
 ### Step 1 — Build the retrieval index (once)
@@ -82,6 +100,7 @@ Label N values and their array indices:
 sbatch scripts/sweep_task_count.sh
 sbatch scripts/sweep_architecture.sh
 sbatch scripts/sweep_hparams.sh
+sbatch scripts/sweep_marginalized_n1248.sh
 ```
 
 Each script accepts extra arguments forwarded to `medrap-train` as Hydra
