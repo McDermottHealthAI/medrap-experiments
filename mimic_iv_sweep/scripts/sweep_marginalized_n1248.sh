@@ -21,7 +21,7 @@
 #
 # Prerequisites:
 #   sbatch scripts/prepare_retrieval.sh
-#   sbatch --array=0-3 scripts/generate_labels.sh   # N=1,2,4,8 (indices 0-3)
+#   sbatch scripts/generate_labels_n1248.sh
 #
 # Usage:
 #   cd mimic_iv_sweep
