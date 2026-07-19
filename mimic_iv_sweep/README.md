@@ -209,3 +209,8 @@ from W&B (run names `marginalized-n{N}-*`) alongside `val/auroc/mean` and
 
 Outputs land at `outputs/marginalized_n1248/n{N}/` (checkpoints + W&B run),
 separate from Phase 2's `outputs/architecture/`.
+
+See [`../mimic_iv_sweep_frequent/`](../mimic_iv_sweep_frequent/) for a variant
+of this run that selects the N most-frequent codes instead of sampling
+uniformly at random — a hedge against the random sampler's tendency to pick
+rare/degenerate codes noted above.
