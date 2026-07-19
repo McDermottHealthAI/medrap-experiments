@@ -40,25 +40,38 @@ exist yet.
 sbatch ../mimic_iv_sweep/scripts/prepare_retrieval.sh   # once, if data/retrieval_db doesn't exist yet
 cd mimic_iv_sweep_frequent
 sbatch scripts/generate_labels_n1248_frequent.sh        # N=1,2,4,8 task labels, most-frequent codes
+sbatch scripts/sweep_patient_only_n1248.sh               # no retrieval, N=1,2,4,8
 sbatch scripts/sweep_retrieval_n1248.sh                  # non-marginalized retrieval, N=1,2,4,8
 sbatch scripts/sweep_marginalized_n1248.sh               # marginalized retrieval, N=1,2,4,8
 ```
 
-`sweep_retrieval_n1248.sh` runs the same, non-marginalized `retrieval`
-architecture as `../mimic_iv_sweep/scripts/sweep_architecture.sh`'s
-`retrieval` arm (single pooled cross-attention fusion, `training/loss=
-multitask_binary_bce`) on the same frequent-code task labels and retrieval
-index as `sweep_marginalized_n1248.sh`. It's worth running (and checking)
-*before* `sweep_marginalized_n1248.sh`: `marginalized_retrieval=true` routes
-`logits` through `RetrievalAugmentedModel`'s per-document softmax-over-tasks
-path (`_marginal_class_probabilities`), which is suspected of producing
-invalid AUROC for independent multi-task targets (see the marginalized-run
-results logged in this PR) — `sweep_retrieval_n1248.sh` never touches that
-path, so it gives a same-labels, same-retrieval-index reference point that
-isn't confounded by that open question. It's directly comparable to the
-older `mt25-rope-cross-attn` runs, which used this same non-marginalized
-architecture, just on pre-`MedRAP#92` task labels (positive-rate/count
-filtered, so much higher prevalence).
+All three run the same task labels, hyperparameters (3 epochs, lr=1e-3,
+batch size 32, `max_seq_len=256`), and `training/loss=multitask_binary_bce`
+(except `sweep_marginalized_n1248.sh`, which uses the marginalized loss) —
+only the architecture differs, mirroring
+`../mimic_iv_sweep/scripts/sweep_architecture.sh`'s three arms:
+
+- `sweep_patient_only_n1248.sh` — `patient_only`: RoPE encoder → masked-mean
+    pooling → `LinearHead(B,N)` directly, no retriever/fusion at all
+    (`fusion=passthrough`). Doesn't touch `data/retrieval_db` — no
+    `prepare_retrieval.sh` prerequisite. Isolates how much the patient's own
+    EHR sequence alone can do on these tasks.
+- `sweep_retrieval_n1248.sh` — `retrieval`: single pooled cross-attention
+    fusion over `k=4` retrieved docs. Runs the same, non-marginalized
+    architecture as the older `mt25-rope-cross-attn` runs, just on
+    frequent-code labels instead of `mt25`'s pre-`MedRAP#92`
+    positive-rate/count-filtered ones.
+- `sweep_marginalized_n1248.sh` — `marginalized`: per-document fusion +
+    `marginalized_retrieval=true` + `multitask_binary_bce_marginalized` loss.
+    `marginalized_retrieval=true` routes `logits` through
+    `RetrievalAugmentedModel`'s per-document softmax-over-tasks path
+    (`_marginal_class_probabilities`), which is suspected of producing
+    invalid AUROC for independent multi-task targets (see this PR's
+    `marginalized-frequent-n{N}` results: bimodal near-0/near-1 per-task
+    AUROC). The other two scripts never touch that path, so together they
+    give a same-labels, same-retrieval-index reference point unconfounded by
+    that open question — run and check them before drawing conclusions from
+    `sweep_marginalized_n1248.sh`'s AUROC.
 
 Each script accepts extra `medrap-train`/`medrap-preprocess` Hydra
 overrides, same as `mimic_iv_sweep`'s scripts.
@@ -85,6 +98,10 @@ mimic_iv_sweep_frequent/
 │       └── ...
 ├── logs/                      # SLURM stdout/stderr per array job
 └── outputs/
+    ├── patient_only_n1248/
+    │   ├── n1/                # checkpoints + W&B run (no retrieval)
+    │   ├── n2/
+    │   └── ...
     ├── retrieval_n1248/
     │   ├── n1/                # checkpoints + W&B run (non-marginalized)
     │   ├── n2/
@@ -97,8 +114,8 @@ mimic_iv_sweep_frequent/
 
 (No `data/retrieval_db/` here — shared from `../mimic_iv_sweep/data/retrieval_db`.)
 
-All runs are logged to W&B under the `medrap` project. `sweep_retrieval_n1248.sh`
-uses run names prefixed `retrieval-frequent-n{N}-*`; `sweep_marginalized_n1248.sh`
-uses `marginalized-frequent-n{N}-*`, alongside the random-task variant's
-`marginalized-n{N}-*` for direct comparison of `val/auroc/mean`,
+All runs are logged to W&B under the `medrap` project, run names prefixed
+`patient-only-frequent-n{N}-*`, `retrieval-frequent-n{N}-*`, and
+`marginalized-frequent-n{N}-*` respectively, alongside the random-task
+variant's `marginalized-n{N}-*` for direct comparison of `val/auroc/mean`,
 `val/auroc/n_valid_tasks` vs `n_tasks`, and `train/loss`.
