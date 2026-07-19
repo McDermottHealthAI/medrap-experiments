@@ -5,10 +5,11 @@
 #              ../mimic_iv_sweep/scripts/generate_labels_n1248.sh.
 # ------------------------------------------------------------
 # Identical to generate_labels_n1248.sh except code_selection=most_frequent:
-# task codes are the N codes with the highest event count in the train split
-# (deterministic, seed ignored for selection), instead of a uniform-random
-# draw. Prediction time is still sampled randomly per subject, same as the
-# random-task variant -- only which codes are chosen as tasks differs.
+# task codes are the N codes with the highest distinct-subject count in the
+# train split (deterministic, seed ignored for selection), instead of a
+# uniform-random draw. Prediction time is still sampled randomly per subject,
+# same as the random-task variant -- only which codes are chosen as tasks
+# differs.
 #
 # Motivation: mimic_iv_sweep's README notes only a handful of codes (e.g.
 # Blood Pressure, Weight, BMI) have enough in-window positive volume for a
@@ -17,9 +18,9 @@
 # McDermottHealthAI/MedRAP#92). This variant tests whether biasing task
 # selection toward the most frequent codes gives usable positive rates.
 # "Most frequent" ranks by distinct-subject count, not event-row count --
-# see McDermottHealthAI/MedRAP@c6f1079.
+# see McDermottHealthAI/MedRAP@425a321.
 #
-# Requires medrap >= McDermottHealthAI/MedRAP@c6f1079 (code_selection support,
+# Requires medrap >= McDermottHealthAI/MedRAP@425a321 (code_selection support,
 # pinned in pyproject.toml; not yet merged to MedRAP main).
 #
 # Outputs for index i land in:

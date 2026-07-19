@@ -7,10 +7,12 @@ Most-frequent-code variant of [`mimic_iv_sweep`](../mimic_iv_sweep/)'s Phase 4
 from the train-split vocabulary (which, per
 [`mimic_iv_sweep`'s README](../mimic_iv_sweep/README.md#phase-1--task-count-sweep-sweep_task_countsh),
 overwhelmingly lands on rare/degenerate codes), this variant picks the `N`
-codes with the **highest event count** in the train split.
+codes with the **highest distinct-subject count** in the train split (not raw
+event-row count, which over-weights codes measured repeatedly on a small
+subject subset).
 
 Requires `medrap` built from
-[`McDermottHealthAI/MedRAP@c6f1079`](https://github.com/McDermottHealthAI/MedRAP/commit/c6f10794e838ab097dd48a3747c33170c140c017)
+[`McDermottHealthAI/MedRAP@425a321`](https://github.com/McDermottHealthAI/MedRAP/commit/425a321268331a31cbdfa50fc60b3b0555e97284)
 (`feat/task-gen-most-frequent-codes`, not yet merged to `main`) — adds
 `code_selection=random|most_frequent` to `medrap-preprocess`; pinned in
 `pyproject.toml`. `most_frequent` ranks codes by distinct-subject count in
