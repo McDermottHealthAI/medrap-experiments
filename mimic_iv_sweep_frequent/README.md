@@ -12,14 +12,25 @@ event-row count, which over-weights codes measured repeatedly on a small
 subject subset).
 
 Requires `medrap` built from
-[`McDermottHealthAI/MedRAP@425a321`](https://github.com/McDermottHealthAI/MedRAP/commit/425a321268331a31cbdfa50fc60b3b0555e97284)
-(`feat/task-gen-most-frequent-codes`, not yet merged to `main`) — adds
-`code_selection=random|most_frequent` to `medrap-preprocess`; pinned in
-`pyproject.toml`. `most_frequent` ranks codes by distinct-subject count in
-the train split, not raw event-row count -- a code measured repeatedly on a
-small subject subset (e.g. hourly ICU labs) can dominate row count while
-still being near-zero prevalence in the per-subject labels this pipeline
-produces.
+[`McDermottHealthAI/MedRAP@2c5fc5a`](https://github.com/McDermottHealthAI/MedRAP/commit/2c5fc5a668bf17394a58c49a4949ab6764ef0bc4)
+(`experiment/marginalized-binary-plus-task-gen`, not yet merged to `main`),
+pinned in `pyproject.toml`. That commit merges two not-yet-merged MedRAP
+branches so both features are available together in one env:
+
+- `feat/task-gen-most-frequent-codes` — adds `code_selection=random|most_frequent`
+    to `medrap-preprocess`. `most_frequent` ranks codes by distinct-subject
+    count in the train split, not raw event-row count -- a code measured
+    repeatedly on a small subject subset (e.g. hourly ICU labs) can dominate
+    row count while still being near-zero prevalence in the per-subject
+    labels this pipeline produces.
+- [`fix/marginalized-binary-output-mode`](https://github.com/McDermottHealthAI/MedRAP/pull/93)
+    (MedRAP PR #93) — adds `marginalized_output_mode=categorical|binary` to
+    `RetrievalAugmentedModel`. See `sweep_marginalized_binary_n1248.sh` below.
+
+`experiment/marginalized-binary-plus-task-gen` is a merge-only integration
+branch for this experiment's pin -- it isn't itself a PR under review; once
+both `feat/task-gen-most-frequent-codes` and PR #93 land on `main`, drop
+back to a main-tracking pin.
 
 ## Setup
 
@@ -42,14 +53,14 @@ cd mimic_iv_sweep_frequent
 sbatch scripts/generate_labels_n1248_frequent.sh        # N=1,2,4,8 task labels, most-frequent codes
 sbatch scripts/sweep_patient_only_n1248.sh               # no retrieval, N=1,2,4,8
 sbatch scripts/sweep_retrieval_n1248.sh                  # non-marginalized retrieval, N=1,2,4,8
-sbatch scripts/sweep_marginalized_n1248.sh               # marginalized retrieval, N=1,2,4,8
+sbatch scripts/sweep_marginalized_n1248.sh               # marginalized retrieval, categorical (buggy), N=1,2,4,8
+sbatch scripts/sweep_marginalized_binary_n1248.sh        # marginalized retrieval, binary (MedRAP#93 fix), N=1,2,4,8
 ```
 
-All three run the same task labels, hyperparameters (3 epochs, lr=1e-3,
-batch size 32, `max_seq_len=256`), and `training/loss=multitask_binary_bce`
-(except `sweep_marginalized_n1248.sh`, which uses the marginalized loss) —
-only the architecture differs, mirroring
-`../mimic_iv_sweep/scripts/sweep_architecture.sh`'s three arms:
+All four run the same task labels and hyperparameters (3 epochs, lr=1e-3,
+batch size 32, `max_seq_len=256`) — only the architecture/output mode
+differs, mirroring `../mimic_iv_sweep/scripts/sweep_architecture.sh`'s three
+arms plus one MedRAP#93 variant:
 
 - `sweep_patient_only_n1248.sh` — `patient_only`: RoPE encoder → masked-mean
     pooling → `LinearHead(B,N)` directly, no retriever/fusion at all
@@ -57,21 +68,36 @@ only the architecture differs, mirroring
     `prepare_retrieval.sh` prerequisite. Isolates how much the patient's own
     EHR sequence alone can do on these tasks.
 - `sweep_retrieval_n1248.sh` — `retrieval`: single pooled cross-attention
-    fusion over `k=4` retrieved docs. Runs the same, non-marginalized
-    architecture as the older `mt25-rope-cross-attn` runs, just on
-    frequent-code labels instead of `mt25`'s pre-`MedRAP#92`
-    positive-rate/count-filtered ones.
-- `sweep_marginalized_n1248.sh` — `marginalized`: per-document fusion +
+    fusion over `k=4` retrieved docs, `training/loss=multitask_binary_bce`.
+    Runs the same, non-marginalized architecture as the older
+    `mt25-rope-cross-attn` runs, just on frequent-code labels instead of
+    `mt25`'s pre-`MedRAP#92` positive-rate/count-filtered ones.
+- `sweep_marginalized_n1248.sh` — `marginalized`, `marginalized_output_mode=categorical`
+    (the current MedRAP default): per-document fusion +
     `marginalized_retrieval=true` + `multitask_binary_bce_marginalized` loss.
-    `marginalized_retrieval=true` routes `logits` through
-    `RetrievalAugmentedModel`'s per-document softmax-over-tasks path
-    (`_marginal_class_probabilities`), which is suspected of producing
-    invalid AUROC for independent multi-task targets (see this PR's
-    `marginalized-frequent-n{N}` results: bimodal near-0/near-1 per-task
-    AUROC). The other two scripts never touch that path, so together they
-    give a same-labels, same-retrieval-index reference point unconfounded by
-    that open question — run and check them before drawing conclusions from
-    `sweep_marginalized_n1248.sh`'s AUROC.
+    Routes `logits` through `RetrievalAugmentedModel`'s per-document
+    softmax-over-tasks path (`_marginal_class_probabilities`) -- correct for
+    a single mutually-exclusive `C`-way task, but wrong for `N` independent
+    binary tasks, which is suspected to produce the invalid AUROC seen in
+    this PR's `marginalized-frequent-n{N}` results (bimodal near-0/near-1
+    per-task AUROC).
+- `sweep_marginalized_binary_n1248.sh` — identical to
+    `sweep_marginalized_n1248.sh` plus one override,
+    `marginalized_output_mode=binary`
+    ([MedRAP PR #93](https://github.com/McDermottHealthAI/MedRAP/pull/93)):
+    marginalizes each task's sigmoid probability independently over
+    documents instead of forcing all tasks to compete via softmax. This is
+    the same fix a colleague's unmerged branch used to get a genuinely good,
+    uniform marginalized AUROC (0.916 mean, no bimodal collapse) on the
+    older `mt25-rope-cross-attn-marginalized` W&B run -- this script tests
+    it on frequent-code labels before PR #93 merges to `main`.
+
+`sweep_patient_only_n1248.sh` and `sweep_retrieval_n1248.sh` never touch the
+marginalized softmax-over-tasks path at all, so together with
+`sweep_marginalized_binary_n1248.sh` they give three same-labels,
+same-retrieval-index reference points unconfounded by that question — worth
+running before drawing conclusions from `sweep_marginalized_n1248.sh`'s
+(categorical) AUROC.
 
 Each script accepts extra `medrap-train`/`medrap-preprocess` Hydra
 overrides, same as `mimic_iv_sweep`'s scripts.
@@ -106,8 +132,12 @@ mimic_iv_sweep_frequent/
     │   ├── n1/                # checkpoints + W&B run (non-marginalized)
     │   ├── n2/
     │   └── ...
-    └── marginalized_n1248/
-        ├── n1/                # checkpoints + W&B run (marginalized)
+    ├── marginalized_n1248/
+    │   ├── n1/                # checkpoints + W&B run (marginalized, categorical)
+    │   ├── n2/
+    │   └── ...
+    └── marginalized_binary_n1248/
+        ├── n1/                # checkpoints + W&B run (marginalized, binary -- MedRAP#93)
         ├── n2/
         └── ...
 ```
@@ -115,7 +145,8 @@ mimic_iv_sweep_frequent/
 (No `data/retrieval_db/` here — shared from `../mimic_iv_sweep/data/retrieval_db`.)
 
 All runs are logged to W&B under the `medrap` project, run names prefixed
-`patient-only-frequent-n{N}-*`, `retrieval-frequent-n{N}-*`, and
-`marginalized-frequent-n{N}-*` respectively, alongside the random-task
-variant's `marginalized-n{N}-*` for direct comparison of `val/auroc/mean`,
-`val/auroc/n_valid_tasks` vs `n_tasks`, and `train/loss`.
+`patient-only-frequent-n{N}-*`, `retrieval-frequent-n{N}-*`,
+`marginalized-frequent-n{N}-*`, and `marginalized-binary-frequent-n{N}-*`
+respectively, alongside the random-task variant's `marginalized-n{N}-*` for
+direct comparison of `val/auroc/mean`, `val/auroc/n_valid_tasks` vs
+`n_tasks`, and `train/loss`.
