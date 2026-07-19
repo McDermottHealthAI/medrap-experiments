@@ -10,10 +10,14 @@ overwhelmingly lands on rare/degenerate codes), this variant picks the `N`
 codes with the **highest event count** in the train split.
 
 Requires `medrap` built from
-[`McDermottHealthAI/MedRAP@887095d`](https://github.com/McDermottHealthAI/MedRAP/commit/887095d21132529ebf6513a6663f884cd59d190f)
+[`McDermottHealthAI/MedRAP@c6f1079`](https://github.com/McDermottHealthAI/MedRAP/commit/c6f10794e838ab097dd48a3747c33170c140c017)
 (`feat/task-gen-most-frequent-codes`, not yet merged to `main`) — adds
 `code_selection=random|most_frequent` to `medrap-preprocess`; pinned in
-`pyproject.toml`.
+`pyproject.toml`. `most_frequent` ranks codes by distinct-subject count in
+the train split, not raw event-row count -- a code measured repeatedly on a
+small subject subset (e.g. hourly ICU labs) can dominate row count while
+still being near-zero prevalence in the per-subject labels this pipeline
+produces.
 
 ## Setup
 

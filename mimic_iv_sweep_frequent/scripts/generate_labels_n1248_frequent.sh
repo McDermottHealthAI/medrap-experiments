@@ -16,8 +16,10 @@
 # overwhelmingly picks rare/degenerate codes instead (see
 # McDermottHealthAI/MedRAP#92). This variant tests whether biasing task
 # selection toward the most frequent codes gives usable positive rates.
+# "Most frequent" ranks by distinct-subject count, not event-row count --
+# see McDermottHealthAI/MedRAP@c6f1079.
 #
-# Requires medrap >= McDermottHealthAI/MedRAP@887095d (code_selection support,
+# Requires medrap >= McDermottHealthAI/MedRAP@c6f1079 (code_selection support,
 # pinned in pyproject.toml; not yet merged to MedRAP main).
 #
 # Outputs for index i land in:
