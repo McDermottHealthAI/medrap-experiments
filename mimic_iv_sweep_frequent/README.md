@@ -2,7 +2,7 @@
 
 Most-frequent-code variant of [`mimic_iv_sweep`](../mimic_iv_sweep/)'s Phase 4
 (`sweep_marginalized_n1248.sh`). Everything is identical to that run
-(architecture, hyperparameters, N ∈ {1, 2, 4, 8}, random prediction times)
+(architecture, hyperparameters, N ∈ {1, 2, 4, 8, 16, 32, 64, 128}, random prediction times)
 **except how task codes are chosen**: instead of sampling uniformly at random
 from the train-split vocabulary (which, per
 [`mimic_iv_sweep`'s README](../mimic_iv_sweep/README.md#phase-1--task-count-sweep-sweep_task_countsh),
@@ -50,11 +50,11 @@ exist yet.
 ```bash
 sbatch ../mimic_iv_sweep/scripts/prepare_retrieval.sh   # once, if data/retrieval_db doesn't exist yet
 cd mimic_iv_sweep_frequent
-sbatch scripts/generate_labels_n1248_frequent.sh        # N=1,2,4,8 task labels, most-frequent codes
-sbatch scripts/sweep_patient_only_n1248.sh               # no retrieval, N=1,2,4,8
-sbatch scripts/sweep_retrieval_n1248.sh                  # non-marginalized retrieval, N=1,2,4,8
-sbatch scripts/sweep_marginalized_n1248.sh               # marginalized retrieval, categorical (buggy), N=1,2,4,8
-sbatch scripts/sweep_marginalized_binary_n1248.sh        # marginalized retrieval, binary (MedRAP#93 fix), N=1,2,4,8
+sbatch scripts/generate_labels_n1248_frequent.sh        # N=1,2,4,8,16,32,64,128 task labels, most-frequent codes
+sbatch scripts/sweep_patient_only_n1248.sh               # no retrieval, N=1,2,4,8,16,32,64,128
+sbatch scripts/sweep_retrieval_n1248.sh                  # non-marginalized retrieval, N=1,2,4,8,16,32,64,128
+sbatch scripts/sweep_marginalized_n1248.sh               # marginalized retrieval, categorical (buggy), N=1,2,4,8,16,32,64,128
+sbatch scripts/sweep_marginalized_binary_n1248.sh        # marginalized retrieval, binary (MedRAP#93 fix), N=1,2,4,8,16,32,64,128
 ```
 
 All four run the same task labels and hyperparameters (3 epochs, lr=1e-3,

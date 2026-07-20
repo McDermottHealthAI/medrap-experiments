@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# SLURM array: patient-only (no retrieval), N in {1, 2, 4, 8} --
+# SLURM array: patient-only (no retrieval), N in {1, 2, 4, 8, 16, 32, 64, 128} --
 #              frequent-code task labels.
 # ------------------------------------------------------------
 # Same task labels and base hyperparameters as sweep_retrieval_n1248.sh /
@@ -21,6 +21,10 @@
 #   1 -> N=2
 #   2 -> N=4
 #   3 -> N=8
+#   4 -> N=16
+#   5 -> N=32
+#   6 -> N=64
+#   7 -> N=128
 #
 # Prerequisites:
 #   sbatch scripts/generate_labels_n1248_frequent.sh
@@ -32,7 +36,7 @@
 # ============================================================
 
 #SBATCH --job-name=sweep-patient-only-n1248-frequent
-#SBATCH --array=0-3
+#SBATCH --array=0-7
 #SBATCH --partition=gpu
 #SBATCH --account=mm6677_gp
 #SBATCH --gres=gpu:L40S:1
@@ -46,7 +50,7 @@ set -euo pipefail
 
 IDX=${SLURM_ARRAY_TASK_ID}
 
-NS=(1 2 4 8)
+NS=(1 2 4 8 16 32 64 128)
 N=${NS[$IDX]}
 
 REPO_DIR="${SLURM_SUBMIT_DIR}"

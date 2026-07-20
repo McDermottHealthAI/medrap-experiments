@@ -1,17 +1,22 @@
 #!/bin/bash
 # ============================================================
-# SLURM array: cross-attention marginalized retrieval, N in {1, 2, 4, 8, 16, 32, 64, 128}
+# SLURM array: standard (non-marginalized) cross-attention retrieval,
+#              N in {1, 2, 4, 8, 16, 32, 64, 128} -- random-task labels.
 # ------------------------------------------------------------
-# Runs only the `marginalized` architecture from sweep_architecture.sh
-# (RoPE + per-document cross-attention + marginalized_retrieval=true +
-# multitask_binary_bce_marginalized loss) across the task-count sweep
-# N in {1, 2, 4, 8, 16, 32, 64, 128}, on task labels generated with the new random,
-# unfiltered task sampler (no positive-rate/count band -- see
-# McDermottHealthAI/MedRAP#92).
+# Random-task-label counterpart of
+# ../mimic_iv_sweep_frequent/scripts/sweep_retrieval_n1248.sh: a single
+# pooled cross-attention fusion (not per-document) feeding one
+# LinearHead(B,N), trained with plain MultiTaskBCELoss
+# (training/loss=multitask_binary_bce).
 #
-# Per-task AUROC is logged every validation pass
-# (training.module.validation_auroc_log_per_task=true), not just the mean,
-# so results can be inspected per sampled task after the fact.
+# Motivation: `logits` here is the head's direct per-task output -- the same
+# quantity the loss, accuracy, and AUROC all consistently read. It never goes
+# through RetrievalAugmentedModel's per-document softmax-over-tasks path
+# (_marginal_class_probabilities), which only runs when
+# marginalized_retrieval=true. Fills in the same-labels four-way comparison
+# (patient_only / retrieval / marginalized-categorical / marginalized-binary)
+# for the original random-task labels, alongside sweep_patient_only_n1248.sh,
+# sweep_marginalized_n1248.sh, and sweep_marginalized_binary_n1248.sh.
 #
 # Array index -> N:
 #   0 -> N=1
@@ -24,16 +29,16 @@
 #   7 -> N=128
 #
 # Prerequisites:
-#   sbatch scripts/prepare_retrieval.sh
+#   sbatch scripts/prepare_retrieval.sh   (if not already run)
 #   sbatch scripts/generate_labels_n1248.sh
 #
 # Usage:
 #   cd mimic_iv_sweep
-#   sbatch scripts/sweep_marginalized_n1248.sh
-#   sbatch --array=0 scripts/sweep_marginalized_n1248.sh   # N=1 only
+#   sbatch scripts/sweep_retrieval_n1248.sh
+#   sbatch --array=0 scripts/sweep_retrieval_n1248.sh   # N=1 only
 # ============================================================
 
-#SBATCH --job-name=sweep-marginalized-n1248
+#SBATCH --job-name=sweep-retrieval-n1248
 #SBATCH --array=0-7
 #SBATCH --partition=gpu
 #SBATCH --account=mm6677_gp
@@ -57,26 +62,30 @@ VENV="${REPO_DIR}/.venv/bin/activate"  # created by: cd mimic_iv_sweep && uv syn
 RETRIEVAL_DB="${REPO_DIR}/data/retrieval_db"
 TENSORIZED_DIR="/groups/mm6677_gp/data/MIMIC_MEDS/MEDS_cohort/processed"
 LABELS_DIR="${REPO_DIR}/data/tasks/n${N}/tasks"
-OUTPUT_DIR="${REPO_DIR}/outputs/marginalized_n1248/n${N}"
+OUTPUT_DIR="${REPO_DIR}/outputs/retrieval_n1248/n${N}"
 
 cd "${REPO_DIR}"
 # shellcheck source=/dev/null
 source "${VENV}"
 mkdir -p logs "${OUTPUT_DIR}"
 
+if [ ! -d "${RETRIEVAL_DB}" ]; then
+    echo "ERROR: ${RETRIEVAL_DB} not found. Run sbatch scripts/prepare_retrieval.sh first." >&2
+    exit 1
+fi
+
 echo "=== Job info ==="
-echo "  Array job  : ${SLURM_ARRAY_JOB_ID:-local}[${IDX}]"
-echo "  Node       : ${SLURMD_NODENAME:-$(hostname)}"
-echo "  GPU(s)     : ${CUDA_VISIBLE_DEVICES:-<unset>}"
-echo "  N (tasks)  : ${N}"
-echo "  Started    : $(date)"
+echo "  Array job     : ${SLURM_ARRAY_JOB_ID:-local}[${IDX}]"
+echo "  Node          : ${SLURMD_NODENAME:-$(hostname)}"
+echo "  GPU(s)        : ${CUDA_VISIBLE_DEVICES:-<unset>}"
+echo "  N (tasks)     : ${N}"
+echo "  Architecture  : retrieval (non-marginalized)"
+echo "  Started       : $(date)"
 echo ""
 
-# Marginalized retrieval: requires marginalized_retrieval=true and a fusion
-# module that produces per-document state (cross_attention_perdoc_medium,
-# not cross_attention_medium) so the model emits per-doc logits for
-# MultiTaskBCEMarginalizedLoss to marginalize over. Same combo as
-# sweep_architecture.sh's `marginalized` arm.
+# Same combo as sweep_architecture.sh's `retrieval` arm -- see that script
+# for the full architecture breakdown; only LABELS_DIR/OUTPUT_DIR/
+# wandb_run_name differ here.
 medrap-train \
     encoder=rope \
     pooling=masked_mean \
@@ -110,14 +119,12 @@ medrap-train \
     retrieval_encoder=token_feature \
     retrieval_encoder.vocab_size=151936 \
     retrieval_encoder.embedding_dim=64 \
-    fusion=cross_attention_perdoc_medium \
-    marginalized_retrieval=true \
+    fusion=cross_attention_medium \
     head.in_dim=256 \
-    training/loss=multitask_binary_bce_marginalized \
-    "training.loss.num_tasks=${N}" \
+    training/loss=multitask_binary_bce \
     "output_dir=${OUTPUT_DIR}" \
     do_overwrite=true \
-    "wandb_run_name=marginalized-n${N}-${SLURM_ARRAY_JOB_ID:-local}_${IDX}" \
+    "wandb_run_name=retrieval-n${N}-${SLURM_ARRAY_JOB_ID:-local}_${IDX}" \
     "$@"
 
 echo ""

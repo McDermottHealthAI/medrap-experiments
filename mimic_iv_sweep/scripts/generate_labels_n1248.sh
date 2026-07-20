@@ -1,7 +1,7 @@
 #!/bin/bash
 # ============================================================
 # SLURM array: Generate multi-task binary code-occurrence labels
-#              for N in {1, 2, 4, 8} -- the marginalized-retrieval
+#              for N in {1, 2, 4, 8, 16, 32, 64, 128} -- the marginalized-retrieval
 #              random-task experiment (see sweep_marginalized_n1248.sh).
 # ------------------------------------------------------------
 # Submits one job per N value. Each job calls `medrap-preprocess` with the
@@ -27,7 +27,7 @@
 # ============================================================
 
 #SBATCH --job-name=marginalized-gen-labels
-#SBATCH --array=0-3
+#SBATCH --array=0-7
 #SBATCH --partition=cpu
 #SBATCH --account=mm6677_gp
 #SBATCH --cpus-per-task=8
@@ -40,7 +40,7 @@ set -euo pipefail
 
 IDX=${SLURM_ARRAY_TASK_ID}
 
-NS=(1 2 4 8)
+NS=(1 2 4 8 16 32 64 128)
 N=${NS[$IDX]}
 
 REPO_DIR="${SLURM_SUBMIT_DIR}"

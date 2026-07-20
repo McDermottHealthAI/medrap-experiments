@@ -1,7 +1,7 @@
 #!/bin/bash
 # ============================================================
 # SLURM array: cross-attention marginalized retrieval with
-#              marginalized_output_mode=binary, N in {1, 2, 4, 8} --
+#              marginalized_output_mode=binary, N in {1, 2, 4, 8, 16, 32, 64, 128} --
 #              random-task variant of
 #              sweep_marginalized_n1248.sh, testing the MedRAP#93
 #              (branch fix/marginalized-binary-output-mode) fix before it
@@ -40,6 +40,10 @@
 #   1 -> N=2
 #   2 -> N=4
 #   3 -> N=8
+#   4 -> N=16
+#   5 -> N=32
+#   6 -> N=64
+#   7 -> N=128
 #
 # Prerequisites:
 #   sbatch scripts/prepare_retrieval.sh
@@ -52,7 +56,7 @@
 # ============================================================
 
 #SBATCH --job-name=sweep-marginalized-binary-n1248
-#SBATCH --array=0-3
+#SBATCH --array=0-7
 #SBATCH --partition=gpu
 #SBATCH --account=mm6677_gp
 #SBATCH --gres=gpu:L40S:1
@@ -66,7 +70,7 @@ set -euo pipefail
 
 IDX=${SLURM_ARRAY_TASK_ID}
 
-NS=(1 2 4 8)
+NS=(1 2 4 8 16 32 64 128)
 N=${NS[$IDX]}
 
 REPO_DIR="${SLURM_SUBMIT_DIR}"

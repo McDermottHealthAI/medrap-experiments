@@ -1,7 +1,7 @@
 #!/bin/bash
 # ============================================================
 # SLURM array: standard (non-marginalized) cross-attention retrieval,
-#              N in {1, 2, 4, 8} -- frequent-code task labels.
+#              N in {1, 2, 4, 8, 16, 32, 64, 128} -- frequent-code task labels.
 # ------------------------------------------------------------
 # Same task labels, retrieval index, and base hyperparameters as
 # sweep_marginalized_n1248.sh, but the `retrieval` architecture from
@@ -26,6 +26,10 @@
 #   1 -> N=2
 #   2 -> N=4
 #   3 -> N=8
+#   4 -> N=16
+#   5 -> N=32
+#   6 -> N=64
+#   7 -> N=128
 #
 # Prerequisites:
 #   sbatch ../mimic_iv_sweep/scripts/prepare_retrieval.sh   (if not already run)
@@ -38,7 +42,7 @@
 # ============================================================
 
 #SBATCH --job-name=sweep-retrieval-n1248-frequent
-#SBATCH --array=0-3
+#SBATCH --array=0-7
 #SBATCH --partition=gpu
 #SBATCH --account=mm6677_gp
 #SBATCH --gres=gpu:L40S:1
@@ -52,7 +56,7 @@ set -euo pipefail
 
 IDX=${SLURM_ARRAY_TASK_ID}
 
-NS=(1 2 4 8)
+NS=(1 2 4 8 16 32 64 128)
 N=${NS[$IDX]}
 
 REPO_DIR="${SLURM_SUBMIT_DIR}"

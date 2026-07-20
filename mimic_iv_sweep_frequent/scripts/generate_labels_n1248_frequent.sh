@@ -1,7 +1,7 @@
 #!/bin/bash
 # ============================================================
 # SLURM array: Generate multi-task binary code-occurrence labels
-#              for N in {1, 2, 4, 8} -- most-frequent-code variant of
+#              for N in {1, 2, 4, 8, 16, 32, 64, 128} -- most-frequent-code variant of
 #              ../mimic_iv_sweep/scripts/generate_labels_n1248.sh.
 # ------------------------------------------------------------
 # Identical to generate_labels_n1248.sh except code_selection=most_frequent:
@@ -36,7 +36,7 @@
 # ============================================================
 
 #SBATCH --job-name=marginalized-gen-labels-frequent
-#SBATCH --array=0-3
+#SBATCH --array=0-7
 #SBATCH --partition=cpu
 #SBATCH --account=mm6677_gp
 #SBATCH --cpus-per-task=8
@@ -49,7 +49,7 @@ set -euo pipefail
 
 IDX=${SLURM_ARRAY_TASK_ID}
 
-NS=(1 2 4 8)
+NS=(1 2 4 8 16 32 64 128)
 N=${NS[$IDX]}
 
 REPO_DIR="${SLURM_SUBMIT_DIR}"
