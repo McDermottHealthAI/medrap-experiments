@@ -210,6 +210,33 @@ from W&B (run names `marginalized-n{N}-*`) alongside `val/auroc/mean` and
 Outputs land at `outputs/marginalized_n1248/n{N}/` (checkpoints + W&B run),
 separate from Phase 2's `outputs/architecture/`.
 
+### Testing the softmax-over-tasks metric fix (`sweep_marginalized_binary_n1248.sh`)
+
+The "known caveat" above turned out to have a concrete, already-written fix:
+[MedRAP PR #93](https://github.com/McDermottHealthAI/MedRAP/pull/93) adds
+`marginalized_output_mode=binary`, which marginalizes each task's `sigmoid`
+probability independently over retrieved documents instead of forcing all
+`N` tasks to compete via `softmax`. `sweep_marginalized_binary_n1248.sh` is
+identical to `sweep_marginalized_n1248.sh` plus that one override, run on
+the exact same random-task labels as the original `marginalized-n{N}-*`
+runs, so it isolates the metric-fix effect alone:
+
+```bash
+cd mimic_iv_sweep
+sbatch scripts/sweep_marginalized_binary_n1248.sh
+```
+
+Requires `medrap` built from the PR #93 branch commit (already pinned in
+`pyproject.toml`); re-run `uv sync` after pulling this change. Results land
+in W&B as `marginalized-binary-n{N}-*`, directly comparable to
+`marginalized-n{N}-*`. Note these random-task labels still have very
+low/degenerate positive rates for most sampled codes (`n_valid_tasks=0` for
+N=1/2 the entire original run) — this fix addresses the softmax-over-tasks
+metric bug, not label sparsity, so don't expect it to fully recover AUROC on
+its own here; see `../mimic_iv_sweep_frequent/`'s
+`marginalized-binary-frequent-n{N}-*` for the fix combined with real
+positive rates.
+
 See [`../mimic_iv_sweep_frequent/`](../mimic_iv_sweep_frequent/) for a variant
 of this run that selects the N most-frequent codes instead of sampling
 uniformly at random — a hedge against the random sampler's tendency to pick
