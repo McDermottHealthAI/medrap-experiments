@@ -164,16 +164,16 @@ for why it's not a fair comparison (softmax-over-tasks metric bug).
 
 | N | patient_only | marginalized (binary) | Δ (binary − patient_only) | valid tasks |
 | --- | --- | --- | --- | --- |
-| 1 | 0.9866 | 0.9823 | -0.0043 | 1/1 |
-| 2 | 0.8894 | 0.8709 | -0.0185 | 2/2 |
-| 4 | 0.9808 | 0.9457 | -0.0351 | 4/4 |
-| 8 | 0.8873 | 0.8630 | -0.0243 | 8/8 |
-| 16 | 0.9107 | 0.7198 | -0.1909 | 16/16 |
-| 32 | 0.9855 | 0.9867 | +0.0012 | 28/32 |
-| 64 | 0.8987 | 0.9233 | +0.0246 | 63/64 |
-| 128 | 0.9454 | 0.9310 | -0.0144 | 124/128 |
+| 1 | [0.9866](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/b252lcbs) | [0.9823](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/b084s53o) | -0.0043 | 1/1 |
+| 2 | [0.8894](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/lsgx9cwn) | [0.8709](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/r73ezhcr) | -0.0185 | 2/2 |
+| 4 | [0.9808](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/uglkrb02) | [0.9457](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/pf0g1pop) | -0.0351 | 4/4 |
+| 8 | [0.8873](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/kesr4bob) | [0.8630](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/fruenovy) | -0.0243 | 8/8 |
+| 16 | [0.9107](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/rcg52tcf) | [0.7198](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/nppi07vm) | -0.1909 | 16/16 |
+| 32 | [0.9855](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/or2dgh80) | [0.9867](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/0gwrqwfn) | +0.0012 | 28/32 |
+| 64 | [0.8987](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/7am95jcz) | [0.9233](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/3xhox0y2) | +0.0246 | 63/64 |
+| 128 | [0.9454](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/k0socaoo) | [0.9310](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/2rrgfx15) | -0.0144 | 124/128 |
 
-`val/auroc/mean` from W&B. "valid tasks" is the number of the N sampled
+Values link directly to the W&B run page. `val/auroc/mean` from W&B. "valid tasks" is the number of the N sampled
 codes that had both classes present in the held-out validation split for
 that split's labels -- identical between the two runs at a given N, since
 both train on the exact same `data/tasks/n<N>/tasks/` label file (task
