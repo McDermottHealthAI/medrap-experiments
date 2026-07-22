@@ -13,15 +13,18 @@ tasks:
   [MedRAP PR #93](https://github.com/McDermottHealthAI/MedRAP/pull/93)).
 
 Requires `medrap` built from
-[`McDermottHealthAI/MedRAP@d13e2ba`](https://github.com/McDermottHealthAI/MedRAP/commit/d13e2ba61715d47e8a41347e625d36ab2bd2733b)
+[`McDermottHealthAI/MedRAP@fa8c29d`](https://github.com/McDermottHealthAI/MedRAP/commit/fa8c29d4268e600f6cd2493be02eb2655526105d)
 (merges `main` -- which now has
 [PR #93](https://github.com/McDermottHealthAI/MedRAP/pull/93)
 `marginalized_output_mode`,
 [PR #94](https://github.com/McDermottHealthAI/MedRAP/pull/94) test-split
 AUROC, and
 [PR #95](https://github.com/McDermottHealthAI/MedRAP/pull/95) eval-config
-fixes -- with the still-unmerged `feat/task-gen-most-frequent-codes` for
-`code_selection`), pinned in `pyproject.toml`.
+fixes -- with the still-unmerged `feat/task-gen-most-frequent-codes`
+(`code_selection`) and
+[PR #96](https://github.com/McDermottHealthAI/MedRAP/pull/96)
+(`duration_distribution`, random per-task occurrence windows)), pinned in
+`pyproject.toml`.
 
 ## Run instructions
 
@@ -39,6 +42,18 @@ Results land in W&B (`medrap` project) as `patient-only-frequent-n{N}-*`,
 `marginalized-binary-frequent-n{N}-*`, and (for the held-out top-1-doc eval)
 `marginalized-binary-top1-test-frequent-n{N}-*`. See
 [Results](#held-out-test-auroc-top-retrieved-document-only) below.
+
+Three further variants of `sweep_marginalized_binary_n1248.sh`, each
+isolating one change against that same baseline -- see
+[Further variants](#further-variants-longer-training-more-retrieved-docs-random-task-durations)
+below for what each tests and why:
+
+```bash
+sbatch scripts/sweep_marginalized_binary_longer_n1248.sh     # max_epochs=6 (base uses 3)
+sbatch scripts/sweep_marginalized_binary_k10_n1248.sh         # retriever.k=10 (base uses 4)
+sbatch scripts/generate_labels_duration_n1248_frequent.sh     # random per-task durations (base: fixed 7-day)
+sbatch scripts/sweep_marginalized_binary_duration_n1248.sh    # trains on those duration-labels
+```
 
 ## Architecture & hyperparameters
 
@@ -144,6 +159,73 @@ the rest of this README.)*
 | 32 | -- | -- |
 | 64 | -- | -- |
 | 128 | -- | -- |
+
+## Further variants: longer training, more retrieved docs, random task durations
+
+Three more scripts, each changing exactly one thing against the
+`sweep_marginalized_binary_n1248.sh` baseline above (same task labels
+otherwise, same architecture otherwise) -- run and check each in isolation
+before combining any of them.
+
+### Longer training (`sweep_marginalized_binary_longer_n1248.sh`)
+
+The baseline sweep (`max_epochs=3`) finished in ~1.5h wall-clock per run.
+This variant only changes `training.trainer.max_epochs=6`, targeting
+roughly double that (~3h), to check whether the model is still improving
+past 3 epochs or has already converged. Results land in W&B as
+`marginalized-binary-longer-frequent-n{N}-*`; checkpoints at
+`outputs/marginalized_binary_longer_n1248/n{N}/`.
+
+```bash
+sbatch scripts/sweep_marginalized_binary_longer_n1248.sh
+```
+
+### More retrieved documents at training time (`sweep_marginalized_binary_k10_n1248.sh`)
+
+The baseline sweep retrieves `k=4` documents per prediction, both for the
+marginalized loss and the reported logits/AUROC (same `k` at train and
+eval time throughout this sweep -- see
+[`eval_marginalized_binary_top1_n1248.sh`](#held-out-test-auroc-top-retrieved-document-only)
+above for the deliberately-*mismatched*-`k` ablation in the other
+direction). This variant only changes `retriever.k=10`, to check whether
+marginalizing over more retrieved documents helps. Bumped `--mem` (96G vs.
+64G) since more documents per batch means more compute/memory per step,
+most visible in `PerDocCrossAttentionFusion`'s effective `B*K` batch.
+Results land in W&B as `marginalized-binary-k10-frequent-n{N}-*`;
+checkpoints at `outputs/marginalized_binary_k10_n1248/n{N}/`.
+
+```bash
+sbatch scripts/sweep_marginalized_binary_k10_n1248.sh
+```
+
+### Random per-task occurrence-window durations (`generate_labels_duration_n1248_frequent.sh` + `sweep_marginalized_binary_duration_n1248.sh`)
+
+Every label set in this README so far uses one fixed 7-day occurrence
+window shared by every task (`duration_distribution=fixed`, the
+`medrap-preprocess` default). This variant instead samples each task's own
+occurrence-window duration independently, log-uniformly over `[1, 90]`
+days (`duration_distribution=log-uniform`,
+[MedRAP PR #96](https://github.com/McDermottHealthAI/MedRAP/pull/96)) --
+same most-frequent code selection, same everything else. Ported from
+[EveryQuery](https://github.com/payalchandak/EveryQuery)'s duration-sampling
+formula (see PR #96 for why only the formula, not the package, was
+adopted). Labels land in a *separate* directory
+(`data/tasks_duration/n<N>/`, distinct from `data/tasks/n<N>/`) so this
+never overwrites the fixed-duration labels every other script here reads.
+
+```bash
+sbatch scripts/generate_labels_duration_n1248_frequent.sh   # task labels, N=1..128
+sbatch scripts/sweep_marginalized_binary_duration_n1248.sh  # training, N=1..128
+```
+
+Results land in W&B as `marginalized-binary-duration-frequent-n{N}-*`;
+checkpoints at `outputs/marginalized_binary_duration_n1248/n{N}/`. Compare
+against `marginalized-binary-frequent-n{N}-*` (the fixed-7-day baseline) to
+see whether random durations change AUROC -- note the comparison isn't
+perfectly apples-to-apples (different label files, so different sampled
+positives/negatives per task, same as the frequent-vs-random-code-selection
+comparison earlier in this experiment), but it's the same task-selection
+strategy and architecture otherwise.
 
 ## Task codes used
 

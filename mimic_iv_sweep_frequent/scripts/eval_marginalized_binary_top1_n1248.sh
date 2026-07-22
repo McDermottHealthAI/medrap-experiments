@@ -29,11 +29,10 @@
 # any K; setting k=1 makes the model's prediction exactly equal to the
 # single top-retrieved document's prediction, i.e. "no marginalization."
 #
-# Requires medrap built from McDermottHealthAI/MedRAP@d13e2ba
-# (experiment/eval-top1-wandb-plus-task-gen -- merges main, which has PR #93
-# marginalized_output_mode, PR #94 test/auroc, and PR #95 eval-config fixes,
-# with the still-unmerged feat/task-gen-most-frequent-codes for
-# code_selection), pinned in pyproject.toml.
+# Requires medrap built from the commit pinned in pyproject.toml (merges main
+# -- PR #93 marginalized_output_mode, PR #94 test/auroc, PR #95 eval-config
+# fixes -- with the still-unmerged feat/task-gen-most-frequent-codes for
+# code_selection and PR #96 for duration_distribution).
 #
 # Uses training/trainer=lightning_wandb (same as the training sweeps) so
 # results land in W&B like everything else in this experiment, instead of
