@@ -14,7 +14,12 @@
 #
 # Requires McDermottHealthAI/MedRAP#94 (test/auroc/* logging for
 # trainer.test(), merged to main) -- without it, medrap-eval eval_mode=test
-# only reports test/loss and test/accuracy, no AUROC.
+# only reports test/loss and test/accuracy, no AUROC. Also requires
+# McDermottHealthAI/MedRAP#95 (marginalized_retrieval/marginalized_output_mode/
+# wandb_project/wandb_run_name declared on _eval.yaml) -- without it,
+# overriding marginalized_retrieval=true or training/trainer=lightning_wandb
+# for medrap-eval fails with "Could not override 'marginalized_retrieval'"
+# (Hydra struct-mode rejects overrides for keys _eval.yaml never declared).
 #
 # Why retriever.k=1 works on a checkpoint trained with k=4: PerDocCrossAttentionFusion
 # and the marginalized_output_mode=binary marginalization are both explicitly
@@ -24,19 +29,15 @@
 # any K; setting k=1 makes the model's prediction exactly equal to the
 # single top-retrieved document's prediction, i.e. "no marginalization."
 #
-# Requires medrap built from McDermottHealthAI/MedRAP@c0d2fa0
-# (experiment/eval-top1-plus-task-gen -- merges main, which has both PR #93
-# marginalized_output_mode and PR #94 test/auroc, with the still-unmerged
-# feat/task-gen-most-frequent-codes for code_selection), pinned in
-# pyproject.toml.
+# Requires medrap built from McDermottHealthAI/MedRAP@d13e2ba
+# (experiment/eval-top1-wandb-plus-task-gen -- merges main, which has PR #93
+# marginalized_output_mode, PR #94 test/auroc, and PR #95 eval-config fixes,
+# with the still-unmerged feat/task-gen-most-frequent-codes for
+# code_selection), pinned in pyproject.toml.
 #
-# Uses training/trainer=lightning_eval (CPU by default; overridden to GPU
-# below) rather than lightning_wandb -- _eval.yaml has no wandb_project/
-# wandb_run_name fields, so there's no W&B run for these. Results print to
-# stdout as Lightning's standard end-of-test metrics table; read them from
-# this job's SLURM log (logs/eval-marginalized-binary-top1-n1248_*.out) --
-# look for a "test/auroc/mean" row (and per-task test/auroc/task_i, since
-# validation_auroc_log_per_task=true is set below).
+# Uses training/trainer=lightning_wandb (same as the training sweeps) so
+# results land in W&B like everything else in this experiment, instead of
+# only printing to the SLURM job log.
 #
 # Array index -> N:
 #   0 -> N=1
@@ -104,6 +105,7 @@ echo "  N (tasks)     : ${N}"
 echo "  retriever.k   : 1 (top retrieved doc only; trained with k=4)"
 echo "  eval_mode     : test (MEDS held_out split)"
 echo "  Checkpoint    : ${CHECKPOINT_PATH}"
+echo "  W&B run name  : marginalized-binary-top1-test-frequent-n${N}-${SLURM_ARRAY_JOB_ID:-local}_${IDX}"
 echo "  Started       : $(date)"
 echo ""
 
@@ -125,8 +127,9 @@ medrap-eval \
     "training.datamodule.num_tasks=${N}" \
     training.datamodule.batch_size=32 \
     training.datamodule.config.seq_sampling_strategy=to_end \
-    training/trainer=lightning_eval \
+    training/trainer=lightning_wandb \
     training.trainer.accelerator=gpu \
+    training.trainer.devices=1 \
     training.module.validation_auroc_log_per_task=true \
     query_projector=sequence_mean_1024 \
     query_projector.in_dim=128 \
@@ -144,6 +147,7 @@ medrap-eval \
     "checkpoint_path=${CHECKPOINT_PATH}" \
     eval_mode=test \
     "output_dir=${EVAL_OUTPUT_DIR}" \
+    "wandb_run_name=marginalized-binary-top1-test-frequent-n${N}-${SLURM_ARRAY_JOB_ID:-local}_${IDX}" \
     "$@"
 
 echo ""

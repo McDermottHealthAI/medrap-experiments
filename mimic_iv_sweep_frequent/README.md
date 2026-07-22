@@ -13,12 +13,14 @@ tasks:
   [MedRAP PR #93](https://github.com/McDermottHealthAI/MedRAP/pull/93)).
 
 Requires `medrap` built from
-[`McDermottHealthAI/MedRAP@c0d2fa0`](https://github.com/McDermottHealthAI/MedRAP/commit/c0d2fa04acd92d455883fa85c74da07a9dc6a482)
-(merges `main` -- which now has both
+[`McDermottHealthAI/MedRAP@d13e2ba`](https://github.com/McDermottHealthAI/MedRAP/commit/d13e2ba61715d47e8a41347e625d36ab2bd2733b)
+(merges `main` -- which now has
 [PR #93](https://github.com/McDermottHealthAI/MedRAP/pull/93)
-`marginalized_output_mode` and
+`marginalized_output_mode`,
 [PR #94](https://github.com/McDermottHealthAI/MedRAP/pull/94) test-split
-AUROC -- with the still-unmerged `feat/task-gen-most-frequent-codes` for
+AUROC, and
+[PR #95](https://github.com/McDermottHealthAI/MedRAP/pull/95) eval-config
+fixes -- with the still-unmerged `feat/task-gen-most-frequent-codes` for
 `code_selection`), pinned in `pyproject.toml`.
 
 ## Run instructions
@@ -33,11 +35,9 @@ sbatch scripts/sweep_marginalized_binary_n1248.sh       # marginalized (binary),
 sbatch scripts/eval_marginalized_binary_top1_n1248.sh   # held-out test AUROC, top-1 doc only (after the above finishes)
 ```
 
-Results land in W&B (`medrap` project) as `patient-only-frequent-n{N}-*`
-and `marginalized-binary-frequent-n{N}-*`.
-`eval_marginalized_binary_top1_n1248.sh` doesn't log to W&B (`medrap-eval`
-has no wandb config) -- its results print to the SLURM job log
-(`logs/eval-marginalized-binary-top1-n1248_*.out`); see
+Results land in W&B (`medrap` project) as `patient-only-frequent-n{N}-*`,
+`marginalized-binary-frequent-n{N}-*`, and (for the held-out top-1-doc eval)
+`marginalized-binary-top1-test-frequent-n{N}-*`. See
 [Results](#held-out-test-auroc-top-retrieved-document-only) below.
 
 ## Architecture & hyperparameters
@@ -119,14 +119,20 @@ without retraining because `PerDocCrossAttentionFusion` and the binary
 marginalization are both K-agnostic -- no weight is sized by `K`, and
 marginalizing over `K=1` is mathematically a no-op (the "marginal"
 prediction becomes exactly that one document's prediction). Requires
-[MedRAP PR #94](https://github.com/McDermottHealthAI/MedRAP/pull/94),
-which added `test/auroc/*` logging -- without it, `medrap-eval
-eval_mode=test` only reports loss/accuracy, no AUROC, on `held_out`.
+[MedRAP PR #94](https://github.com/McDermottHealthAI/MedRAP/pull/94)
+(`test/auroc/*` logging -- without it, `medrap-eval eval_mode=test` only
+reports loss/accuracy on `held_out`, no AUROC) and
+[MedRAP PR #95](https://github.com/McDermottHealthAI/MedRAP/pull/95)
+(`_eval.yaml` didn't declare `marginalized_retrieval`/
+`marginalized_output_mode`/`wandb_*`, so neither the checkpoint's
+architecture nor W&B logging could be configured for eval before this).
+
+Results land in W&B as `marginalized-binary-top1-test-frequent-n{N}-*`.
 
 *(Results pending -- run `sbatch scripts/eval_marginalized_binary_top1_n1248.sh`
 after `sweep_marginalized_binary_n1248.sh` has produced checkpoints for the
-N values you want, then paste the per-N `test/auroc/mean` from
-`logs/eval-marginalized-binary-top1-n1248_*.out` to fill in this table.)*
+N values you want, then this table gets filled in from W&B the same way as
+the rest of this README.)*
 
 | N | test AUROC (top-1 doc) | valid tasks |
 | --- | --- | --- |
