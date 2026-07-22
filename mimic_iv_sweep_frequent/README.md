@@ -13,9 +13,13 @@ tasks:
   [MedRAP PR #93](https://github.com/McDermottHealthAI/MedRAP/pull/93)).
 
 Requires `medrap` built from
-[`McDermottHealthAI/MedRAP@2c5fc5a`](https://github.com/McDermottHealthAI/MedRAP/commit/2c5fc5a668bf17394a58c49a4949ab6764ef0bc4)
-(merges `feat/task-gen-most-frequent-codes` and PR #93, neither yet on
-`main`), pinned in `pyproject.toml`.
+[`McDermottHealthAI/MedRAP@c0d2fa0`](https://github.com/McDermottHealthAI/MedRAP/commit/c0d2fa04acd92d455883fa85c74da07a9dc6a482)
+(merges `main` -- which now has both
+[PR #93](https://github.com/McDermottHealthAI/MedRAP/pull/93)
+`marginalized_output_mode` and
+[PR #94](https://github.com/McDermottHealthAI/MedRAP/pull/94) test-split
+AUROC -- with the still-unmerged `feat/task-gen-most-frequent-codes` for
+`code_selection`), pinned in `pyproject.toml`.
 
 ## Run instructions
 
@@ -26,10 +30,15 @@ sbatch ../mimic_iv_sweep/scripts/prepare_retrieval.sh   # once, if data/retrieva
 sbatch scripts/generate_labels_n1248_frequent.sh        # task labels, N=1..128
 sbatch scripts/sweep_patient_only_n1248.sh              # patient_only, N=1..128
 sbatch scripts/sweep_marginalized_binary_n1248.sh       # marginalized (binary), N=1..128
+sbatch scripts/eval_marginalized_binary_top1_n1248.sh   # held-out test AUROC, top-1 doc only (after the above finishes)
 ```
 
 Results land in W&B (`medrap` project) as `patient-only-frequent-n{N}-*`
 and `marginalized-binary-frequent-n{N}-*`.
+`eval_marginalized_binary_top1_n1248.sh` doesn't log to W&B (`medrap-eval`
+has no wandb config) -- its results print to the SLURM job log
+(`logs/eval-marginalized-binary-top1-n1248_*.out`); see
+[Results](#held-out-test-auroc-top-retrieved-document-only) below.
 
 ## Architecture & hyperparameters
 
@@ -93,6 +102,42 @@ N values (only loses at N=32 and N=64); at the per-task level
 `marginalized (binary)`'s win rate ranges from 0% (N=1, N=2) to 60.3%
 (N=64). N=16 is the largest gap (0.9107 vs. 0.7198, an 11/16-task
 deficit for marginalized) and worth a closer look.
+
+### Held-out test AUROC, top-retrieved-document only
+
+Everything above is `val/auroc/mean`, computed on the MEDS **tuning**
+split (Lightning's `val_dataloader`), and marginalizes over all `k=4`
+retrieved documents -- identically at train and eval time (no
+train/inference discrepancy in how documents are combined; see
+`RetrievalAugmentedModel.forward()`, which has no train/eval branching).
+
+`eval_marginalized_binary_top1_n1248.sh` answers a different question:
+how does each trained `marginalized (binary)` checkpoint perform on the
+true **held-out** split, using only the single top-retrieved document
+(`retriever.k=1`) instead of the 4 it was trained with? This is possible
+without retraining because `PerDocCrossAttentionFusion` and the binary
+marginalization are both K-agnostic -- no weight is sized by `K`, and
+marginalizing over `K=1` is mathematically a no-op (the "marginal"
+prediction becomes exactly that one document's prediction). Requires
+[MedRAP PR #94](https://github.com/McDermottHealthAI/MedRAP/pull/94),
+which added `test/auroc/*` logging -- without it, `medrap-eval
+eval_mode=test` only reports loss/accuracy, no AUROC, on `held_out`.
+
+*(Results pending -- run `sbatch scripts/eval_marginalized_binary_top1_n1248.sh`
+after `sweep_marginalized_binary_n1248.sh` has produced checkpoints for the
+N values you want, then paste the per-N `test/auroc/mean` from
+`logs/eval-marginalized-binary-top1-n1248_*.out` to fill in this table.)*
+
+| N | test AUROC (top-1 doc) | valid tasks |
+| --- | --- | --- |
+| 1 | -- | -- |
+| 2 | -- | -- |
+| 4 | -- | -- |
+| 8 | -- | -- |
+| 16 | -- | -- |
+| 32 | -- | -- |
+| 64 | -- | -- |
+| 128 | -- | -- |
 
 ## Task codes used
 
