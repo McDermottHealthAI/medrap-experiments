@@ -145,21 +145,27 @@ architecture nor W&B logging could be configured for eval before this).
 
 Results land in W&B as `marginalized-binary-top1-test-frequent-n{N}-*`.
 
-*(Results pending -- run `sbatch scripts/eval_marginalized_binary_top1_n1248.sh`
-after `sweep_marginalized_binary_n1248.sh` has produced checkpoints for the
-N values you want, then this table gets filled in from W&B the same way as
-the rest of this README.)*
+| N | test AUROC (top-1 doc) | val AUROC (tuning, k=4, same checkpoint) | valid tasks |
+| --- | --- | --- | --- |
+| 1 | [0.9224](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/2cgfj565) | 0.9823 | 1/1 |
+| 2 | [0.9011](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/icwwnup9) | 0.8709 | 2/2 |
+| 4 | [0.8684](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/ok058nl8) | 0.9456 | 4/4 |
+| 8 | [0.9191](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/96b79rrc) | 0.8630 | 8/8 |
+| 16 | [0.8936](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/kvrgrmjw) | 0.7197 | 16/16 |
+| 32 | [0.9384](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/k5wtl7yi) | 0.9866 | 32/32 |
+| 64 | [0.9139](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/4vuskccw) | 0.9233 | 64/64 |
+| 128 | [0.9323](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/irw8l4j9) | 0.9310 | 128/128 |
 
-| N | test AUROC (top-1 doc) | valid tasks |
-| --- | --- | --- |
-| 1 | -- | -- |
-| 2 | -- | -- |
-| 4 | -- | -- |
-| 8 | -- | -- |
-| 16 | -- | -- |
-| 32 | -- | -- |
-| 64 | -- | -- |
-| 128 | -- | -- |
+Unlike the `val/auroc` numbers throughout the rest of this README, every
+task is valid here at every N (`valid tasks` = `N` across the board) --
+`held_out` is a different (and here, apparently more balanced) split than
+`tuning`. Top-1-doc held-out AUROC tracks the full-k=4 tuning-split AUROC
+reasonably closely and even exceeds it at N=2, 8, and 16 (N=16 most
+notably: 0.72 -> 0.89) -- the model doesn't appear to depend heavily on
+marginalizing across multiple retrieved documents for its discrimination;
+much of the signal seems to already be present in the single
+best-retrieved document. N=4 is the one case where top-1 clearly
+underperforms (0.87 vs. 0.95).
 
 ## Further variants: longer training, more retrieved docs, random task durations
 
@@ -181,6 +187,23 @@ past 3 epochs or has already converged. Results land in W&B as
 sbatch scripts/sweep_marginalized_binary_longer_n1248.sh
 ```
 
+**Results:** all 8/8 finished.
+
+| N | baseline (3 epochs) | longer (6 epochs) | Δ |
+| --- | --- | --- | --- |
+| 1 | [0.9823](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/b084s53o) | [0.9826](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/5kr42czb) | +0.0003 |
+| 2 | [0.8709](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/r73ezhcr) | [0.8715](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/npld0h2z) | +0.0006 |
+| 4 | [0.9457](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/pf0g1pop) | [0.9780](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/wjewdf3m) | +0.0323 |
+| 8 | [0.8630](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/fruenovy) | [0.8873](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/i9s99zug) | +0.0243 |
+| 16 | [0.7198](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/nppi07vm) | [0.9342](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/h8lhsk2o) | +0.2145 |
+| 32 | [0.9867](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/0gwrqwfn) | [0.9831](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/hzb7c5uh) | -0.0035 |
+| 64 | [0.9233](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/3xhox0y2) | [0.9055](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/mcgqay1f) | -0.0179 |
+| 128 | [0.9310](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/2rrgfx15) | [0.9258](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/8sjg8hh7) | -0.0052 |
+
+Longer training wins or ties at N<=16 (N=16's 0.72 -> 0.93 is the single
+biggest gain anywhere in this experiment -- looks like undertraining, not
+an architectural limit), and is roughly flat-to-slightly-worse at N>=32.
+
 ### More retrieved documents at training time (`sweep_marginalized_binary_k10_n1248.sh`)
 
 The baseline sweep retrieves `k=4` documents per prediction, both for the
@@ -198,6 +221,25 @@ checkpoints at `outputs/marginalized_binary_k10_n1248/n{N}/`.
 ```bash
 sbatch scripts/sweep_marginalized_binary_k10_n1248.sh
 ```
+
+**Results:** all 8/8 finished.
+
+| N | baseline (k=4) | k10 (k=10) | Δ |
+| --- | --- | --- | --- |
+| 1 | [0.9823](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/b084s53o) | [0.9850](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/9hgm1e7k) | +0.0026 |
+| 2 | [0.8709](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/r73ezhcr) | [0.8809](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/p4egsc8j) | +0.0100 |
+| 4 | [0.9457](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/pf0g1pop) | [0.9797](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/5voogldq) | +0.0341 |
+| 8 | [0.8630](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/fruenovy) | [0.8891](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/lo6nop8v) | +0.0261 |
+| 16 | [0.7198](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/nppi07vm) | [0.8780](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/5rz1r9hq) | +0.1582 |
+| 32 | [0.9867](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/0gwrqwfn) | [0.9831](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/es5xsbey) | -0.0036 |
+| 64 | [0.9233](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/3xhox0y2) | [0.9119](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/wxkulvvs) | -0.0114 |
+| 128 | [0.9310](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/2rrgfx15) | [0.9239](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/kzo63wb4) | -0.0071 |
+
+Same pattern as longer training: k=10 wins clearly at N<=16 (again N=16
+is the standout: 0.72 -> 0.88), roughly flat-to-slightly-worse at N>=32.
+Whether this is "more documents help" or simply "the extra retrieval
+compute happens to correlate with the same undertraining fix as more
+epochs" isn't disentangled by this run alone.
 
 ### Random per-task occurrence-window durations (`generate_labels_duration_n1248_frequent.sh` + `sweep_marginalized_binary_duration_n1248.sh`)
 
@@ -227,6 +269,29 @@ perfectly apples-to-apples (different label files, so different sampled
 positives/negatives per task, same as the frequent-vs-random-code-selection
 comparison earlier in this experiment), but it's the same task-selection
 strategy and architecture otherwise.
+
+**Results:** all 8/8 finished.
+
+| N | baseline (fixed 7d) | duration (log-uniform, 1-90d) | Δ | duration's valid tasks |
+| --- | --- | --- | --- | --- |
+| 1 | [0.9823](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/b084s53o) | [0.9576](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/6q5b2zgu) | -0.0247 | 1/1 |
+| 2 | [0.8709](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/r73ezhcr) | [0.9596](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/mx5kpr8b) | +0.0887 | 2/2 |
+| 4 | [0.9457](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/pf0g1pop) | [0.9277](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/p7xf22t7) | -0.0180 | 4/4 |
+| 8 | [0.8630](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/fruenovy) | [0.9236](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/1qjrwp20) | +0.0606 | 7/8 |
+| 16 | [0.7198](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/nppi07vm) | [0.7841](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/z38oywhv) | +0.0643 | 16/16 |
+| 32 | [0.9867](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/0gwrqwfn) | [0.9414](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/cwfef8p4) | -0.0453 | 26/32 |
+| 64 | [0.9233](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/3xhox0y2) | [0.9608](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/5owdril0) | +0.0375 | 54/64 |
+| 128 | [0.9310](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/2rrgfx15) | [0.9434](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/b5drlxi7) | +0.0124 | 98/128 |
+
+Mixed: duration wins at N=2, 8, 16, 64, 128 and loses at N=1, 4, 32, with
+no clean pattern by N. Note random durations produce a real drop in valid
+tasks at higher N (e.g. 98/128 vs. 124/128 for the fixed-window labels) --
+some log-uniform-sampled durations land on windows too short (or, more
+rarely, positioned such that the anchor's trailing room doesn't help) for
+the code to show both classes in that split, so this comparison is
+somewhat less apples-to-apples than `longer`/`k10` above (same labels,
+architecture only) -- here both labels *and* the metric's task-count
+denominator differ.
 
 ## Task codes used
 
