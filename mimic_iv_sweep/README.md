@@ -590,4 +590,64 @@ task *more* likely, not less. Run `check_task_balance.py` against
 `data/tasks_duration/n<N>/tasks` after label generation to see how bad it
 is before spending GPU time training on a given N.
 
-*(Results pending.)*
+**Status:** `generate_labels_duration_n1248.sh`'s 8-job array has finished
+(`squeue -u hs3627` empty, `data/tasks_duration/n1/tasks/` populated with
+`train.parquet`/`tuning.parquet`/`held_out.parquet`/`metadata.json`/`code_index.json`).
+The training sweep has not been submitted yet -- run it next:
+
+```bash
+sbatch scripts/sweep_marginalized_binary_duration_n1248.sh
+```
+
+*(Results pending -- fill in once the training sweep above finishes.)*
+
+## Variance study: patient_only vs. marginalized(binary) across repeated random task draws (`generate_labels_variance_n1248.sh` + `sweep_patient_only_variance_n1248.sh` + `sweep_marginalized_binary_variance_n1248.sh`)
+
+Advisor's ask: for each N, sample N random task codes, train both
+`patient_only` and `marginalized(binary)` on that exact draw, compute the
+AUROC difference, then repeat with a fresh random draw of N codes and see
+whether the difference holds up or is just noise from one particular
+sample. Answers "is the retrieval benefit robust to which N tasks you
+happened to pick?" as opposed to the single-draw results in the sections
+above.
+
+For every N in `{1, 2, 4, 8, 16, 32, 64, 128}`, this generates 5
+independent random draws of N task codes (`code_selection=random`, a
+distinct seed per draw: `101, 202, 303, 404, 505` -- deliberately different
+from `seed=42` used everywhere else in this repo, so no draw accidentally
+coincides with an existing label set), then trains both architectures on
+each of the resulting 40 label sets, so `patient_only` and
+`marginalized(binary)` see the *identical* task codes/labels within a draw
+(a paired comparison). Fixed 7-day horizon, same as the base random-task
+sweep above -- only the extra draw dimension is new.
+
+```bash
+sbatch scripts/generate_labels_variance_n1248.sh          # labels: 8 N x 5 draws = 40 jobs, CPU
+sbatch scripts/sweep_patient_only_variance_n1248.sh        # training: 40 jobs, GPU
+sbatch scripts/sweep_marginalized_binary_variance_n1248.sh # training: 40 jobs, GPU
+```
+
+Run the label-generation array first and wait for it to finish before
+submitting either training sweep (both training scripts check for their
+draw's label directory and exit with an error if it's missing). The two
+training sweeps don't depend on each other and can run concurrently.
+
+Labels land at `data/tasks_variance/draw{1..5}/n{N}/tasks/`. Checkpoints at
+`outputs/patient_only_variance_n1248/draw{d}/n{N}/` and
+`outputs/marginalized_binary_variance_n1248/draw{d}/n{N}/`. W&B run names:
+`patient-only-variance-draw{d}-n{N}-*` and
+`marginalized-binary-variance-draw{d}-n{N}-*`.
+
+**Scale note:** this is 40 CPU label-gen jobs + 80 GPU training jobs (120
+SLURM array tasks total) -- substantially more compute than any prior
+sweep in this repo. Consider trimming `--array` to a subset of N values
+first (e.g. `sbatch --array=0-4,35-39 ...` for just N=1 and N=128, the
+extremes) if GPU allocation is tight.
+
+Once all 5 draws finish for a given N, compute
+`AUROC(marginalized) - AUROC(patient_only)` per draw and report
+mean ± std across the 5 draws (a small `pandas`/W&B-API script pulling
+`val/auroc/mean` from both run families, grouped by N and draw, is the
+simplest way to do this -- no such aggregation script exists yet).
+
+*(Results pending -- all three sweeps above still need to be run.)*
