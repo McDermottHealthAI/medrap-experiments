@@ -13,7 +13,7 @@ tasks:
   [MedRAP PR #93](https://github.com/McDermottHealthAI/MedRAP/pull/93)).
 
 Requires `medrap` built from
-[`McDermottHealthAI/MedRAP@fa8c29d`](https://github.com/McDermottHealthAI/MedRAP/commit/fa8c29d4268e600f6cd2493be02eb2655526105d)
+[`McDermottHealthAI/MedRAP@164c2ef`](https://github.com/McDermottHealthAI/MedRAP/commit/164c2ef3290c13090e647d2f73a0b058ccbd38a5)
 (merges `main` -- which now has
 [PR #93](https://github.com/McDermottHealthAI/MedRAP/pull/93)
 `marginalized_output_mode`,
@@ -21,10 +21,11 @@ Requires `medrap` built from
 AUROC, and
 [PR #95](https://github.com/McDermottHealthAI/MedRAP/pull/95) eval-config
 fixes -- with the still-unmerged `feat/task-gen-most-frequent-codes`
-(`code_selection`) and
+(`code_selection`),
 [PR #96](https://github.com/McDermottHealthAI/MedRAP/pull/96)
-(`duration_distribution`, random per-task occurrence windows)), pinned in
-`pyproject.toml`.
+(`duration_distribution`, random per-task occurrence windows), and
+[PR #97](https://github.com/McDermottHealthAI/MedRAP/pull/97)
+(`do_overwrite` support for `medrap-eval`)), pinned in `pyproject.toml`.
 
 ## Run instructions
 

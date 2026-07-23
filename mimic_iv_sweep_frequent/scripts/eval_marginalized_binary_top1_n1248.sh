@@ -32,11 +32,18 @@
 # Requires medrap built from the commit pinned in pyproject.toml (merges main
 # -- PR #93 marginalized_output_mode, PR #94 test/auroc, PR #95 eval-config
 # fixes -- with the still-unmerged feat/task-gen-most-frequent-codes for
-# code_selection and PR #96 for duration_distribution).
+# code_selection, PR #96 for duration_distribution, and PR #97 for
+# do_overwrite support on medrap-eval).
 #
 # Uses training/trainer=lightning_wandb (same as the training sweeps) so
 # results land in W&B like everything else in this experiment, instead of
 # only printing to the SLURM job log.
+#
+# do_overwrite=true: medrap-eval refuses to reuse an output_dir that already
+# holds a saved eval run (raises FileExistsError) unless this is set --
+# without McDermottHealthAI/MedRAP#97, there was no way to re-run this script
+# a second time (e.g. after fixing a config bug) without deleting
+# outputs/marginalized_binary_top1_eval_n1248/n<N>/ by hand first.
 #
 # Array index -> N:
 #   0 -> N=1
@@ -148,6 +155,7 @@ medrap-eval \
     "checkpoint_path=${CHECKPOINT_PATH}" \
     eval_mode=test \
     "output_dir=${EVAL_OUTPUT_DIR}" \
+    do_overwrite=true \
     "wandb_run_name=marginalized-binary-top1-test-frequent-n${N}-${SLURM_ARRAY_JOB_ID:-local}_${IDX}" \
     "$@"
 
