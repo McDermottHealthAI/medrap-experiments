@@ -557,3 +557,37 @@ codes are an independent random draw -- no nesting across N:
 
 </details>
 
+
+## Random task codes + random per-task durations (`generate_labels_duration_n1248.sh` + `sweep_marginalized_binary_duration_n1248.sh`)
+
+Combines this directory's random task-code selection
+(`code_selection=random`, the `medrap-preprocess` default) with
+[`mimic_iv_sweep_frequent`'s](../mimic_iv_sweep_frequent/README.md#random-per-task-occurrence-window-durations-generate_labels_duration_n1248_frequentsh--sweep_marginalized_binary_duration_n1248sh)
+random-duration idea (`duration_distribution=log-uniform`,
+[MedRAP PR #96](https://github.com/McDermottHealthAI/MedRAP/pull/96)) --
+the "random tasks, random durations" combination neither directory ran on
+its own before this. Same architecture/hyperparameters as
+`sweep_marginalized_binary_n1248.sh` above; only the label file differs.
+
+```bash
+sbatch scripts/generate_labels_duration_n1248.sh       # task labels, N=1..128
+sbatch scripts/sweep_marginalized_binary_duration_n1248.sh  # training, N=1..128
+```
+
+Results land in W&B as `marginalized-binary-duration-n{N}-*`; checkpoints
+at `outputs/marginalized_binary_duration_n1248/n{N}/`; labels at
+`data/tasks_duration/n{N}/tasks/` (separate from `data/tasks/n{N}/`, so
+this never overwrites the fixed-duration random-task labels every other
+script in this directory reads).
+
+**Caveat before running:** random-code-selection labels are already known
+to be extremely sparse at low N on this directory's *fixed*-duration
+labels (`marginalized-binary-n{N}-*` above shows `n_valid_tasks=0` for
+N=1/2 the entire run). Randomizing the duration on top doesn't fix that --
+if anything, a short log-uniform-sampled duration (near the 1-day floor)
+landing on an already-rare random code makes a degenerate (single-class)
+task *more* likely, not less. Run `check_task_balance.py` against
+`data/tasks_duration/n<N>/tasks` after label generation to see how bad it
+is before spending GPU time training on a given N.
+
+*(Results pending.)*
