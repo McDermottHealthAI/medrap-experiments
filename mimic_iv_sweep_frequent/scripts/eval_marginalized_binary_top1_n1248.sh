@@ -143,6 +143,8 @@ medrap-eval \
     marginalized_retrieval=true \
     marginalized_output_mode=binary \
     head.in_dim=256 \
+    training/loss=multitask_binary_bce_marginalized \
+    "training.loss.num_tasks=${N}" \
     "checkpoint_path=${CHECKPOINT_PATH}" \
     eval_mode=test \
     "output_dir=${EVAL_OUTPUT_DIR}" \
