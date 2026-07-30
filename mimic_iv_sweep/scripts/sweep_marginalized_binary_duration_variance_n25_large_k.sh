@@ -2,34 +2,39 @@
 # ============================================================
 # SLURM array: cross-attention marginalized retrieval
 #              (marginalized_output_mode=binary) at LARGER retriever k
-#              (128, 256, vs. the usual k=4) for the duration x variance
-#              study -- fixed N=25, 5 independent random draws, at 7-day
-#              and 30-day fixed occurrence-window durations. Reuses the
-#              exact same labels as
+#              (32, 64, 128 -- vs. the usual k=4) for the duration x
+#              variance study -- fixed N=25, 5 independent random draws, at
+#              7-day and 30-day fixed occurrence-window durations. Reuses
+#              the exact same labels as
 #              sweep_marginalized_binary_duration_variance_n25.sh (no
 #              relabeling needed -- k doesn't affect task-code selection or
 #              anchor sampling); only compares against that script's k=4
 #              results and the (retrieval-independent) patient_only
 #              baseline from sweep_patient_only_duration_variance_n25.sh.
 # ------------------------------------------------------------
-# 20 array tasks = 2 k values x 2 durations x 5 draws, flattened as
-# IDX = k_idx * 10 + duration_idx * 5 + draw_idx (k_idx in [0,1],
+# 30 array tasks = 3 k values x 2 durations x 5 draws, flattened as
+# IDX = k_idx * 10 + duration_idx * 5 + draw_idx (k_idx in [0,2],
 # duration_idx in [0,1], draw_idx in [0,4]).
 #
 # PerDocCrossAttentionFusion (fusion=cross_attention_perdoc_medium) expands
 # the batch to B*K internally -- it runs cross-attention once per retrieved
 # document, so memory scales ~linearly with k. batch_size is intentionally
-# left at 32 (same as every other sweep in this directory, effective
-# B*K=4096/8192 at k=128/256) rather than scaled down -- if a job OOMs,
-# that's a real, useful data point (tells us the largest k this
-# architecture/GPU can actually support), not something to avoid by
-# guessing a smaller batch size upfront.
+# left at 32 (same as every other sweep in this directory) rather than
+# scaled down -- if a job OOMs, that's a real, useful data point.
+#
+# k=256 was tried first (batch_size=32) and reliably OOM'd immediately on
+# the first forward pass (L40S, 44.4GiB total, ~44.25GiB in use at the
+# crash) -- see git history for that array-index layout. Dropped for now in
+# favor of k in {32, 64, 128}, which stays under that ceiling; a separate,
+# reduced-batch-size sweep can revisit k=256 later if needed.
 #
 # Array index -> (k, duration, draw):
-#   0-4   -> k=128, 7d,  draws 1-5
-#   5-9   -> k=128, 30d, draws 1-5
-#   10-14 -> k=256, 7d,  draws 1-5
-#   15-19 -> k=256, 30d, draws 1-5
+#   0-4   -> k=32,  7d,  draws 1-5
+#   5-9   -> k=32,  30d, draws 1-5
+#   10-14 -> k=64,  7d,  draws 1-5
+#   15-19 -> k=64,  30d, draws 1-5
+#   20-24 -> k=128, 7d,  draws 1-5
+#   25-29 -> k=128, 30d, draws 1-5
 #
 # Prerequisites:
 #   sbatch scripts/prepare_retrieval.sh
@@ -39,11 +44,11 @@
 # Usage:
 #   cd mimic_iv_sweep
 #   sbatch scripts/sweep_marginalized_binary_duration_variance_n25_large_k.sh
-#   sbatch --array=0-4 scripts/sweep_marginalized_binary_duration_variance_n25_large_k.sh   # k=128, 7d only, all draws
+#   sbatch --array=0-19 scripts/sweep_marginalized_binary_duration_variance_n25_large_k.sh   # k=32,64 only (k=128 already run separately)
 # ============================================================
 
 #SBATCH --job-name=sweep-marginalized-binary-duration-variance-n25-large-k
-#SBATCH --array=0-19
+#SBATCH --array=0-29
 #SBATCH --partition=gpu
 #SBATCH --account=mm6677_gp
 #SBATCH --gres=gpu:L40S:1
@@ -57,7 +62,7 @@ set -euo pipefail
 
 IDX=${SLURM_ARRAY_TASK_ID}
 
-K_VALUES=(128 256)
+K_VALUES=(32 64 128)
 DURATIONS=(7 30)
 
 K_IDX=$((IDX / 10))
