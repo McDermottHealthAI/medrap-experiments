@@ -677,6 +677,73 @@ both durations, while draws 3-5 are close to a wash or a small win). No
 systematic retrieval benefit emerges at N=25 with this architecture/epoch
 budget, at either horizon length.
 
+## Larger retriever k (`sweep_marginalized_binary_duration_variance_n25_large_k.sh`)
+
+Same N=25, 5-draw, 7d/30d duration x variance study above, but sweeping
+`retriever.k` up from the usual 4 to 32, 64, 128 (and 256, which reliably
+OOMs -- see caveat below) to check whether attending to more retrieved
+documents changes the `marginalized(binary)` vs. `patient_only` picture.
+Reuses the exact same labels (`data/tasks_duration_variance/d{7,30}/
+draw{1-5}/tasks`) and architecture -- only `retriever.k` differs.
+`batch_size=32` is left unchanged from the k=4 sweeps (not scaled down for
+larger k) per explicit direction: let it OOM if it OOMs, since that's a
+real data point about the largest k this architecture/GPU actually
+supports, not something to avoid by guessing a smaller batch size upfront.
+
+```bash
+sbatch scripts/sweep_marginalized_binary_duration_variance_n25_large_k.sh
+```
+
+**k=256 caveat:** at `batch_size=32`, k=256 reliably OOMs immediately on
+the first forward pass (`PerDocCrossAttentionFusion` expands the batch to
+`B*K` internally, so memory scales ~linearly with k) -- confirmed on an
+L40S (44.4GiB total, ~44.25GiB in use at the crash, all 10/10 k=256 jobs
+failed in under a minute). Dropped in favor of k in {32, 64, 128}, which
+stays under that ceiling at the same batch size. k=256 can be revisited
+later with a reduced batch size if needed.
+
+**Status:** k=32 (10/10 runs) finished. k=64 and k=128 (20 runs total) are
+still training as of this write-up -- each epoch takes substantially
+longer at higher k (roughly proportional to k, since the fusion module's
+effective batch size is `B*K`), so k=128 in particular takes several hours
+per run. This section will be updated once they finish.
+
+### Results: k=32 vs. patient_only and k=4
+
+| Duration | Draw | patient_only | marginalized k=4 | marginalized k=32 | Δ k=32 vs. patient_only | Δ k=32 vs. k=4 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 7d | 1 | 0.9716 | 0.9511 | [0.9563](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/xwi389rg) | -0.0153 | +0.0052 |
+| 7d | 2 | 0.9923 | 0.9899 | [0.9822](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/4od4ifzs) | -0.0101 | -0.0077 |
+| 7d | 3 | 0.9849 | 0.9850 | [0.9838](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/f74nouh1) | -0.0011 | -0.0012 |
+| 7d | 4 | 0.9861 | 0.9863 | [0.9864](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/as804mub) | +0.0003 | +0.0001 |
+| 7d | 5 | 0.7867 | 0.7816 | [0.7251](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/grzz8vfl) | -0.0616 | -0.0565 |
+| 30d | 1 | 0.9317 | 0.9057 | [0.8883](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/ak0513mr) | -0.0434 | -0.0174 |
+| 30d | 2 | 0.9666 | 0.9528 | [0.9595](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/8angtw06) | -0.0071 | +0.0067 |
+| 30d | 3 | 0.9054 | 0.9007 | [0.8693](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/obm7eegn) | -0.0361 | -0.0314 |
+| 30d | 4 | 0.9831 | 0.9880 | [0.9822](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/a2gg8zx0) | -0.0009 | -0.0058 |
+| 30d | 5 | 0.9277 | 0.9363 | [0.9572](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/8xlyu1z8) | +0.0295 | +0.0209 |
+
+**Δ mean ± std across the 5 draws (k=32 vs. patient_only):**
+
+| Duration | mean Δ | std Δ |
+| --- | --- | --- |
+| 7d | -0.0176 | 0.0254 |
+| 30d | -0.0116 | 0.0293 |
+
+**So far:** k=32 doesn't reverse the pattern from k=4 -- still no
+consistent benefit from retrieval over `patient_only` (mean Δ negative at
+both durations, std larger than the mean effect). If anything, k=32 looks
+slightly *worse* on average than k=4 at 7d (draw 5 in particular drops
+sharply, 0.7816 -> 0.7251), though the small sample (5 draws) makes this
+weak evidence rather than a clear trend -- k=64/128 results below should
+clarify whether this is noise or a real degradation from attending to more
+(likely less relevant) retrieved documents.
+
+### Results: k=64, k=128
+
+*(Pending -- both still training as of this write-up. Will fill in once
+they finish.)*
+
 ## Variance study: patient_only vs. marginalized(binary) across repeated random task draws (`generate_labels_variance_n1248.sh` + `sweep_patient_only_variance_n1248.sh` + `sweep_marginalized_binary_variance_n1248.sh`)
 
 **Note:** the smaller-scope [duration x variance study](#duration-x-variance-study-n25-patient_only-vs-marginalized-binary-at-7-day-and-30-day-durations-5-random-draws-each)
