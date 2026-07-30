@@ -3,5 +3,5 @@ name = "mimic-iv-sweep"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "medrap @ git+https://github.com/McDermottHealthAI/MedRAP.git@f0cb8257635298f12b50eeea5b8b314afcd55ea4",
+    "medrap @ git+https://github.com/McDermottHealthAI/MedRAP.git@0a4a1fc73de434828e5c3122a9b6ccb1e913496d",
 ]
