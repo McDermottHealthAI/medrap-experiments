@@ -18,13 +18,12 @@
 #
 # PerDocCrossAttentionFusion (fusion=cross_attention_perdoc_medium) expands
 # the batch to B*K internally -- it runs cross-attention once per retrieved
-# document, so memory scales ~linearly with k. The base sweep's
-# batch_size=32 at k=4 (effective B*K=128) would almost certainly OOM at
-# k=128/256, so batch_size is scaled down per k to keep B*K in a similar
-# range: k=128 -> batch_size=4 (B*K=512), k=256 -> batch_size=2 (B*K=512).
-# This is an untested guess, not a profiled optimum -- if a job OOMs anyway,
-# lower batch_size further (gradient_clip_val/lr are unchanged, so smaller
-# batches just mean more, noisier steps per epoch).
+# document, so memory scales ~linearly with k. batch_size is intentionally
+# left at 32 (same as every other sweep in this directory, effective
+# B*K=4096/8192 at k=128/256) rather than scaled down -- if a job OOMs,
+# that's a real, useful data point (tells us the largest k this
+# architecture/GPU can actually support), not something to avoid by
+# guessing a smaller batch size upfront.
 #
 # Array index -> (k, duration, draw):
 #   0-4   -> k=128, 7d,  draws 1-5
@@ -70,12 +69,7 @@ K=${K_VALUES[$K_IDX]}
 DURATION_DAYS=${DURATIONS[$DURATION_IDX]}
 DRAW=$((DRAW_IDX + 1))
 N=25
-
-if [ "$K" -eq 128 ]; then
-    BATCH_SIZE=4
-else
-    BATCH_SIZE=2
-fi
+BATCH_SIZE=32
 
 REPO_DIR="${SLURM_SUBMIT_DIR}"
 VENV="${REPO_DIR}/.venv/bin/activate"  # created by: cd mimic_iv_sweep && uv sync
@@ -108,7 +102,7 @@ echo "  N (tasks)              : ${N}"
 echo "  Duration                : ${DURATION_DAYS}d"
 echo "  Draw                    : ${DRAW}/5"
 echo "  retriever.k             : ${K}"
-echo "  batch_size              : ${BATCH_SIZE} (scaled down from 32 to keep B*K bounded)"
+echo "  batch_size              : ${BATCH_SIZE} (same as k=4 sweeps, not scaled down)"
 echo "  marginalized_output_mode: binary (MedRAP#93)"
 echo "  Started                 : $(date)"
 echo ""
