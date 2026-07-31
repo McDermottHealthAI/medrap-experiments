@@ -16,6 +16,20 @@
 # EHR sequence for these tasks, on labels with real (if still low)
 # positive rates.
 #
+# Validation protocol changed here (rationale: NULL_RESULT_DIAGNOSIS.md):
+# training.trainer.limit_val_batches=1.0 scores the FULL tuning split on
+# every validation pass instead of the 200-batch (6,400-row) prefix
+# conf/training/trainer/lightning_wandb.yaml defaults to, and
+# training.trainer.val_check_interval moves 0.2 -> 0.5 to offset the cost
+# (two validation passes per epoch instead of five). That prefix held so few
+# positives per task that a single positive changing rank could move the
+# task's AUROC by up to ~0.5, which is the same size as every arm-vs-arm
+# difference this three-way comparison has reported. The change is applied
+# to this patient_only arm as well as the retrieval/marginalized ones
+# precisely so the comparison still uses one validation protocol; numbers
+# from this script are NOT comparable to results published before this
+# change.
+#
 # Array index -> N:
 #   0 -> N=1
 #   1 -> N=2
@@ -100,6 +114,8 @@ medrap-train \
     training.trainer.devices=1 \
     training.trainer.gradient_clip_val=1.0 \
     training.trainer.log_every_n_steps=10 \
+    training.trainer.limit_val_batches=1.0 \
+    training.trainer.val_check_interval=0.5 \
     training.module.lr=1e-3 \
     training.module.warmup_steps=200 \
     training.module.validation_auroc_log_per_task=true \

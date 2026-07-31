@@ -15,11 +15,17 @@
 # Requires McDermottHealthAI/MedRAP#94 (test/auroc/* logging for
 # trainer.test(), merged to main) -- without it, medrap-eval eval_mode=test
 # only reports test/loss and test/accuracy, no AUROC. Also requires
-# McDermottHealthAI/MedRAP#95 (marginalized_retrieval/marginalized_output_mode/
-# wandb_project/wandb_run_name declared on _eval.yaml) -- without it,
-# overriding marginalized_retrieval=true or training/trainer=lightning_wandb
-# for medrap-eval fails with "Could not override 'marginalized_retrieval'"
-# (Hydra struct-mode rejects overrides for keys _eval.yaml never declared).
+# McDermottHealthAI/MedRAP#95 (marginalized_retrieval/
+# marginalized_score_similarity/marginalized_output_mode/wandb_project/
+# wandb_run_name declared on _eval.yaml) -- without it,
+# overriding marginalized_retrieval=true, marginalized_score_similarity=cosine
+# or training/trainer=lightning_wandb for medrap-eval fails with
+# "Could not override '<key>'" (Hydra struct-mode rejects overrides for keys
+# _eval.yaml never declared). Verified against the pyproject.toml pin
+# (164c2ef): _eval.yaml there declares marginalized_score_similarity: dot at
+# line 25, so all five overrides compose. Note the older mimic_iv_smoke pin
+# (47be1bc) predates #95 and rejects all of them -- do not use that venv to
+# smoke-test these eval scripts.
 #
 # Why retriever.k=1 works on a checkpoint trained with k=4: PerDocCrossAttentionFusion
 # and the marginalized_output_mode=binary marginalization are both explicitly
@@ -44,6 +50,26 @@
 # without McDermottHealthAI/MedRAP#97, there was no way to re-run this script
 # a second time (e.g. after fixing a config bug) without deleting
 # outputs/marginalized_binary_top1_eval_n1248/n<N>/ by hand first.
+#
+# marginalized_score_similarity=cosine is now passed here too, tracking the
+# same change in sweep_marginalized_binary_n1248.sh (rationale:
+# NULL_RESULT_DIAGNOSIS.md). The raw dot product left ||q|| acting as an
+# implicit inverse temperature, so the softmax over the K retrieved
+# documents saturated -- effective_k_mean sat at 1.00-1.15 across all 32
+# marginalized runs, making the marginalization arithmetically a no-op and
+# driving the gradient into the retrieval scores to exactly zero. cosine
+# bounds the scores to [-1, 1] and removes that degree of freedom. This is
+# also the direct explanation for the original finding of this script, that
+# top-1 eval matched the k=4 eval: marginalization was already a no-op, so
+# discarding 3 of the 4 documents changed nothing.
+#
+# Because this is a scoring-function override rather than a weight shape,
+# it must MATCH the checkpoint being loaded: run this only against
+# checkpoints produced by the post-change sweep_marginalized_binary_n1248.sh.
+# Results are NOT comparable to the pre-change top-1 eval numbers -- neither
+# arm's, and note the training-side validation protocol changed at the same
+# time (full tuning split rather than the 200-batch/6,400-row prefix, with
+# val_check_interval 0.2 -> 0.5), which is what the checkpoints selected on.
 #
 # Array index -> N:
 #   0 -> N=1
@@ -149,6 +175,7 @@ medrap-eval \
     fusion=cross_attention_perdoc_medium \
     marginalized_retrieval=true \
     marginalized_output_mode=binary \
+    marginalized_score_similarity=cosine \
     head.in_dim=256 \
     training/loss=multitask_binary_bce_marginalized \
     "training.loss.num_tasks=${N}" \

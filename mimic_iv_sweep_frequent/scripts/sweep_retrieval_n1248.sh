@@ -21,6 +21,32 @@
 # same non-marginalized `retrieval` architecture, just on pre-MedRAP#92 task
 # labels with positive-rate/count filtering).
 #
+# Validation protocol changed here (rationale: NULL_RESULT_DIAGNOSIS.md):
+# training.trainer.limit_val_batches=1.0 scores the FULL tuning split on
+# every validation pass instead of the 200-batch (6,400-row) prefix
+# conf/training/trainer/lightning_wandb.yaml defaults to, and
+# training.trainer.val_check_interval moves 0.2 -> 0.5 to offset the cost
+# (two validation passes per epoch instead of five). That prefix held so few
+# positives per task that a single positive changing rank could move the
+# task's AUROC by up to ~0.5, which is the same size as every arm-vs-arm
+# difference this three-way comparison has reported.
+#
+# This arm is edited DELIBERATELY, as an explicit in-scope exception to the
+# "leave the retrieval sweeps alone" guidance: patient_only, retrieval and
+# marginalized* all train on the same data/tasks/n<N>/tasks labels and are
+# read against each other cell-by-cell, so the validation protocol is a
+# shared property of the comparison, not a per-arm knob. Applying the fix to
+# only two of the three arms would leave this one scored on a 6,400-row
+# prefix while the others are scored on the full tuning split, i.e. it would
+# convert the confound this change removes into a between-arm confound --
+# strictly worse than leaving all three alone. Numbers from this script are
+# NOT comparable to results published before this change.
+#
+# Only the validation protocol changes here. No architecture, loss, data or
+# seed argument is touched, so this arm's trained model is unchanged.
+# marginalized_score_similarity in particular is deliberately NOT set: this
+# arm never enters the marginalized document-scoring path at all.
+#
 # Array index -> N:
 #   0 -> N=1
 #   1 -> N=2
@@ -112,6 +138,8 @@ medrap-train \
     training.trainer.devices=1 \
     training.trainer.gradient_clip_val=1.0 \
     training.trainer.log_every_n_steps=10 \
+    training.trainer.limit_val_batches=1.0 \
+    training.trainer.val_check_interval=0.5 \
     training.module.lr=1e-3 \
     training.module.warmup_steps=200 \
     training.module.validation_auroc_log_per_task=true \

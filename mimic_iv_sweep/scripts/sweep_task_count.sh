@@ -13,6 +13,18 @@
 # current anchor-sampling scheme (see check_task_balance.py) -- requesting a
 # large N mostly adds low-count, noise-dominated tasks rather than signal.
 #
+# Validation protocol changed here (rationale:
+# ../mimic_iv_sweep_frequent/NULL_RESULT_DIAGNOSIS.md):
+# training.trainer.limit_val_batches=1.0 scores the FULL tuning split on
+# every validation pass instead of the 200-batch (6,400-row) prefix
+# conf/training/trainer/lightning_wandb.yaml defaults to, and
+# training.trainer.val_check_interval moves 0.2 -> 0.5 to offset the cost
+# (two validation passes per epoch instead of five). That prefix held so few
+# positives per task that a single positive changing rank could move the
+# task's AUROC by up to ~0.5, which is larger than the N-to-N scaling effect
+# this sweep exists to measure. Numbers from this script are therefore NOT
+# comparable to results published before this change.
+#
 # Array index → N:
 #   0 → 1     1 → 2     2 → 4
 #   3 → 8     4 → 16    5 → 32
@@ -100,6 +112,8 @@ medrap-train \
     training.trainer.devices=1 \
     training.trainer.gradient_clip_val=1.0 \
     training.trainer.log_every_n_steps=10 \
+    training.trainer.limit_val_batches=1.0 \
+    training.trainer.val_check_interval=0.5 \
     training.module.lr=1e-3 \
     training.module.warmup_steps=200 \
     "wandb_run_name=sweep-task-count-n${N}-${SLURM_ARRAY_JOB_ID:-local}_${IDX}" \

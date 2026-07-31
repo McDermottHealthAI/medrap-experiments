@@ -18,6 +18,28 @@
 # 25 here instead of swept); only LABELS_DIR/OUTPUT_DIR/wandb_run_name vary
 # per (duration, draw).
 #
+# Validation protocol changed here (rationale:
+# ../mimic_iv_sweep_frequent/NULL_RESULT_DIAGNOSIS.md):
+# training.trainer.limit_val_batches=1.0 scores the FULL tuning split on
+# every validation pass instead of the 200-batch (6,400-row) prefix
+# conf/training/trainer/lightning_wandb.yaml defaults to, and
+# training.trainer.val_check_interval moves 0.2 -> 0.5 to offset the cost
+# (two validation passes per epoch instead of five). That prefix held so few
+# positives per task that a single positive changing rank could move the
+# task's AUROC by up to ~0.5 -- larger than the across-draw spread this
+# study is trying to measure. Numbers from this script are therefore NOT
+# comparable to results published before this change, and the paired
+# patient_only baseline must be re-run with the same protocol.
+#
+# The marginalized document score is now cosine rather than dot
+# (marginalized_score_similarity=cosine), same rationale. The raw dot
+# product left ||q|| acting as an implicit inverse temperature, so the
+# softmax over the K retrieved documents saturated -- effective_k_mean sat
+# at 1.00-1.15 across all 32 marginalized runs, making the marginalization
+# arithmetically a no-op and driving the gradient into the retrieval scores
+# to exactly zero. cosine bounds the scores to [-1, 1] and removes that
+# degree of freedom.
+#
 # Prerequisites:
 #   sbatch scripts/prepare_retrieval.sh
 #   sbatch scripts/generate_labels_duration_variance_n25.sh
@@ -107,6 +129,8 @@ medrap-train \
     training.trainer.devices=1 \
     training.trainer.gradient_clip_val=1.0 \
     training.trainer.log_every_n_steps=10 \
+    training.trainer.limit_val_batches=1.0 \
+    training.trainer.val_check_interval=0.5 \
     training.module.lr=1e-3 \
     training.module.warmup_steps=200 \
     training.module.validation_auroc_log_per_task=true \
@@ -122,6 +146,7 @@ medrap-train \
     fusion=cross_attention_perdoc_medium \
     marginalized_retrieval=true \
     marginalized_output_mode=binary \
+    marginalized_score_similarity=cosine \
     head.in_dim=256 \
     training/loss=multitask_binary_bce_marginalized \
     "training.loss.num_tasks=${N}" \
