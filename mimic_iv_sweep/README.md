@@ -702,11 +702,12 @@ failed in under a minute). Dropped in favor of k in {32, 64, 128}, which
 stays under that ceiling at the same batch size. k=256 can be revisited
 later with a reduced batch size if needed.
 
-**Status:** k=32 (10/10 runs) finished. k=64 and k=128 (20 runs total) are
-still training as of this write-up -- each epoch takes substantially
-longer at higher k (roughly proportional to k, since the fusion module's
-effective batch size is `B*K`), so k=128 in particular takes several hours
-per run. This section will be updated once they finish.
+**Status:** k=32 and k=64 (20/20 runs) finished. k=128 (10 runs) is still
+training as of this write-up -- each epoch takes substantially longer at
+higher k (roughly proportional to k, since the fusion module's effective
+batch size is `B*K`), so k=128 takes several hours per run (k=64 took
+~7-7.5h per run; k=128 is projected to take longer still). This section
+will be updated once it finishes.
 
 ### Results: k=32 vs. patient_only and k=4
 
@@ -739,10 +740,41 @@ weak evidence rather than a clear trend -- k=64/128 results below should
 clarify whether this is noise or a real degradation from attending to more
 (likely less relevant) retrieved documents.
 
-### Results: k=64, k=128
+### Results: k=64 vs. patient_only and k=4
 
-*(Pending -- both still training as of this write-up. Will fill in once
-they finish.)*
+| Duration | Draw | patient_only | marginalized k=4 | marginalized k=64 | Δ k=64 vs. patient_only |
+| --- | --- | --- | --- | --- | --- |
+| 7d | 1 | 0.9716 | 0.9511 | [0.9496](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/frujicz8) | -0.0220 |
+| 7d | 2 | 0.9923 | 0.9899 | [0.9882](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/65bbbbux) | -0.0041 |
+| 7d | 3 | 0.9849 | 0.9850 | [0.9886](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/9p3khpl8) | +0.0037 |
+| 7d | 4 | 0.9861 | 0.9863 | [0.9720](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/3pmeukdm) | -0.0141 |
+| 7d | 5 | 0.7867 | 0.7816 | [0.8028](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/6aex40o1) | +0.0161 |
+| 30d | 1 | 0.9317 | 0.9057 | [0.9085](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/5lw3wzxi) | -0.0232 |
+| 30d | 2 | 0.9666 | 0.9528 | [0.9227](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/zou34lwq) | -0.0439 |
+| 30d | 3 | 0.9054 | 0.9007 | [0.8785](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/9aw8z8ds) | -0.0269 |
+| 30d | 4 | 0.9831 | 0.9880 | [0.9774](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/iryanard) | -0.0057 |
+| 30d | 5 | 0.9277 | 0.9363 | [0.9470](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/cydbf1ju) | +0.0193 |
+
+**Δ mean ± std across the 5 draws (k=64 vs. patient_only):**
+
+| Duration | mean Δ | std Δ |
+| --- | --- | --- |
+| 7d | -0.0041 | 0.0149 |
+| 30d | -0.0161 | 0.0240 |
+
+**So far:** same story as k=4 and k=32 -- no consistent AUROC benefit from
+retrieval, mean Δ is negative (or ~0) at both durations with std
+comfortably larger than the mean effect. k=64's 7d mean Δ (-0.004) is
+closer to zero than k=32's (-0.018), so there's no clean monotonic
+trend of "larger k = worse" either -- across k in {4, 32, 64} the
+architecture gap just looks like noise around zero, not a function of k.
+k=128 (below) is the last data point in this batch.
+
+### Results: k=128
+
+*(Pending -- still training as of this write-up, projected to take longer
+than k=64's ~7-7.5h per run given the roughly-linear B*K compute scaling.
+Will fill in once it finishes.)*
 
 ## Variance study: patient_only vs. marginalized(binary) across repeated random task draws (`generate_labels_variance_n1248.sh` + `sweep_patient_only_variance_n1248.sh` + `sweep_marginalized_binary_variance_n1248.sh`)
 
