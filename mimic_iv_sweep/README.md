@@ -677,6 +677,57 @@ both durations, while draws 3-5 are close to a wash or a small win). No
 systematic retrieval benefit emerges at N=25 with this architecture/epoch
 budget, at either horizon length.
 
+## 5-epoch variant (`sweep_patient_only_duration_variance_n25_epoch5.sh` + `sweep_marginalized_binary_duration_variance_n25_epoch5.sh`)
+
+Same N=25, 5-draw, 7d/30d labels/architecture as above (k=4), but
+`training.trainer.max_epochs=5` instead of 3, for both `patient_only` and
+`marginalized(binary)` -- checks whether the (inconclusive, noise-dominated)
+3-epoch comparison looks different with more training.
+
+```bash
+sbatch scripts/sweep_patient_only_duration_variance_n25_epoch5.sh
+sbatch scripts/sweep_marginalized_binary_duration_variance_n25_epoch5.sh
+```
+
+### Results: 3-epoch vs. 5-epoch
+
+| Duration | Draw | patient_only 3ep | patient_only 5ep | marginalized 3ep | marginalized 5ep | Δ 5ep (binary − patient_only) |
+| --- | --- | --- | --- | --- | --- | --- |
+| 7d | 1 | 0.9716 | [0.9436](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/zh4ibjnk) | 0.9511 | [0.9498](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/3uazx97p) | +0.0062 |
+| 7d | 2 | 0.9923 | [0.9925](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/m8q67122) | 0.9899 | [0.9910](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/vxvo3uim) | -0.0015 |
+| 7d | 3 | 0.9849 | [0.9844](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/vugazvja) | 0.9850 | [0.9875](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/1utd6jno) | +0.0031 |
+| 7d | 4 | 0.9861 | [0.9729](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/pz5mj0j2) | 0.9863 | [0.9855](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/p3xtiyfz) | +0.0126 |
+| 7d | 5 | 0.7867 | [0.8538](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/uqqhld7g) | 0.7816 | [0.7264](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/r44khzev) | -0.1274 |
+| 30d | 1 | 0.9317 | [0.9465](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/mfvfuv6h) | 0.9057 | [0.9437](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/275hb7uo) | -0.0028 |
+| 30d | 2 | 0.9666 | [0.9663](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/ij1wq87y) | 0.9528 | [0.9588](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/l9axo4h3) | -0.0075 |
+| 30d | 3 | 0.9054 | [0.9043](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/goe2layj) | 0.9007 | [0.9308](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/30lraub1) | +0.0265 |
+| 30d | 4 | 0.9831 | [0.8361](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/yx7ziupc) | 0.9880 | [0.9806](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/15tfv19g) | +0.1445 |
+| 30d | 5 | 0.9277 | [0.9554](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/kd638bx8) | 0.9363 | [0.9583](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/u6b8hlyv) | +0.0029 |
+
+**Δ mean ± std across the 5 draws, and the effect of going 3ep → 5ep per architecture:**
+
+| Duration | 3ep Δ (mean ± std) | 5ep Δ (mean ± std) | patient_only 5ep − 3ep (mean) | marginalized 5ep − 3ep (mean) |
+| --- | --- | --- | --- | --- |
+| 7d | -0.0055 ± 0.0086 | -0.0214 ± 0.0595 | +0.0051 | -0.0107 |
+| 30d | -0.0062 ± 0.0141 | +0.0327 ± 0.0638 | -0.0212 | +0.0177 |
+
+**Takeaway:** training longer does **not** cleanly help either
+architecture, and doesn't resolve the 3-epoch ambiguity -- if anything it
+makes both the per-draw AUROC and the architecture-gap std noticeably
+*more* volatile (7d Δ std goes from 0.009 to 0.060; 30d from 0.014 to
+0.064). Two individual draws swing enormously with more training: 7d
+draw 5's `patient_only` AUROC jumps 0.79 → 0.85 while `marginalized` drops
+0.78 → 0.73 (a -0.127 flip in Δ), and 30d draw 4's `patient_only` AUROC
+*collapses* 0.98 → 0.84 while `marginalized` barely moves (a +0.145 flip
+in Δ) -- both look like instability/overfitting on a 25-task, small-N
+setup rather than a genuine architecture effect. On average, `patient_only`
+improves slightly at 7d but gets noticeably worse at 30d with more
+training (mean -0.021, driven by that draw-4 collapse); `marginalized`
+moves in the opposite direction each time. Net: no evidence that 5 epochs
+is better than 3 for either architecture here, and the added variance
+makes the `patient_only` vs. `marginalized` comparison harder to read, not
+easier.
+
 ## Larger retriever k (`sweep_marginalized_binary_duration_variance_n25_large_k.sh`)
 
 Same N=25, 5-draw, 7d/30d duration x variance study above, but sweeping
