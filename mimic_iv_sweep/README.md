@@ -702,12 +702,9 @@ failed in under a minute). Dropped in favor of k in {32, 64, 128}, which
 stays under that ceiling at the same batch size. k=256 can be revisited
 later with a reduced batch size if needed.
 
-**Status:** k=32 and k=64 (20/20 runs) finished. k=128 (10 runs) is still
-training as of this write-up -- each epoch takes substantially longer at
-higher k (roughly proportional to k, since the fusion module's effective
-batch size is `B*K`), so k=128 takes several hours per run (k=64 took
-~7-7.5h per run; k=128 is projected to take longer still). This section
-will be updated once it finishes.
+**Status:** all 30 runs (k=32, k=64, k=128) finished. k=128 took ~13.5-14h
+per run (vs. k=64's ~7-7.5h) -- each epoch's runtime scales roughly with k,
+since the fusion module's effective batch size is `B*K`.
 
 ### Results: k=32 vs. patient_only and k=4
 
@@ -765,16 +762,86 @@ clarify whether this is noise or a real degradation from attending to more
 **So far:** same story as k=4 and k=32 -- no consistent AUROC benefit from
 retrieval, mean Δ is negative (or ~0) at both durations with std
 comfortably larger than the mean effect. k=64's 7d mean Δ (-0.004) is
-closer to zero than k=32's (-0.018), so there's no clean monotonic
-trend of "larger k = worse" either -- across k in {4, 32, 64} the
-architecture gap just looks like noise around zero, not a function of k.
-k=128 (below) is the last data point in this batch.
+closer to zero than k=32's (-0.018) -- see the final k=128 results and
+overall summary below for whether a trend across k actually holds up.
 
-### Results: k=128
+### Results: k=128 vs. patient_only and k=4
 
-*(Pending -- still training as of this write-up, projected to take longer
-than k=64's ~7-7.5h per run given the roughly-linear B*K compute scaling.
-Will fill in once it finishes.)*
+| Duration | Draw | patient_only | marginalized k=4 | marginalized k=128 | Δ k=128 vs. patient_only |
+| --- | --- | --- | --- | --- | --- |
+| 7d | 1 | 0.9716 | 0.9511 | [0.9486](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/cjlymdh1) | -0.0230 |
+| 7d | 2 | 0.9923 | 0.9899 | [0.9899](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/430fx3b7) | -0.0024 |
+| 7d | 3 | 0.9849 | 0.9850 | [0.9837](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/49fol7aq) | -0.0012 |
+| 7d | 4 | 0.9861 | 0.9863 | [0.9722](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/znnf1s4i) | -0.0139 |
+| 7d | 5 | 0.7867 | 0.7816 | [0.8002](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/p9dit375) | +0.0135 |
+| 30d | 1 | 0.9317 | 0.9057 | [0.9047](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/1ftna39c) | -0.0270 |
+| 30d | 2 | 0.9666 | 0.9528 | [0.9223](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/8hczalnc) | -0.0443 |
+| 30d | 3 | 0.9054 | 0.9007 | [0.8471](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/r45vhdj8) | -0.0583 |
+| 30d | 4 | 0.9831 | 0.9880 | [0.9825](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/zx6nmdpq) | -0.0006 |
+| 30d | 5 | 0.9277 | 0.9363 | [0.9584](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/vzm04lrf) | +0.0307 |
+
+**Δ mean ± std across the 5 draws (k=128 vs. patient_only):**
+
+| Duration | mean Δ | std Δ |
+| --- | --- | --- |
+| 7d | -0.0054 | 0.0138 |
+| 30d | -0.0199 | 0.0355 |
+
+## Summary across k ∈ {4, 32, 64, 128}
+
+**Δ mean (marginalized − patient_only) across the 5 draws, by k and duration:**
+
+| k | 7d mean Δ | 30d mean Δ |
+| --- | --- | --- |
+| 4 | -0.0055 | -0.0062 |
+| 32 | -0.0176 | -0.0116 |
+| 64 | -0.0041 | -0.0161 |
+| 128 | -0.0054 | -0.0199 |
+
+**Raw AUROC mean ± std across the 5 random task draws** (not the Δ -- the
+absolute per-architecture AUROC variance driven purely by which 25 tasks
+got sampled into a given draw):
+
+| Architecture | 7d mean ± std (min-max) | 30d mean ± std (min-max) |
+| --- | --- | --- |
+| `patient_only` | 0.9443 ± 0.0884 (0.7867-0.9923) | 0.9429 ± 0.0314 (0.9054-0.9831) |
+| `marginalized` k=4 | 0.9388 ± 0.0893 (0.7816-0.9899) | 0.9367 ± 0.0359 (0.9007-0.9880) |
+| `marginalized` k=32 | 0.9268 ± 0.1134 (0.7251-0.9864) | 0.9313 ± 0.0494 (0.8693-0.9822) |
+| `marginalized` k=64 | 0.9402 ± 0.0785 (0.8028-0.9886) | 0.9268 ± 0.0376 (0.8785-0.9774) |
+| `marginalized` k=128 | 0.9389 ± 0.0791 (0.8002-0.9899) | 0.9230 ± 0.0522 (0.8471-0.9825) |
+
+This is the more important variance number for planning future N=25 runs:
+**which 25 random tasks you happen to draw swings absolute AUROC far more
+than the choice of architecture or k does.** At 7d, std across draws
+(0.079-0.113) is roughly 15-20x the architecture-vs-patient_only Δ std
+seen per k (0.009-0.025 in the sections above); at 30d it's smaller in
+absolute terms (0.031-0.052) but still several times the Δ std. Draw 5 at
+7d (patient_only=0.7867) and draw 4 at 30d in the epoch5 study are the
+extreme low points pulling these numbers around -- with only 5 draws, a
+single hard draw dominates the spread. This is the main argument for why
+any single-draw comparison (the very first "Results" table earlier in this
+README, before the variance study existed) should not be over-interpreted,
+and why more draws (not just more k or more epochs) would be the highest-
+value next experiment if tighter confidence intervals are wanted.
+
+**Takeaway:** no k in {4, 32, 64, 128} produces a consistent AUROC
+improvement from retrieval over `patient_only` -- every mean Δ is negative
+(or ~0), and every std (0.014-0.036, not shown per-k above but see each
+section) is comparable to or larger than the mean effect, so within a
+given k the win/loss is noise-dominated. Across k, the picture differs by
+duration: at **7d**, Δ bounces around a small negative band (-0.0041 to
+-0.0176) with no clear direction as k grows -- k=32 is the worst point,
+k=64 the closest to zero, k=128 back down near k=4's level. At **30d**,
+Δ gets **monotonically more negative as k increases** (-0.0062 → -0.0116 →
+-0.0161 → -0.0199 from k=4 to k=128) -- a real, if modest, trend suggesting
+that attending to more retrieved documents doesn't help and may mildly
+hurt on the longer occurrence window, though the std at each k (0.014-0.036)
+is still large enough that this shouldn't be overclaimed from 5 draws.
+Combined with the [5-epoch results](#5-epoch-variant-sweep_patient_only_duration_variance_n25_epoch5sh--sweep_marginalized_binary_duration_variance_n25_epoch5sh)
+(more training also doesn't help), the overall picture across this whole
+round of experiments is that neither training longer nor retrieving more
+documents rescues `marginalized(binary)` retrieval's lack of benefit over
+`patient_only` at N=25 on random MIMIC-IV task labels.
 
 ## Variance study: patient_only vs. marginalized(binary) across repeated random task draws (`generate_labels_variance_n1248.sh` + `sweep_patient_only_variance_n1248.sh` + `sweep_marginalized_binary_variance_n1248.sh`)
 
