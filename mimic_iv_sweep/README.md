@@ -894,6 +894,174 @@ round of experiments is that neither training longer nor retrieving more
 documents rescues `marginalized(binary)` retrieval's lack of benefit over
 `patient_only` at N=25 on random MIMIC-IV task labels.
 
+## Inference-style evaluation: top-1 doc vs. random-1 doc (`eval_inference_style_n1248.sh` + `eval_inference_style_duration_variance_n25.sh` + `eval_inference_style_duration_variance_n25_large_k.sh` + `eval_inference_style_duration_variance_n25_epoch5.sh`)
+
+Two questions about every `marginalized(binary)` checkpoint trained on
+random-task-code labels so far (base N-sweep, k=4/32/64/128 duration
+x variance, 3-epoch and 5-epoch): (1) does "inference style" prediction
+using only the single **top-retrieved** document (`retriever.k=1`,
+matching [`mimic_iv_sweep_frequent`'s top-1-doc
+eval](../mimic_iv_sweep_frequent/README.md#held-out-test-auroc-top-retrieved-document-only))
+track the training-time marginalized-over-k AUROC, and (2) is that
+top-retrieved document actually doing anything useful, or would a
+**uniform-random** corpus document (breaking patient-document alignment
+entirely) perform just as well?
+
+Both modes use `retriever.k=1` at eval time (valid for any checkpoint
+regardless of its trained k -- `PerDocCrossAttentionFusion` and
+`marginalized_output_mode=binary` marginalization are both K-agnostic, no
+weight or positional embedding is sized by K):
+
+- **top1**: `retriever.ablation_mode=none` -- the single nearest-neighbor
+  (highest-scoring) retrieved document, MedRAP's normal retrieval
+  behavior.
+- **random1**: `retriever.ablation_mode=random_docs` -- MedRAP's built-in
+  retrieval ablation (`medrap/model/retrievers.py`'s
+  `_apply_retrieval_ablation`), a uniform-random corpus row sampled with
+  replacement, discarding retrieval quality entirely while keeping the
+  same payload/model path.
+
+Both evaluate held-out **test** split AUROC (`eval_mode=test`), not the
+`tuning`/`val` split every other result in this README reports -- see
+[`mimic_iv_sweep_frequent`'s top-1-doc
+section](../mimic_iv_sweep_frequent/README.md#held-out-test-auroc-top-retrieved-document-only)
+for why (`eval_mode=test` targets a split nothing else here has touched).
+
+```bash
+sbatch scripts/eval_inference_style_n1248.sh                            # base N-sweep, 16 jobs
+sbatch scripts/eval_inference_style_duration_variance_n25.sh            # k=4 duration-variance, 20 jobs
+sbatch scripts/eval_inference_style_duration_variance_n25_large_k.sh    # k=32/64/128 duration-variance, 60 jobs
+sbatch scripts/eval_inference_style_duration_variance_n25_epoch5.sh     # 5-epoch duration-variance, 20 jobs
+```
+
+All 116 jobs (58 checkpoints x 2 modes) finished cleanly, no failures.
+
+
+### Summary: does top1 beat random1?
+
+**Δ (top1 − random1) mean ± std, per checkpoint family:**
+
+| Family | n pairs | mean Δ | std Δ | top1 wins |
+| --- | --- | --- | --- | --- |
+| Base N-sweep (N=1..128, single draw, k=4 trained) | 8 | +0.0656 | 0.1156 | 7/8 |
+| Duration-variance, k=4 trained | 10 | +0.0077 | 0.0244 | 4/10 |
+| Duration-variance, k=32 trained | 10 | +0.0105 | 0.0301 | 7/10 |
+| Duration-variance, k=64 trained | 10 | -0.0055 | 0.0737 | 6/10 |
+| Duration-variance, k=128 trained | 10 | -0.0038 | 0.0602 | 5/10 |
+| Duration-variance, 5-epoch (k=4) | 10 | -0.0020 | 0.0393 | 5/10 |
+| **All 58 pairs combined** | 58 | **+0.0102** | **0.0639** | **34/58 (59%)** |
+
+**Takeaway:** overall, top1 is not reliably better than random1 -- the
+combined mean Δ (+0.010) is an order of magnitude smaller than the
+combined std (0.064), and the win rate (59%) is barely above a coin flip.
+**The one clear exception is the base N-sweep**, where top1 beats random1
+on 7/8 checkpoints with a much larger mean gap (+0.066) -- most strikingly
+at N=1 (top1=0.987 vs. random1=0.686, Δ=+0.301). That family differs from
+the other three in two ways that could explain the gap rather than a
+genuine "retrieval quality matters more at N=1" effect: it's a single
+draw per N (no averaging over multiple random task-code samples like the
+duration-variance families), and small N means AUROC is dominated by
+very few tasks (N=1 is literally one task), so a single held-out-split
+quirk can swing the metric enormously -- exactly the kind of small-sample
+instability the [duration x variance
+study](#duration-x-variance-study-n25-patient_only-vs-marginalized-binary-at-7-day-and-30-day-durations-5-random-draws-each)
+was built to average out. Across the four N=25, multi-draw families (which
+control for that), top1 vs. random1 is indistinguishable from noise --
+the trained marginalization does not appear to be leaning on retrieval
+quality in a way that survives collapsing to a single document, for
+better or worse.
+
+
+### Full results
+
+### Base N-sweep (N=1..128, k=4 trained)
+
+| N | top1 test AUROC | random1 test AUROC | Δ (top1 − random1) |
+| --- | --- | --- | --- |
+| 1 | [0.9871](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/2cm4xtmi) | [0.6861](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/zs4gicgm) | +0.3011 |
+| 2 | [0.8888](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/7uc2e07d) | [0.8288](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/nl9yhyb7) | +0.0600 |
+| 4 | [0.7864](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/u3p7q0xs) | [0.6137](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/cwwlofm9) | +0.1727 |
+| 8 | [0.7962](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/92ikv84c) | [0.8507](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/3e98wu8l) | -0.0544 |
+| 16 | [0.8686](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/udqplito) | [0.8654](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/364zvjmh) | +0.0032 |
+| 32 | [0.9314](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/amfcwe3f) | [0.9311](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/5ddbcbwl) | +0.0003 |
+| 64 | [0.8819](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/9jofl3d5) | [0.8568](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/3yqn6oqm) | +0.0252 |
+| 128 | [0.8927](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/2v6n9whl) | [0.8754](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/jjqe0zjp) | +0.0173 |
+
+### Duration x variance (N=25, k=4 trained, 3 epochs)
+
+| Duration | Draw | top1 | random1 | Δ |
+| --- | --- | --- | --- | --- |
+| 7d | 1 | [0.9525](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/9m3fk7v6) | [0.9550](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/ov3ylhut) | -0.0025 |
+| 7d | 2 | [0.9600](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/x3ztt5sg) | [0.9633](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/3j5ja70l) | -0.0033 |
+| 7d | 3 | [0.7365](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/w8wtr83l) | [0.6644](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/mzrdxntm) | +0.0721 |
+| 7d | 4 | [0.9883](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/t5ewf5f5) | [0.9886](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/rd0s6ek2) | -0.0003 |
+| 7d | 5 | [0.9905](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/8hg4s4l4) | [0.9898](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/8av7sm2b) | +0.0007 |
+| 30d | 1 | [0.8161](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/438682n2) | [0.7965](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/6jlci5as) | +0.0196 |
+| 30d | 2 | [0.8195](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/uyk9s6rk) | [0.8198](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/8bzlno33) | -0.0003 |
+| 30d | 3 | [0.8366](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/7gulz1g9) | [0.8479](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/bq4pexqn) | -0.0113 |
+| 30d | 4 | [0.9250](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/7xc0dhxm) | [0.9339](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/78jdc4o3) | -0.0089 |
+| 30d | 5 | [0.7826](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/hpu212v4) | [0.7709](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/y78kkrl4) | +0.0117 |
+
+### Duration x variance (N=25, k=32 trained, 3 epochs)
+
+| Duration | Draw | top1 | random1 | Δ |
+| --- | --- | --- | --- | --- |
+| 7d | 1 | [0.9450](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/0a0lrd37) | [0.9534](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/koyft47j) | -0.0083 |
+| 7d | 2 | [0.9183](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/2ceq49tv) | [0.9183](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/433q0ta7) | +0.0000 |
+| 7d | 3 | [0.6636](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/0vfb4gns) | [0.7047](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/palru30e) | -0.0412 |
+| 7d | 4 | [0.9856](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/rhzcgrt3) | [0.9853](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/4m0py3fs) | +0.0003 |
+| 7d | 5 | [0.9910](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/31kr6cez) | [0.9898](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/cay4nh20) | +0.0012 |
+| 30d | 1 | [0.8381](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/u3srrydo) | [0.7763](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/u9bwtj2m) | +0.0618 |
+| 30d | 2 | [0.8312](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/8grhfn44) | [0.8031](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/5svdnm5r) | +0.0281 |
+| 30d | 3 | [0.8225](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/1syagvsm) | [0.8288](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/as8ncu0t) | -0.0063 |
+| 30d | 4 | [0.9357](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/3ns18bp1) | [0.8860](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/3ige9uwu) | +0.0497 |
+| 30d | 5 | [0.7148](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/uhvair19) | [0.6951](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/8hggd7ng) | +0.0197 |
+
+### Duration x variance (N=25, k=64 trained, 3 epochs)
+
+| Duration | Draw | top1 | random1 | Δ |
+| --- | --- | --- | --- | --- |
+| 7d | 1 | [0.9352](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/cjsvh9ja) | [0.9094](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/xo6o2qza) | +0.0258 |
+| 7d | 2 | [0.8684](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/pn3a8ffk) | [0.7687](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/cx2sm2ut) | +0.0997 |
+| 7d | 3 | [0.6739](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/t9nrto5m) | [0.8631](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/0o8ia3rx) | -0.1893 |
+| 7d | 4 | [0.9876](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/rzndb1iy) | [0.9858](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/qjami2q5) | +0.0018 |
+| 7d | 5 | [0.9897](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/9d6akz52) | [0.9900](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/i6iawe1r) | -0.0003 |
+| 30d | 1 | [0.8167](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/vgal51do) | [0.8277](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/ztbg00q4) | -0.0110 |
+| 30d | 2 | [0.8241](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/3d6dzucl) | [0.8120](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/4639b3vf) | +0.0121 |
+| 30d | 3 | [0.8297](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/py0cf2g0) | [0.8032](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/jff2rlxg) | +0.0265 |
+| 30d | 4 | [0.8994](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/jtlqci9h) | [0.9382](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/nu327cno) | -0.0388 |
+| 30d | 5 | [0.7811](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/3l50m4o1) | [0.7627](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/1j3awjwx) | +0.0184 |
+
+### Duration x variance (N=25, k=128 trained, 3 epochs)
+
+| Duration | Draw | top1 | random1 | Δ |
+| --- | --- | --- | --- | --- |
+| 7d | 1 | [0.9347](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/m590y12h) | [0.8833](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/xf4qxlcg) | +0.0514 |
+| 7d | 2 | [0.9584](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/6q32nivs) | [0.9578](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/zgdiu6am) | +0.0007 |
+| 7d | 3 | [0.6593](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/lw6i0vir) | [0.7543](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/m8ww3zn8) | -0.0949 |
+| 7d | 4 | [0.9820](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/q9ue62qv) | [0.9803](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/q2i29jyw) | +0.0017 |
+| 7d | 5 | [0.9876](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/jp40hvyb) | [0.9880](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/17ve6zvy) | -0.0004 |
+| 30d | 1 | [0.8259](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/yvssjmp4) | [0.8087](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/amy1zhc4) | +0.0171 |
+| 30d | 2 | [0.8518](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/te3b75zw) | [0.7414](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/qyiin51c) | +0.1104 |
+| 30d | 3 | [0.8290](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/8vma56ju) | [0.8301](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/c8p39q1w) | -0.0011 |
+| 30d | 4 | [0.8719](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/wccnwq2c) | [0.9100](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/cliuykjy) | -0.0381 |
+| 30d | 5 | [0.7145](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/bto3dxsn) | [0.7993](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/t4u8jcz7) | -0.0848 |
+
+### Duration x variance (N=25, k=4 trained, 5 epochs)
+
+| Duration | Draw | top1 | random1 | Δ |
+| --- | --- | --- | --- | --- |
+| 7d | 1 | [0.9209](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/7644gcux) | [0.8770](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/p9ricznx) | +0.0439 |
+| 7d | 2 | [0.9596](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/4m3vtmz4) | [0.9634](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/fpd92ysu) | -0.0038 |
+| 7d | 3 | [0.6658](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/x5y4mv9y) | [0.7198](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/a2h77wzt) | -0.0539 |
+| 7d | 4 | [0.9840](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/qbohppa0) | [0.9870](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/m43bpsn2) | -0.0030 |
+| 7d | 5 | [0.9902](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/yd3jcg5u) | [0.9892](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/srs6vdos) | +0.0010 |
+| 30d | 1 | [0.8029](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/6haf6g5t) | [0.7398](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/bumwmjyr) | +0.0631 |
+| 30d | 2 | [0.8359](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/lwo5kbcp) | [0.8284](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/kfmisuop) | +0.0075 |
+| 30d | 3 | [0.8266](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/20xmv55p) | [0.8966](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/xt3qha3t) | -0.0700 |
+| 30d | 4 | [0.9034](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/gz1ylzyb) | [0.8980](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/xctqtk7t) | +0.0055 |
+| 30d | 5 | [0.7556](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/ck6g7jts) | [0.7663](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/4mdzp52z) | -0.0107 |
+
 ## Variance study: patient_only vs. marginalized(binary) across repeated random task draws (`generate_labels_variance_n1248.sh` + `sweep_patient_only_variance_n1248.sh` + `sweep_marginalized_binary_variance_n1248.sh`)
 
 **Note:** the smaller-scope [duration x variance study](#duration-x-variance-study-n25-patient_only-vs-marginalized-binary-at-7-day-and-30-day-durations-5-random-draws-each)
