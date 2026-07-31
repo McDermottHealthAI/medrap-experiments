@@ -677,6 +677,172 @@ both durations, while draws 3-5 are close to a wash or a small win). No
 systematic retrieval benefit emerges at N=25 with this architecture/epoch
 budget, at either horizon length.
 
+## Larger retriever k (`sweep_marginalized_binary_duration_variance_n25_large_k.sh`)
+
+Same N=25, 5-draw, 7d/30d duration x variance study above, but sweeping
+`retriever.k` up from the usual 4 to 32, 64, 128 (and 256, which reliably
+OOMs -- see caveat below) to check whether attending to more retrieved
+documents changes the `marginalized(binary)` vs. `patient_only` picture.
+Reuses the exact same labels (`data/tasks_duration_variance/d{7,30}/
+draw{1-5}/tasks`) and architecture -- only `retriever.k` differs.
+`batch_size=32` is left unchanged from the k=4 sweeps (not scaled down for
+larger k) per explicit direction: let it OOM if it OOMs, since that's a
+real data point about the largest k this architecture/GPU actually
+supports, not something to avoid by guessing a smaller batch size upfront.
+
+```bash
+sbatch scripts/sweep_marginalized_binary_duration_variance_n25_large_k.sh
+```
+
+**k=256 caveat:** at `batch_size=32`, k=256 reliably OOMs immediately on
+the first forward pass (`PerDocCrossAttentionFusion` expands the batch to
+`B*K` internally, so memory scales ~linearly with k) -- confirmed on an
+L40S (44.4GiB total, ~44.25GiB in use at the crash, all 10/10 k=256 jobs
+failed in under a minute). Dropped in favor of k in {32, 64, 128}, which
+stays under that ceiling at the same batch size. k=256 can be revisited
+later with a reduced batch size if needed.
+
+**Status:** all 30 runs (k=32, k=64, k=128) finished. k=128 took ~13.5-14h
+per run (vs. k=64's ~7-7.5h) -- each epoch's runtime scales roughly with k,
+since the fusion module's effective batch size is `B*K`.
+
+### Results: k=32 vs. patient_only and k=4
+
+| Duration | Draw | patient_only | marginalized k=4 | marginalized k=32 | Δ k=32 vs. patient_only | Δ k=32 vs. k=4 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 7d | 1 | 0.9716 | 0.9511 | [0.9563](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/xwi389rg) | -0.0153 | +0.0052 |
+| 7d | 2 | 0.9923 | 0.9899 | [0.9822](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/4od4ifzs) | -0.0101 | -0.0077 |
+| 7d | 3 | 0.9849 | 0.9850 | [0.9838](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/f74nouh1) | -0.0011 | -0.0012 |
+| 7d | 4 | 0.9861 | 0.9863 | [0.9864](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/as804mub) | +0.0003 | +0.0001 |
+| 7d | 5 | 0.7867 | 0.7816 | [0.7251](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/grzz8vfl) | -0.0616 | -0.0565 |
+| 30d | 1 | 0.9317 | 0.9057 | [0.8883](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/ak0513mr) | -0.0434 | -0.0174 |
+| 30d | 2 | 0.9666 | 0.9528 | [0.9595](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/8angtw06) | -0.0071 | +0.0067 |
+| 30d | 3 | 0.9054 | 0.9007 | [0.8693](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/obm7eegn) | -0.0361 | -0.0314 |
+| 30d | 4 | 0.9831 | 0.9880 | [0.9822](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/a2gg8zx0) | -0.0009 | -0.0058 |
+| 30d | 5 | 0.9277 | 0.9363 | [0.9572](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/8xlyu1z8) | +0.0295 | +0.0209 |
+
+**Δ mean ± std across the 5 draws (k=32 vs. patient_only):**
+
+| Duration | mean Δ | std Δ |
+| --- | --- | --- |
+| 7d | -0.0176 | 0.0254 |
+| 30d | -0.0116 | 0.0293 |
+
+**So far:** k=32 doesn't reverse the pattern from k=4 -- still no
+consistent benefit from retrieval over `patient_only` (mean Δ negative at
+both durations, std larger than the mean effect). If anything, k=32 looks
+slightly *worse* on average than k=4 at 7d (draw 5 in particular drops
+sharply, 0.7816 -> 0.7251), though the small sample (5 draws) makes this
+weak evidence rather than a clear trend -- k=64/128 results below should
+clarify whether this is noise or a real degradation from attending to more
+(likely less relevant) retrieved documents.
+
+### Results: k=64 vs. patient_only and k=4
+
+| Duration | Draw | patient_only | marginalized k=4 | marginalized k=64 | Δ k=64 vs. patient_only |
+| --- | --- | --- | --- | --- | --- |
+| 7d | 1 | 0.9716 | 0.9511 | [0.9496](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/frujicz8) | -0.0220 |
+| 7d | 2 | 0.9923 | 0.9899 | [0.9882](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/65bbbbux) | -0.0041 |
+| 7d | 3 | 0.9849 | 0.9850 | [0.9886](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/9p3khpl8) | +0.0037 |
+| 7d | 4 | 0.9861 | 0.9863 | [0.9720](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/3pmeukdm) | -0.0141 |
+| 7d | 5 | 0.7867 | 0.7816 | [0.8028](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/6aex40o1) | +0.0161 |
+| 30d | 1 | 0.9317 | 0.9057 | [0.9085](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/5lw3wzxi) | -0.0232 |
+| 30d | 2 | 0.9666 | 0.9528 | [0.9227](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/zou34lwq) | -0.0439 |
+| 30d | 3 | 0.9054 | 0.9007 | [0.8785](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/9aw8z8ds) | -0.0269 |
+| 30d | 4 | 0.9831 | 0.9880 | [0.9774](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/iryanard) | -0.0057 |
+| 30d | 5 | 0.9277 | 0.9363 | [0.9470](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/cydbf1ju) | +0.0193 |
+
+**Δ mean ± std across the 5 draws (k=64 vs. patient_only):**
+
+| Duration | mean Δ | std Δ |
+| --- | --- | --- |
+| 7d | -0.0041 | 0.0149 |
+| 30d | -0.0161 | 0.0240 |
+
+**So far:** same story as k=4 and k=32 -- no consistent AUROC benefit from
+retrieval, mean Δ is negative (or ~0) at both durations with std
+comfortably larger than the mean effect. k=64's 7d mean Δ (-0.004) is
+closer to zero than k=32's (-0.018) -- see the final k=128 results and
+overall summary below for whether a trend across k actually holds up.
+
+### Results: k=128 vs. patient_only and k=4
+
+| Duration | Draw | patient_only | marginalized k=4 | marginalized k=128 | Δ k=128 vs. patient_only |
+| --- | --- | --- | --- | --- | --- |
+| 7d | 1 | 0.9716 | 0.9511 | [0.9486](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/cjlymdh1) | -0.0230 |
+| 7d | 2 | 0.9923 | 0.9899 | [0.9899](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/430fx3b7) | -0.0024 |
+| 7d | 3 | 0.9849 | 0.9850 | [0.9837](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/49fol7aq) | -0.0012 |
+| 7d | 4 | 0.9861 | 0.9863 | [0.9722](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/znnf1s4i) | -0.0139 |
+| 7d | 5 | 0.7867 | 0.7816 | [0.8002](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/p9dit375) | +0.0135 |
+| 30d | 1 | 0.9317 | 0.9057 | [0.9047](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/1ftna39c) | -0.0270 |
+| 30d | 2 | 0.9666 | 0.9528 | [0.9223](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/8hczalnc) | -0.0443 |
+| 30d | 3 | 0.9054 | 0.9007 | [0.8471](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/r45vhdj8) | -0.0583 |
+| 30d | 4 | 0.9831 | 0.9880 | [0.9825](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/zx6nmdpq) | -0.0006 |
+| 30d | 5 | 0.9277 | 0.9363 | [0.9584](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/vzm04lrf) | +0.0307 |
+
+**Δ mean ± std across the 5 draws (k=128 vs. patient_only):**
+
+| Duration | mean Δ | std Δ |
+| --- | --- | --- |
+| 7d | -0.0054 | 0.0138 |
+| 30d | -0.0199 | 0.0355 |
+
+## Summary across k ∈ {4, 32, 64, 128}
+
+**Δ mean (marginalized − patient_only) across the 5 draws, by k and duration:**
+
+| k | 7d mean Δ | 30d mean Δ |
+| --- | --- | --- |
+| 4 | -0.0055 | -0.0062 |
+| 32 | -0.0176 | -0.0116 |
+| 64 | -0.0041 | -0.0161 |
+| 128 | -0.0054 | -0.0199 |
+
+**Raw AUROC mean ± std across the 5 random task draws** (not the Δ -- the
+absolute per-architecture AUROC variance driven purely by which 25 tasks
+got sampled into a given draw):
+
+| Architecture | 7d mean ± std (min-max) | 30d mean ± std (min-max) |
+| --- | --- | --- |
+| `patient_only` | 0.9443 ± 0.0884 (0.7867-0.9923) | 0.9429 ± 0.0314 (0.9054-0.9831) |
+| `marginalized` k=4 | 0.9388 ± 0.0893 (0.7816-0.9899) | 0.9367 ± 0.0359 (0.9007-0.9880) |
+| `marginalized` k=32 | 0.9268 ± 0.1134 (0.7251-0.9864) | 0.9313 ± 0.0494 (0.8693-0.9822) |
+| `marginalized` k=64 | 0.9402 ± 0.0785 (0.8028-0.9886) | 0.9268 ± 0.0376 (0.8785-0.9774) |
+| `marginalized` k=128 | 0.9389 ± 0.0791 (0.8002-0.9899) | 0.9230 ± 0.0522 (0.8471-0.9825) |
+
+This is the more important variance number for planning future N=25 runs:
+**which 25 random tasks you happen to draw swings absolute AUROC far more
+than the choice of architecture or k does.** At 7d, std across draws
+(0.079-0.113) is roughly 15-20x the architecture-vs-patient_only Δ std
+seen per k (0.009-0.025 in the sections above); at 30d it's smaller in
+absolute terms (0.031-0.052) but still several times the Δ std. Draw 5 at
+7d (patient_only=0.7867) and draw 4 at 30d in the epoch5 study are the
+extreme low points pulling these numbers around -- with only 5 draws, a
+single hard draw dominates the spread. This is the main argument for why
+any single-draw comparison (the very first "Results" table earlier in this
+README, before the variance study existed) should not be over-interpreted,
+and why more draws (not just more k or more epochs) would be the highest-
+value next experiment if tighter confidence intervals are wanted.
+
+**Takeaway:** no k in {4, 32, 64, 128} produces a consistent AUROC
+improvement from retrieval over `patient_only` -- every mean Δ is negative
+(or ~0), and every std (0.014-0.036, not shown per-k above but see each
+section) is comparable to or larger than the mean effect, so within a
+given k the win/loss is noise-dominated. Across k, the picture differs by
+duration: at **7d**, Δ bounces around a small negative band (-0.0041 to
+-0.0176) with no clear direction as k grows -- k=32 is the worst point,
+k=64 the closest to zero, k=128 back down near k=4's level. At **30d**,
+Δ gets **monotonically more negative as k increases** (-0.0062 → -0.0116 →
+-0.0161 → -0.0199 from k=4 to k=128) -- a real, if modest, trend suggesting
+that attending to more retrieved documents doesn't help and may mildly
+hurt on the longer occurrence window, though the std at each k (0.014-0.036)
+is still large enough that this shouldn't be overclaimed from 5 draws.
+Combined with the [5-epoch results](#5-epoch-variant-sweep_patient_only_duration_variance_n25_epoch5sh--sweep_marginalized_binary_duration_variance_n25_epoch5sh)
+(more training also doesn't help), the overall picture across this whole
+round of experiments is that neither training longer nor retrieving more
+documents rescues `marginalized(binary)` retrieval's lack of benefit over
+`patient_only` at N=25 on random MIMIC-IV task labels.
+
 ## Variance study: patient_only vs. marginalized(binary) across repeated random task draws (`generate_labels_variance_n1248.sh` + `sweep_patient_only_variance_n1248.sh` + `sweep_marginalized_binary_variance_n1248.sh`)
 
 **Note:** the smaller-scope [duration x variance study](#duration-x-variance-study-n25-patient_only-vs-marginalized-binary-at-7-day-and-30-day-durations-5-random-draws-each)
