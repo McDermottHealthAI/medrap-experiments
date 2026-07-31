@@ -89,6 +89,21 @@ medrap-preprocess \
     do_overwrite=true \
     "$@"
 
+# Gate the labels we just wrote. This is a CHECK, not a filter: it fails the
+# run, it never drops the offending tasks and reports the rest. Under
+# `set -euo pipefail` a non-zero exit here aborts the job -- which is the
+# point: a broken label config costs a few CPU-minutes here instead of hours
+# of GPU time in the sweep that reads these labels. Per-draw, so one bad draw
+# fails its own array task and leaves the other four alone.
+#
+# --min-positives 1 means "fail only on single-class tasks", where AUROC is
+# undefined. The floor is deliberately that low because these labels use the
+# default anchor_strategy=uniform_lifetime, whose median task lands ~2
+# positives per split; a real floor (say 100) would fail every draw in this
+# array. For labels that can carry a real floor, see
+# scripts/generate_labels_anchored_n1248.sh.
+python scripts/check_task_balance.py "${OUTPUT_DIR}/tasks" --min-positives 1 --quiet
+
 echo ""
 echo "=== Done: $(date) ==="
 echo "Labels saved to ${OUTPUT_DIR}/tasks"

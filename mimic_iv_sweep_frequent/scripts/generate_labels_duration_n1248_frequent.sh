@@ -97,6 +97,26 @@ medrap-preprocess \
     do_overwrite=true \
     "$@"
 
+# Gate the labels we just wrote. This is a CHECK, not a filter: it fails the
+# run, it never drops the offending tasks and reports the rest. Under
+# `set -euo pipefail` a non-zero exit here aborts the job -- which is the
+# point: a broken label config costs a few CPU-minutes here instead of hours
+# of GPU time in the sweep that reads these labels. This directory's pin
+# (MedRAP@164c2ef) has no degenerate-code rejection at all -- MedRAP#89
+# removed positive-rate/count filtering and #98 had not landed -- so
+# generate_tasks keeps whatever it draws and this gate is the only check.
+# A short log-uniform duration on top of that only makes single-class more
+# likely.
+#
+# --min-positives 1 means "fail only on single-class tasks", where AUROC is
+# undefined. The floor is deliberately that low because the anchor is still
+# drawn uniformly over the subject's (birth-anchored) lifetime, which leaves
+# the median task at ~2 positives per split; a real floor (say 100) would
+# fail every N in this array. Raising it needs anchor_strategy=uniform_event,
+# which this directory's pin predates -- see
+# ../mimic_iv_sweep/scripts/generate_labels_anchored_n1248.sh.
+python scripts/check_task_balance.py "${OUTPUT_DIR}/tasks" --min-positives 1 --quiet
+
 echo ""
 echo "=== Done: $(date) ==="
 echo "Labels saved to ${OUTPUT_DIR}/tasks"

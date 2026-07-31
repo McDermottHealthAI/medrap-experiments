@@ -91,6 +91,26 @@ medrap-preprocess \
     do_overwrite=true \
     "$@"
 
+# Gate the labels we just wrote. This is a CHECK, not a filter: it fails the
+# run, it never drops the offending tasks and reports the rest. Under
+# `set -euo pipefail` a non-zero exit here aborts the job -- which is the
+# point: a broken label config costs a few CPU-minutes here instead of hours
+# of GPU time in the sweep that reads these labels. Per duration x draw, so
+# one bad cell fails its own array task and leaves the other nine alone.
+#
+# --min-positives 1 means "fail only on single-class tasks", where AUROC is
+# undefined. The floor is deliberately that low because these labels use the
+# default anchor_strategy=uniform_lifetime, whose median task lands ~2
+# positives per split; a real floor (say 100) would fail every cell in this
+# array. For labels that can carry a real floor, see
+# scripts/generate_labels_anchored_n1248.sh.
+#
+# This config is duration_distribution="fixed", so MedRAP#98's degenerate-code
+# rejection already redraws single-class codes upstream: a FAIL here means
+# that rejection did not do its job (most likely a splits mismatch, or labels
+# built by a pin other than pyproject.toml's), not merely an unlucky draw.
+python scripts/check_task_balance.py "${OUTPUT_DIR}/tasks" --min-positives 1 --quiet
+
 echo ""
 echo "=== Done: $(date) ==="
 echo "Labels saved to ${OUTPUT_DIR}/tasks"
