@@ -1,0 +1,7 @@
+[project]
+name = "mimic-iv-ablation-ladder"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "medrap @ git+file:///groups/mm6677_gp/zzw2102/MedRAP@878c03818bb7aaedbd0a673d2586bf91ac1c9f1d",
+]

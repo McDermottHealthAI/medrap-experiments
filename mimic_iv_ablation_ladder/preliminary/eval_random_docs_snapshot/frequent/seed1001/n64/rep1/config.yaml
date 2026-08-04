@@ -1,0 +1,123 @@
+encoder:
+  _target_: medrap.model.encoders.TimeDeltaRoPEPatientEncoder
+  vocab_size: 65536
+  embedding_dim: 128
+  num_heads: 4
+  num_layers: 2
+  ff_dim: 256
+  dropout: 0.0
+query_projector:
+  _target_: medrap.model.query_projection.SequenceMeanQueryProjector
+  in_dim: 128
+  out_dim: 1024
+retriever:
+  _target_: medrap.model.retrievers.load_hf_dataset_retriever
+  dataset_path: /groups/mm6677_gp/zzw2102/medrap-experiments/mimic_iv_ablation_ladder/data/retrieval_db
+  index_name: retrieval
+  index_path: ${.dataset_path}/${.index_name}.faiss
+  doc_tokens_column: doc_tokens
+  doc_attention_mask_column: doc_attention_mask
+  doc_ids_column: null
+  doc_key_embeddings_column: doc_key_embeddings
+  k: 4
+  device: null
+  ablation_mode: random_docs
+  cache_payloads: false
+  payload_cache_device: null
+retrieval_encoder:
+  _target_: medrap.model.retrieval_encoder.TokenFeatureRetrievalEncoder
+  vocab_size: 151936
+  embedding_dim: 64
+fusion:
+  _target_: medrap.model.fusion.PerDocCrossAttentionFusion
+  d_model: 256
+  num_heads: 8
+  ff_dim: 512
+  num_layers: 2
+  d_in_patient: ${encoder.embedding_dim}
+  d_in_doc: ${retrieval_encoder.embedding_dim}
+  dropout: 0.1
+pooling:
+  _target_: medrap.model.pooling.MaskedMeanPooling
+head:
+  _target_: medrap.model.heads.LinearHead
+  in_dim: 256
+  out_dim: 64
+training:
+  module:
+    _target_: medrap.train.lightning_module.MedRAPSupervisedLightningModule
+    lr: 0.001
+    weight_decay: 0.01
+    warmup_steps: 0
+    diagnostics_every_n_steps: 50
+    validation_auroc: true
+    validation_auroc_log_per_task: true
+  task:
+    _target_: medrap.train.task.MultiTaskBinaryClassificationTask
+    num_tasks: 64
+  loss:
+    _target_: medrap.train.losses.MultiTaskBCEMarginalizedLoss
+    num_tasks: 64
+  datamodule:
+    _target_: medrap.train.multitask_datamodule.MultiTaskMEDSDatamodule
+    config:
+      _target_: meds_torchdata.MEDSTorchDataConfig
+      tensorized_cohort_dir: /groups/mm6677_gp/data/MIMIC_MEDS/MEDS_cohort/processed
+      max_seq_len: 256
+      task_labels_dir: /groups/mm6677_gp/zzw2102/medrap-experiments/mimic_iv_ablation_ladder/data/tasks_frequent/n64/tasks
+      seq_sampling_strategy: to_end
+    mt_labels_dir: /groups/mm6677_gp/zzw2102/medrap-experiments/mimic_iv_ablation_ladder/data/tasks_frequent/n64/tasks
+    num_tasks: 64
+    batch_size: 32
+    num_workers: null
+    pin_memory: null
+  trainer:
+    _target_: lightning.Trainer
+    default_root_dir: ${output_dir}
+    max_epochs: 10
+    accelerator: gpu
+    devices: 1
+    logger:
+    - _target_: lightning.pytorch.loggers.csv_logs.CSVLogger
+      save_dir: ${default_root_dir}/loggers
+      name: csv
+    - _target_: lightning.pytorch.loggers.WandbLogger
+      project: ${wandb_project}
+      name: ${wandb_run_name}
+      save_dir: ${default_root_dir}/loggers
+    callbacks:
+    - _target_: lightning.pytorch.callbacks.ModelCheckpoint
+      dirpath: ${default_root_dir}/checkpoints
+      filename: epoch={epoch}-step={step}
+      monitor: val/loss
+      mode: min
+      save_last: true
+      auto_insert_metric_name: false
+    - _target_: medrap.train.callbacks.ProgressCheckpointCallback
+      dirpath: ${default_root_dir}/checkpoints
+      fractions:
+      - 0.1
+      - 0.5
+      - 0.9
+    - _target_: medrap.train.callbacks.GradientNormCallback
+      every_n_steps: 50
+    - _target_: lightning.pytorch.callbacks.LearningRateMonitor
+      logging_interval: step
+    gradient_clip_val: 1.0
+    gradient_clip_algorithm: norm
+    enable_checkpointing: true
+    enable_model_summary: false
+    enable_progress_bar: false
+    log_every_n_steps: 10
+    check_val_every_n_epoch: 1
+    val_check_interval: 0.2
+    limit_val_batches: 200
+output_dir: /groups/mm6677_gp/zzw2102/medrap-experiments/mimic_iv_ablation_ladder/outputs/eval_random_docs/frequent/seed1001/n64/rep1
+checkpoint_path: /groups/mm6677_gp/zzw2102/medrap-experiments/mimic_iv_ablation_ladder/outputs/marginalized_binary_ladder/frequent/seed1001/n64/checkpoints/last.ckpt
+eval_mode: test
+do_overwrite: true
+marginalized_retrieval: true
+marginalized_score_similarity: cosine
+marginalized_output_mode: binary
+wandb_project: medrap
+wandb_run_name: eval-random-docs-frequent-seed1001-n64-rep1-9164360_138
