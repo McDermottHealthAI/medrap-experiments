@@ -677,6 +677,97 @@ both durations, while draws 3-5 are close to a wash or a small win). No
 systematic retrieval benefit emerges at N=25 with this architecture/epoch
 budget, at either horizon length.
 
+## Anchor-sampling fix rerun (`generate_labels_duration_variance_n25.sh` + `sweep_patient_only_duration_variance_n25.sh` + `sweep_marginalized_binary_duration_variance_n25.sh`, MedRAP#99)
+
+Advisor feedback: the original anchor-sampling logic (`_sample_prediction_anchors`)
+drew the prediction-time anchor **uniformly from continuous calendar time**
+within `[first_event+min_history_days, last_event-horizon_days]`. Clinical
+data is bursty -- dense during an encounter, then long silent gaps between
+visits -- so a continuous draw frequently landed in one of those gaps: a
+timestamp where nothing was recorded, not a real clinical moment to predict
+from. [MedRAP#99](https://github.com/McDermottHealthAI/MedRAP/pull/99) fixes
+this by porting the core idea from
+[EveryQuery](https://github.com/payalchandak/EveryQuery)'s
+`build_prediction_times`: the anchor is now drawn as a **uniform random
+index over the subject's own real event timestamps** within that same
+window, instead of a continuous offset -- guaranteeing every anchor
+coincides with an actual observation. Same `min_history_days`/`horizon_days`
+config surface, same function signature -- only what's sampled from within
+the window changed.
+
+This reruns the exact same duration x variance study above (N=25, k=4,
+3 epochs, 5 draws, 7d/30d) with the fixed anchor sampling, on the *same*
+seeds/draws, so old vs. new is an apples-to-apples comparison of the anchor
+mechanism alone.
+
+```bash
+sbatch scripts/generate_labels_duration_variance_n25.sh   # relabel with the fixed anchor sampling
+sbatch scripts/sweep_patient_only_duration_variance_n25.sh
+sbatch scripts/sweep_marginalized_binary_duration_variance_n25.sh
+```
+
+All 10 relabeled sets confirmed 100% valid (no degenerate tasks) via
+`check_task_balance.py`; all 20 training runs finished cleanly.
+
+### Results: old (continuous-time) vs. new (real-event) anchors
+
+| Duration | Draw | patient_only old | patient_only new | marginalized old | marginalized new |
+| --- | --- | --- | --- | --- | --- |
+| 7d | 1 | 0.9716 | [0.9023](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/834gfe16) | 0.9511 | [0.9033](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/mav9ruay) |
+| 7d | 2 | 0.9923 | [0.9176](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/3rv35c08) | 0.9899 | [0.9131](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/e2nsb4oa) |
+| 7d | 3 | 0.9849 | [0.8958](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/to3plbt9) | 0.9850 | [0.8891](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/cft7ey7q) |
+| 7d | 4 | 0.9861 | [0.8145](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/dwaxl3mo) | 0.9863 | [0.8049](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/7j8mlxqr) |
+| 7d | 5 | 0.7867 | [0.8563](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/vw6i91ss) | 0.7816 | [0.8637](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/0ea83wxa) |
+| 30d | 1 | 0.9317 | [0.8741](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/2c1r7wqv) | 0.9057 | [0.8739](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/fs9c7ge7) |
+| 30d | 2 | 0.9666 | [0.9091](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/w6sa33zf) | 0.9528 | [0.9026](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/v61q9hbg) |
+| 30d | 3 | 0.9054 | [0.8678](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/era18qcy) | 0.9007 | [0.8629](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/d8h23u95) |
+| 30d | 4 | 0.9831 | [0.9117](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/aizud74k) | 0.9880 | [0.9094](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/kyismvfr) |
+| 30d | 5 | 0.9277 | [0.9118](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/cdjd4prh) | 0.9363 | [0.9079](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/vpjgpdwx) |
+
+**Summary statistics, old vs. new:**
+
+| Duration | Metric | Old (continuous) | New (real-event) |
+| --- | --- | --- | --- |
+| 7d | patient_only mean AUROC | 0.9443 | 0.8773 |
+| 7d | patient_only std across draws | 0.0884 | 0.0418 |
+| 7d | marginalized mean AUROC | 0.9388 | 0.8748 |
+| 7d | marginalized std across draws | 0.0893 | 0.0433 |
+| 7d | Δ (marginalized − patient_only) mean | -0.0055 | -0.0025 |
+| 7d | Δ std | 0.0086 | 0.0068 |
+| 30d | patient_only mean AUROC | 0.9429 | 0.8949 |
+| 30d | patient_only std across draws | 0.0314 | 0.0220 |
+| 30d | marginalized mean AUROC | 0.9367 | 0.8913 |
+| 30d | marginalized std across draws | 0.0359 | 0.0214 |
+| 30d | Δ (marginalized − patient_only) mean | -0.0062 | -0.0036 |
+| 30d | Δ std | 0.0141 | 0.0024 |
+
+**Takeaway:** two clear effects from the anchor fix, both in the direction
+expected from a genuine bug fix rather than a regression:
+
+1. **Absolute AUROC dropped for both architectures roughly equally**
+   (patient_only: -0.067 at 7d, -0.048 at 30d; marginalized: -0.064 at 7d,
+   -0.045 at 30d). This is expected, not concerning: continuous-time anchors
+   could land in a "dead" gap where the task was structurally easier (little
+   real signal to confuse the model, or accidental leakage-like artifacts
+   from an anchor's relationship to nearby recorded events); real-event
+   anchors put every prediction at a genuine clinical decision point, which
+   is intrinsically harder -- a more honest difficulty level, not a broken
+   model.
+2. **Draw-to-draw variance shrank substantially** -- patient_only's std
+   across the 5 draws roughly halved at 7d (0.088 → 0.042) and dropped by
+   ~30% at 30d (0.031 → 0.022); marginalized shows the same pattern. Fixing
+   the "sometimes the anchor is meaningless" problem makes results far more
+   reproducible draw-to-draw, which directly addresses the [earlier finding](#summary-across-k--4-32-64-128)
+   that draw-to-draw variance was the dominant source of noise in this whole
+   study.
+
+**The core finding is unchanged**: `marginalized(binary)` still shows no
+consistent AUROC benefit over `patient_only` -- the architecture Δ stays
+small and slightly negative at both durations (7d: -0.0055 → -0.0025; 30d:
+-0.0062 → -0.0036), well within noise either way. The anchor fix makes the
+underlying task harder and the measurements more stable, but does not
+change the substantive conclusion about retrieval.
+
 ## 5-epoch variant (`sweep_patient_only_duration_variance_n25_epoch5.sh` + `sweep_marginalized_binary_duration_variance_n25_epoch5.sh`)
 
 Same N=25, 5-draw, 7d/30d labels/architecture as above (k=4), but
