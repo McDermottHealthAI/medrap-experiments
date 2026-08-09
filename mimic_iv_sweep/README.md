@@ -863,6 +863,113 @@ All 10 relabeled sets confirmed 100% valid (no degenerate tasks) via
    tokens from the anchor pool is a real, if modest, improvement to anchor
    quality; it does not change the substantive conclusion about retrieval.
 
+## Aligning the query space to the doc space: Qwen3TextQueryProjector (MedRAP#101) (`sweep_marginalized_binary_qwen3_text_query_n25_{7,30}d.sh`)
+
+Every retrieval result so far -- across k ∈ {4, 32, 64, 128}, 5-epoch
+training, and both anchor-sampling fixes above -- shows the same thing:
+`marginalized(binary)` never beats `patient_only` by more than noise. The
+[top1-vs-random1 inference-style eval](#inference-style-evaluation-top-1-doc-vs-random-1-doc-eval_inference_style_n1248sh--eval_inference_style_duration_variance_n25sh--eval_inference_style_duration_variance_n25_large_ksh--eval_inference_style_duration_variance_n25_epoch5sh)
+explains why at the mechanism level: across every N=25 multi-draw family,
+the model's *actual best-retrieved document* performs statistically
+indistinguishably from a *uniform-random corpus document* (Δ = +0.010,
+std = 0.064, 59% win rate -- a coin flip). The model cannot tell its best
+retrieved doc from a random one.
+
+Root cause: the retrieval corpus (`MedRAG/textbooks`, generic medical
+textbook chunks) is embedded with a frozen `Qwen3-Embedding-0.6B` model,
+but the query side (`SequenceMeanQueryProjector`, a randomly-initialized
+128→1024 linear layer) has no mechanism to align to that space. FAISS
+nearest-neighbor search is non-differentiable, so the downstream task loss
+can only reweight *among already-retrieved* documents -- it can never teach
+the projector to find better ones in the first place. The query space and
+the (fixed, pretrained) document space have no reason to share any
+geometric structure, so nearest-neighbor search returns near-arbitrary
+chunks throughout training.
+
+`Qwen3TextQueryProjector` ([MedRAP#101](https://github.com/McDermottHealthAI/MedRAP/pull/101))
+fixes this directly: instead of a learned projection, it renders each
+patient's recent event codes as text (via the tensorized cohort's
+`metadata/codes.parquet` code→description lookup) and embeds that text with
+the *same* frozen Qwen3-Embedding-0.6B model used to build the doc corpus.
+Query and document embeddings land in the same space by construction --
+no learned alignment step, and nothing left for the query encoder to
+"discover."
+
+This reruns the same N=25/5-draw/7d+30d `marginalized(binary)` sweep as the
+Zach anchor-refinement study above (same labels, same seeds), swapping only
+`query_projector=qwen3_text` in place of `query_projector=sequence_mean_1024`.
+`patient_only` doesn't use a query projector at all (`fusion=passthrough`),
+so its results are unaffected and reused as-is from that study.
+
+```bash
+sbatch scripts/sweep_marginalized_binary_qwen3_text_query_n25_7d.sh
+sbatch scripts/sweep_marginalized_binary_qwen3_text_query_n25_30d.sh
+```
+
+All 10 training runs (5 draws x 2 durations) finished cleanly.
+
+### Results: patient_only vs. old (learned linear) vs. new (Qwen3-aligned) query projector
+
+| Duration | Draw | patient_only | marginalized, old projector | marginalized, Qwen3TextQueryProjector |
+| --- | --- | --- | --- | --- |
+| 7d | 1 | 0.8609 | 0.8504 | [0.8528](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/9d2ggd13) |
+| 7d | 2 | 0.8893 | 0.8875 | [0.8869](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/3ajzg6va) |
+| 7d | 3 | 0.9219 | 0.8932 | [0.9097](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/oh694ktz) |
+| 7d | 4 | 0.9371 | 0.9304 | [0.9275](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/ews5a1ij) |
+| 7d | 5 | 0.8894 | 0.8726 | [0.8911](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/ckbhwxcv) |
+| 30d | 1 | 0.8923 | 0.9050 | [0.9030](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/4697oi9a) |
+| 30d | 2 | 0.9095 | 0.8807 | [0.8936](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/vgj0n56v) |
+| 30d | 3 | 0.9030 | 0.8937 | [0.8989](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/ic0sgdx4) |
+| 30d | 4 | 0.9446 | 0.9434 | [0.9466](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/6v0ytkwh) |
+| 30d | 5 | 0.8691 | 0.8543 | [0.8698](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/vjle52il) |
+
+**Summary statistics:**
+
+| Duration | Metric | patient_only | old projector | Qwen3TextQueryProjector |
+| --- | --- | --- | --- | --- |
+| 7d | mean AUROC | 0.8997 | 0.8868 | 0.8936 |
+| 7d | std across draws | 0.0300 | 0.0294 | 0.0279 |
+| 30d | mean AUROC | 0.9037 | 0.8954 | 0.9024 |
+| 30d | std across draws | 0.0275 | 0.0328 | 0.0278 |
+
+**Architecture Δ (marginalized − patient_only), old vs. new projector:**
+
+| Duration | Δ, old projector | Δ, Qwen3TextQueryProjector | draws won, old | draws won, new |
+| --- | --- | --- | --- | --- |
+| 7d | -0.0129 ± 0.0104 | **-0.0061 ± 0.0057** | 0/5 | 1/5 |
+| 30d | -0.0083 ± 0.0155 | **-0.0013 ± 0.0097** | 1/5 | 3/5 |
+
+**Takeaway:** aligning the query space to the doc space is a real, if
+partial, improvement:
+
+1. **The gap to `patient_only` roughly halves at both durations** (7d Δ:
+   -0.0129 → -0.0061; 30d Δ: -0.0083 → -0.0013) and shrinks further in
+   relative terms once you account for draw-to-draw std -- at 30d the new
+   Δ (-0.0013) is now smaller than its own std (0.0097), i.e.
+   indistinguishable from *zero*, not just closer to zero. At 30d,
+   `marginalized` now wins outright on 3 of 5 draws, up from 1 of 5 under
+   the old projector.
+2. **7d still lags 30d.** The new projector's 7d Δ (-0.0061) is still
+   negative, and `marginalized` only wins 1/5 draws there. This is
+   consistent with the [top1-vs-random1 finding](#inference-style-evaluation-top-1-doc-vs-random-1-doc-eval_inference_style_n1248sh--eval_inference_style_duration_variance_n25sh--eval_inference_style_duration_variance_n25_large_ksh--eval_inference_style_duration_variance_n25_epoch5sh)
+   that TIMELINE-token density (and thus how much of the anchor pool is
+   "real" clinical signal vs. structural noise) differs by window length --
+   a shorter window gives the model less to work with regardless of
+   retrieval quality.
+3. **Retrieval still doesn't consistently beat `patient_only`.** Fixing
+   query-space alignment was necessary -- the model can now, at minimum,
+   ask a geometrically meaningful nearest-neighbor question of the corpus --
+   but it isn't sufficient to flip the sign of the effect. The most likely
+   remaining bottleneck, per the root-cause analysis above, is the corpus
+   itself: `MedRAG/textbooks` is generic medical domain knowledge, not
+   patient-specific or even task-specific content. Even a perfectly
+   calibrated query can only retrieve the closest textbook passage to "this
+   patient's recent history" -- there's no guarantee that passage says
+   anything about *this patient's specific future*. The next highest-value
+   experiment is probably swapping the corpus itself (e.g. an
+   episodic/similar-patient retrieval index) rather than further tuning the
+   query encoder.
+
 ## 5-epoch variant (`sweep_patient_only_duration_variance_n25_epoch5.sh` + `sweep_marginalized_binary_duration_variance_n25_epoch5.sh`)
 
 Same N=25, 5-draw, 7d/30d labels/architecture as above (k=4), but
