@@ -768,6 +768,101 @@ small and slightly negative at both durations (7d: -0.0055 → -0.0025; 30d:
 underlying task harder and the measurements more stable, but does not
 change the substantive conclusion about retrieval.
 
+## Zach's anchor refinement (MedRAP#100): excluding TIMELINE tokens from anchor candidates (`generate_labels_zach_uniform_event_n25_{7,30}d.sh` + `sweep_patient_only_zach_uniform_event_n25_{7,30}d.sh` + `sweep_marginalized_binary_zach_uniform_event_n25_{7,30}d.sh`)
+
+Teammate Zach opened [MedRAP#100](https://github.com/McDermottHealthAI/MedRAP/pull/100)
+with a design that overlaps with #99 above (also draws anchors from real
+event timestamps rather than continuous calendar time) but adds one thing
+#99 was missing: a `_clinical_events()` filter that excludes `TIMELINE//`
+boundary-marker tokens (and `meds.birth_code`) from the **anchor candidate
+pool itself**, not just from task-code eligibility. #99's anchor sampling
+could still land exactly on a synthetic `TIMELINE//` timestamp -- a
+structural marker, not something a clinician actually observed -- which
+partially undermines the "anchor at a real clinical moment" guarantee. #100
+was opened against a stale `main` (pre-#99) and doesn't carry
+`code_selection`/`duration_distribution`/degenerate-code rejection (#98) or
+the eval config (#95/#97), so this experiment integrates Zach's
+`_clinical_events()` idea into the current stack as an `anchor_strategy`
+switch (`"uniform_event"`, now the new default, vs. `"uniform_lifetime"` to
+recover the pre-#99 behavior) rather than running #100 as-is --
+see `MedRAP@experiment/zach-uniform-event-plus-stack`.
+
+This reruns the same N=25/5-draw/7d+30d study as the "Anchor-sampling fix
+rerun" above, same seeds (101/202/303/404/505), with only the anchor
+candidate pool changed (#99's real-event anchors → Zach's TIMELINE-excluded
+real-event anchors) -- so "new" in the table below is #99 and "newer" is
+#100/Zach.
+
+```bash
+sbatch scripts/generate_labels_zach_uniform_event_n25_7d.sh
+sbatch scripts/generate_labels_zach_uniform_event_n25_30d.sh
+sbatch scripts/sweep_patient_only_zach_uniform_event_n25_7d.sh
+sbatch scripts/sweep_marginalized_binary_zach_uniform_event_n25_7d.sh
+sbatch scripts/sweep_patient_only_zach_uniform_event_n25_30d.sh
+sbatch scripts/sweep_marginalized_binary_zach_uniform_event_n25_30d.sh
+```
+
+All 10 relabeled sets confirmed 100% valid (no degenerate tasks) via
+`check_task_balance.py`; all 20 training runs finished cleanly.
+
+### Results: #99 (plain real-event) vs. #100/Zach (TIMELINE-excluded real-event) anchors
+
+| Duration | Draw | patient_only #99 | patient_only Zach | marginalized #99 | marginalized Zach |
+| --- | --- | --- | --- | --- | --- |
+| 7d | 1 | 0.9023 | [0.8609](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/8b0lbgtn) | 0.9033 | [0.8504](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/dhznne0g) |
+| 7d | 2 | 0.9176 | [0.8893](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/yvj45z05) | 0.9131 | [0.8875](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/f5qf9z7s) |
+| 7d | 3 | 0.8958 | [0.9219](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/uuzhmnqu) | 0.8891 | [0.8932](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/8zc3rt76) |
+| 7d | 4 | 0.8145 | [0.9371](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/95819r6h) | 0.8049 | [0.9304](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/wvrpg223) |
+| 7d | 5 | 0.8563 | [0.8894](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/3qp3172h) | 0.8637 | [0.8726](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/wly3t44v) |
+| 30d | 1 | 0.8741 | [0.8923](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/paagyvs5) | 0.8739 | [0.9050](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/zv6znbgy) |
+| 30d | 2 | 0.9091 | [0.9095](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/llsm3nrh) | 0.9026 | [0.8807](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/z0mkqk7x) |
+| 30d | 3 | 0.8678 | [0.9030](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/67lvzdwm) | 0.8629 | [0.8937](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/yf58w6k6) |
+| 30d | 4 | 0.9117 | [0.9446](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/s99xd227) | 0.9094 | [0.9434](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/s7wcvz6r) |
+| 30d | 5 | 0.9118 | [0.8691](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/zcmvtx1m) | 0.9079 | [0.8543](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/zlfwb75k) |
+
+**Summary statistics, #99 vs. #100/Zach:**
+
+| Duration | Metric | #99 (plain real-event) | #100/Zach (TIMELINE-excluded) |
+| --- | --- | --- | --- |
+| 7d | patient_only mean AUROC | 0.8773 | 0.8997 |
+| 7d | patient_only std across draws | 0.0418 | 0.0301 |
+| 7d | marginalized mean AUROC | 0.8748 | 0.8868 |
+| 7d | marginalized std across draws | 0.0433 | 0.0295 |
+| 7d | Δ (marginalized − patient_only) mean | -0.0025 | -0.0129 |
+| 7d | Δ std | 0.0068 | 0.0104 |
+| 30d | patient_only mean AUROC | 0.8949 | 0.9037 |
+| 30d | patient_only std across draws | 0.0220 | 0.0275 |
+| 30d | marginalized mean AUROC | 0.8913 | 0.8954 |
+| 30d | marginalized std across draws | 0.0214 | 0.0328 |
+| 30d | Δ (marginalized − patient_only) mean | -0.0036 | -0.0083 |
+| 30d | Δ std | 0.0024 | 0.0154 |
+
+**Takeaway:**
+
+1. **Zach's refinement modestly increases mean AUROC for both
+   architectures at both durations** (patient_only: +0.022 at 7d, +0.009 at
+   30d; marginalized: +0.012 at 7d, +0.004 at 30d). This is the expected
+   direction: excluding `TIMELINE//` boundary markers from the anchor pool
+   removes a small number of anchors that weren't real clinical moments,
+   nudging every prediction toward a genuine observation -- consistent with
+   #99's fix but slightly more complete.
+2. **Draw-to-draw variance shrinks at 7d but does not shrink at 30d** --
+   patient_only's std drops from 0.042 to 0.030 at 7d, but *increases*
+   slightly at 30d (0.022 → 0.028, and marginalized's 30d std nearly
+   doubles: 0.021 → 0.033, driven mostly by draw 5 dropping ~0.04 AUROC).
+   With only 5 draws this is plausibly noise rather than a real effect --
+   `TIMELINE//` tokens are a much smaller fraction of a 30-day window's
+   anchor candidates than of a 7-day window's, so the mechanical effect of
+   excluding them should be smaller at 30d, not larger. Worth another look
+   with more draws if this matters for a paper claim.
+3. **The core finding from #99 still holds**: `marginalized(binary)` shows
+   no consistent AUROC benefit over `patient_only` under Zach's refinement
+   either -- the architecture Δ stays small and negative at both durations
+   (7d: -0.0129, 30d: -0.0083), if anything slightly more negative than
+   under #99's anchors, but still well within noise. Excluding `TIMELINE//`
+   tokens from the anchor pool is a real, if modest, improvement to anchor
+   quality; it does not change the substantive conclusion about retrieval.
+
 ## 5-epoch variant (`sweep_patient_only_duration_variance_n25_epoch5.sh` + `sweep_marginalized_binary_duration_variance_n25_epoch5.sh`)
 
 Same N=25, 5-draw, 7d/30d labels/architecture as above (k=4), but
