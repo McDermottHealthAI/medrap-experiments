@@ -200,13 +200,6 @@ real and meaningful, not so mild it's within full-capacity noise.
 | 4 | 0.8805 | 0.9066 | +0.0260 | 0.9204 | +0.0399 |
 | 5 | 0.7904 | 0.8023 | +0.0119 | 0.8160 | +0.0256 |
 
-## Summary: starved Δ vs. full-capacity Δ, both variants
-
-| Query projector | Full-capacity Δ (mean ± std, draws won) | Starved Δ (mean ± std, draws won) |
-| --- | --- | --- |
-| learned-linear (`sequence_mean_1024`) | -0.0083 ± 0.0155, **1/5** (medrap-experiments#13) | **+0.0125 ± 0.0104, 5/5** |
-| `qwen3_text` (MedRAP#101) | -0.0013 ± 0.0097, **3/5** (medrap-experiments#14) | **+0.0248 ± 0.0119, 5/5** |
-
 ## Takeaway
 
 **Both query-projector variants flip from a small, inconsistent loss at
