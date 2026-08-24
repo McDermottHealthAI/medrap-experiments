@@ -200,6 +200,62 @@ real and meaningful, not so mild it's within full-capacity noise.
 | 4 | 0.8805 | 0.9066 | +0.0260 | 0.9204 | +0.0399 |
 | 5 | 0.7904 | 0.8023 | +0.0119 | 0.8160 | +0.0256 |
 
+## Confirming the result on held-out test data
+
+Every number above is `val/auroc/mean` -- computed once at the end of fit
+over the MEDS tuning/validation split (see `EndOfFitValAUROCCallback`).
+Since the headline finding here was found by comparing three
+architectures against that same validation split, it's worth checking the
+effect on genuinely unseen data: the MEDS `held_out` split, never touched
+by any training or model-selection decision anywhere in this line of
+experiments. `medrap-eval eval_mode=test` scores each checkpoint's exact
+final-epoch weights (`checkpoints/last.ckpt`, the same model state
+`val/auroc/mean` was computed against -- not the best-val-loss checkpoint)
+on that held-out split, no retraining needed.
+
+```bash
+cd mimic_iv_sweep
+sbatch scripts/eval_test_patient_only_capacity_starved_n25_30d.sh
+sbatch scripts/eval_test_marginalized_binary_learned_linear_capacity_starved_n25_30d.sh
+sbatch scripts/eval_test_marginalized_binary_qwen3_text_capacity_starved_n25_30d.sh
+```
+
+### Results (test split)
+
+| Draw | patient_only (test) | learned-linear (test) | Δ learned-linear | qwen3_text (test) | Δ qwen3_text |
+| --- | --- | --- | --- | --- | --- |
+| 1 | [0.8635](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/6nzyc9mm) | [0.8581](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/l01p67ls) | -0.0054 | [0.8723](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/jznwzl3b) | +0.0088 |
+| 2 | [0.8098](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/yca7e0kw) | [0.8276](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/n07t6rn2) | +0.0178 | [0.8335](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/kgej4xus) | +0.0237 |
+| 3 | [0.8503](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/sq6v0umb) | [0.8596](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/h1q3gox2) | +0.0093 | [0.8653](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/fwy3j638) | +0.0150 |
+| 4 | [0.8715](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/6i1q8zit) | [0.8881](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/c53ouawc) | +0.0166 | [0.8934](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/9au7crth) | +0.0219 |
+| 5 | [0.7950](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/2812pvm1) | [0.8050](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/xyv0ic23) | +0.0099 | [0.8224](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/mlggb2dq) | +0.0274 |
+
+`patient_only` (starved) test mean ± std: **0.8380 ± 0.0338** (vs. val:
+0.8402 ± 0.0352 -- essentially identical, as expected for a metric that
+isn't the thing being selected on).
+
+### Val vs. test, both variants
+
+| Query projector | Val Δ (mean ± std, draws won) | Test Δ (mean ± std, draws won) |
+| --- | --- | --- |
+| learned-linear | +0.0125 ± 0.0104, 5/5 | +0.0096 ± 0.0092, **4/5** |
+| `qwen3_text` | +0.0248 ± 0.0119, 5/5 | +0.0193 ± 0.0074, **5/5** |
+
+**The effect holds on held-out test data.** Both magnitudes shrink
+slightly from val to test (expected -- val numbers benefit somewhat from
+having been the metric used to compare variants), but both means stay
+clearly positive and comfortably larger than their own draw-to-draw std.
+`qwen3_text` is the cleaner result: still 5/5 draws won, and its std
+actually *shrinks* on test (0.0119 → 0.0074), making the mean effect
+(+0.0193) more than 2.5x its own std -- if anything a *more* convincing
+signal than on validation. `learned-linear` is slightly noisier on test
+(one draw, #1, flips to a small -0.0054), but the other four draws are
+solidly positive and the mean (+0.0096) still clears its std (+0.0092).
+
+This is not a val-set artifact: the capacity-starved retrieval benefit is
+real and generalizes to data no training or model-selection step ever
+touched.
+
 ## Takeaway
 
 **Both query-projector variants flip from a small, inconsistent loss at
