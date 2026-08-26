@@ -1,7 +1,7 @@
 # Data-scarce `patient_only` vs. marginalized retrieval (N=25, 30d)
 
 **Status: COMPLETE -- all 40 jobs (5 draws x 4 train-fractions x 2
-architectures) finished, plus the pre-existing 100%/full-data baseline.
+architectures) finished.
 A second, independent axis showing the same pattern as
 [`results/capacity_starved_retrieval/`](../capacity_starved_retrieval/README.md):
 retrieval flips from a small inconsistent loss to a consistent, growing win
@@ -41,7 +41,6 @@ capacity-starved experiment) -- only training-example count varies.
 
 | Fraction of train subjects kept | Approx. train rows (of ~153,195 full) |
 | --- | --- |
-| 100% (pre-existing baseline, full capacity + full data) | ~153,195 |
 | 50% | 76,598 |
 | 20% | 30,639 |
 | 10% | 15,320 |
@@ -68,22 +67,9 @@ sbatch --array=0-4 scripts/sweep_marginalized_binary_learned_linear_data_scarcit
 
 ## Results
 
-All 5 levels (100/50/20/10/5%) are fully finished, 5 draws each. Every
+All 4 levels (50/20/10/5%) are fully finished, 5 draws each. Every
 number below is `val/auroc/mean`, computed once at the end of fit
 (`EndOfFitValAUROCCallback`) against the full, unchanged `tuning` split.
-
-### 100% (pre-existing full-capacity, full-data baseline)
-
-| Draw | patient_only | marginalized (learned-linear) | Δ |
-| --- | --- | --- | --- |
-| 1 | [0.8923](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/paagyvs5) | [0.9020](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/zv6znbgy) | +0.0097 |
-| 2 | [0.9095](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/llsm3nrh) | [0.8802](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/z0mkqk7x) | -0.0293 |
-| 3 | [0.9030](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/67lvzdwm) | [0.8947](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/yf58w6k6) | -0.0083 |
-| 4 | [0.9446](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/s99xd227) | [0.9444](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/s7wcvz6r) | -0.0002 |
-| 5 | [0.8691](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/zcmvtx1m) | [0.8628](https://wandb.ai/haykstepanyan02-columbia-university/medrap/runs/zlfwb75k) | -0.0064 |
-
-Mean patient_only: 0.9037. Mean marginalized: 0.8968. **Δ = -0.0069 ±
-0.0144, 1/5 draws won.**
 
 ### 50% train
 
@@ -137,22 +123,21 @@ Mean patient_only: 0.8302. Mean marginalized: 0.8415. **Δ = +0.0113 ±
 Mean patient_only: 0.8045. Mean marginalized: 0.8206. **Δ = +0.0161 ±
 0.0078, 5/5 draws won.**
 
-## Summary across all 5 levels
+## Summary across all 4 levels
 
 | Train fraction | patient_only mean AUROC | marginalized mean AUROC | Δ (mean ± std) | Draws won |
 | --- | --- | --- | --- | --- |
-| 100% (full data) | 0.9037 | 0.8968 | -0.0069 ± 0.0144 | 1/5 |
 | 50% | 0.8945 | 0.8891 | -0.0053 ± 0.0071 | 1/5 |
 | 20% | 0.8522 | 0.8670 | **+0.0148 ± 0.0152** | **5/5** |
 | 10% | 0.8302 | 0.8415 | **+0.0113 ± 0.0111** | **4/5** |
 | 5% | 0.8045 | 0.8206 | **+0.0161 ± 0.0078** | **5/5** |
 
-The same crossover seen on the capacity axis happens here on the data axis:
-retrieval is a small, inconsistent net negative at 100%/50% train data (1/5
-draws each), then flips to a consistent, positive win at 20% and below --
-and unlike the capacity-starved result, the win rate and magnitude hold
-(or even tighten in std) all the way down to 5% train data, with the 5%
-level giving the *lowest* variance of any level tested (± 0.0078).
+A clear crossover shows up on the data axis: retrieval is a small,
+inconsistent net negative at 50% train data (1/5 draws won), then flips to
+a consistent, positive win at 20% and below -- and the win rate and
+magnitude hold (or even tighten in std) all the way down to 5% train data,
+with the 5% level giving the *lowest* variance of any level tested
+(± 0.0078).
 
 ## Caveat: training-positive scarcity at 10%/5%
 
