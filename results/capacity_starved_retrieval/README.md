@@ -200,6 +200,74 @@ real and meaningful, not so mild it's within full-capacity noise.
 | 4 | 0.8805 | 0.9066 | +0.0260 | 0.9204 | +0.0399 |
 | 5 | 0.7904 | 0.8023 | +0.0119 | 0.8160 | +0.0256 |
 
+## Does the starved-model retrieval benefit grow with larger k?
+
+**Scope note**: this k-sweep uses `learned-linear` (`sequence_mean_1024`)
+only, not `qwen3_text` -- `qwen3_text`'s live frozen-Qwen3 forward pass
+makes it ~3.5x slower per job regardless of k, so testing 3 additional k
+values with it was deprioritized to keep this tractable. This is *not* a
+complete k x query-projector grid; whether `qwen3_text` shows the same
+k-dependence under starvation remains untested.
+
+At full capacity, larger k never helped and even trended slightly negative
+at 30d (see the "Larger retriever k" section above in `mimic_iv_sweep/README.md`).
+Under capacity starvation, k=4 already showed a clear, consistent benefit
+(Δ +0.0125, 5/5 draws) -- this asks whether that benefit grows, shrinks,
+or holds flat as k increases to 32/64/128, using the identical starved
+encoder and the same `patient_only` baseline.
+
+```bash
+cd mimic_iv_sweep
+sbatch scripts/sweep_marginalized_binary_learned_linear_capacity_starved_n25_30d_k32.sh
+sbatch scripts/sweep_marginalized_binary_learned_linear_capacity_starved_n25_30d_k64.sh
+sbatch scripts/sweep_marginalized_binary_learned_linear_capacity_starved_n25_30d_k128.sh
+```
+
+### Results
+
+| Draw | patient_only | k=32 | Δ k=32 | k=64 | Δ k=64 | k=128 | Δ k=128 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.8565 | 0.8772 | +0.0207 | 0.8586 | +0.0020 | 0.8854 | +0.0289 |
+| 2 | 0.8202 | 0.8421 | +0.0219 | 0.8423 | +0.0221 | 0.8451 | +0.0248 |
+| 3 | 0.8534 | 0.8620 | +0.0086 | 0.8599 | +0.0065 | 0.8581 | +0.0047 |
+| 4 | 0.8805 | 0.9156 | +0.0350 | 0.9071 | +0.0265 | 0.9086 | +0.0281 |
+| 5 | 0.7904 | 0.8087 | +0.0183 | 0.8085 | +0.0181 | 0.8146 | +0.0242 |
+
+### Summary: Δ (marginalized − patient_only) across k = 4, 32, 64, 128
+
+| k | Δ mean ± std | draws won |
+| --- | --- | --- |
+| 4 | +0.0125 ± 0.0104 | 5/5 |
+| 32 | +0.0209 ± 0.0095 | 5/5 |
+| 64 | +0.0151 ± 0.0104 | 5/5 |
+| 128 | +0.0222 ± 0.0100 | 5/5 |
+
+### Takeaway
+
+**The benefit doesn't grow monotonically with k, but it never disappears
+or reverses either -- every k value from 4 to 128 shows a consistently
+positive, unanimous (5/5 draws) effect.** The trajectory rises sharply
+from k=4 to k=32 (+0.0125 → +0.0209), dips back down at k=64 (+0.0151),
+then rises again at k=128 (+0.0222, the largest mean effect of the four).
+That's not a clean "more documents is strictly better" or "benefit
+saturates at k=4" story -- it looks more like noise superimposed on a
+persistently positive effect, which is itself informative: this is a
+different qualitative pattern from the full-capacity k-sweep, where larger
+k actively *hurt* (trended negative at 30d). Under starvation, there's no
+evidence that adding more retrieved documents ever costs the model
+anything -- the floor is a solid positive Δ, not a declining one.
+
+Given the non-monotonic wobble (64 sitting below both its neighbors 32 and
+128), this is more consistent with per-draw noise across only 5 draws than
+a real "larger k first stops helping, then helps more" mechanism -- more
+draws per k value would be needed to resolve the shape of the curve with
+confidence. What's *not* noise-level, though, is the floor: every one of
+the 20 (k, draw) combinations tested here (4 k values x 5 draws) shows
+`marginalized` beating `patient_only`, a 100% win rate across the whole
+grid. That's the finding worth taking away: under this capacity cut,
+retrieval helps *regardless of k* in the range tested, not just at the
+original k=4.
+
 ## Confirming the result on held-out test data
 
 Every number above is `val/auroc/mean` -- computed once at the end of fit
