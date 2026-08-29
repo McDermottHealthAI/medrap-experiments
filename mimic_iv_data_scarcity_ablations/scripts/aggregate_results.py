@@ -53,7 +53,7 @@ def main() -> None:
     for frac in FRACTIONS:
         po = draws(f"outputs/patient_only_data_scarcity_n25_30d_train{frac}pct_test_repro/draw{{d}}")
         ll = draws(
-            f"outputs/marginalized_binary_learned_linear_data_scarcity_n25_30d_train{frac}pct_test_repro/draw{{d}}"
+            f"outputs/marginalized_binary_learned_linear_data_scarcity_n25_30d_train{frac}pct_test_eval_repro/draw{{d}}"
         )
         print(f"  train{frac}pct: patient_only test {fmt(po)} | learned_linear test {fmt(ll)}")
 
@@ -61,7 +61,7 @@ def main() -> None:
     for frac in FRACTIONS:
         po = draws(f"outputs/patient_only_data_scarcity_n25_30d_train{frac}pct_test_repro/draw{{d}}")
         real = draws(
-            f"outputs/marginalized_binary_learned_linear_data_scarcity_n25_30d_train{frac}pct_test_repro/draw{{d}}"
+            f"outputs/marginalized_binary_learned_linear_data_scarcity_n25_30d_train{frac}pct_test_eval_repro/draw{{d}}"
         )
         rand = [
             st.mean(
