@@ -74,43 +74,47 @@ Tensorized cohort: `/groups/mm6677_gp/zzw2102/data/MIMIC_MEDS_restored/processed
 ## Results
 
 Val: `val/auroc/mean`, computed once at the end of fit against the tuning
-split. Test: `test/auroc/mean`, `eval_mode=test` scoring each checkpoint's
-`checkpoints/last.ckpt` against the held-out split.
+split, `retriever.k=4` for `marginalized` (as trained). Test:
+`test/auroc/mean`, `eval_mode=test` scoring each checkpoint's
+`checkpoints/last.ckpt` against the held-out split; for `marginalized`,
+test uses `retriever.k=1, ablation_mode=none` (top-1 retrieved document
+only, not the trained K=4 marginalization). `patient_only` has no
+retrieval, so val and test use the same config throughout.
 
 ### Summary
 
-| Train fraction | patient_only (val) | patient_only (test) | marginalized (val) | marginalized (test) | Δ (test) | Draws won (test) |
+| Train fraction | patient_only (val) | patient_only (test) | marginalized (val, k=4) | marginalized (test, top1) | Δ (test) | Draws won (test) |
 | --- | --- | --- | --- | --- | --- | --- |
-| 100% | 0.7911 ± 0.0314 | 0.7846 ± 0.0312 | 0.8286 ± 0.0300 | 0.8204 ± 0.0301 | +0.0358 | 5/5 |
-| 50% | 0.7506 ± 0.0333 | 0.7486 ± 0.0391 | 0.8051 ± 0.0221 | 0.8050 ± 0.0256 | +0.0564 | 5/5 |
-| 5% | 0.5255 ± 0.0164 | 0.5334 ± 0.0123 | 0.6829 ± 0.0472 | 0.6607 ± 0.0535 | +0.1273 | 5/5 |
+| 100% | 0.7911 ± 0.0314 | 0.7846 ± 0.0312 | 0.8286 ± 0.0300 | 0.8201 ± 0.0301 | +0.0355 | 5/5 |
+| 50% | 0.7506 ± 0.0333 | 0.7486 ± 0.0391 | 0.8051 ± 0.0221 | 0.8051 ± 0.0259 | +0.0564 | 5/5 |
+| 5% | 0.5255 ± 0.0164 | 0.5334 ± 0.0123 | 0.6829 ± 0.0472 | 0.6590 ± 0.0513 | +0.1257 | 5/5 |
 
 ### Per draw, 100% data
 
-| Draw | patient_only (val) | patient_only (test) | marginalized (val) | marginalized (test) | Δ (val) | Δ (test) |
+| Draw | patient_only (val) | patient_only (test) | marginalized (val, k=4) | marginalized (test, top1) | Δ (val) | Δ (test) |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 0.8032 | 0.8138 | 0.8425 | 0.8515 | +0.0393 | +0.0377 |
-| 2 | 0.8034 | 0.7716 | 0.8150 | 0.7900 | +0.0116 | +0.0184 |
-| 3 | 0.7991 | 0.8080 | 0.8299 | 0.8364 | +0.0308 | +0.0284 |
-| 4 | 0.8199 | 0.8002 | 0.8733 | 0.8456 | +0.0534 | +0.0454 |
-| 5 | 0.7300 | 0.7294 | 0.7825 | 0.7785 | +0.0525 | +0.0491 |
+| 1 | 0.8032 | 0.8138 | 0.8425 | 0.8519 | +0.0393 | +0.0381 |
+| 2 | 0.8034 | 0.7716 | 0.8150 | 0.7897 | +0.0116 | +0.0181 |
+| 3 | 0.7991 | 0.8080 | 0.8299 | 0.8361 | +0.0308 | +0.0281 |
+| 4 | 0.8199 | 0.8002 | 0.8733 | 0.8445 | +0.0534 | +0.0443 |
+| 5 | 0.7300 | 0.7294 | 0.7825 | 0.7784 | +0.0525 | +0.0490 |
 
 ### Per draw, 50% data
 
-| Draw | patient_only (val) | patient_only (test) | marginalized (val) | marginalized (test) | Δ (val) | Δ (test) |
+| Draw | patient_only (val) | patient_only (test) | marginalized (val, k=4) | marginalized (test, top1) | Δ (val) | Δ (test) |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 0.7729 | 0.7851 | 0.8198 | 0.8273 | +0.0469 | +0.0422 |
-| 2 | 0.7302 | 0.7136 | 0.7893 | 0.7866 | +0.0591 | +0.0730 |
-| 3 | 0.7636 | 0.7818 | 0.8061 | 0.8221 | +0.0425 | +0.0403 |
-| 4 | 0.7896 | 0.7726 | 0.8366 | 0.8258 | +0.0470 | +0.0532 |
-| 5 | 0.6965 | 0.6901 | 0.7738 | 0.7636 | +0.0773 | +0.0735 |
+| 1 | 0.7729 | 0.7851 | 0.8198 | 0.8286 | +0.0469 | +0.0435 |
+| 2 | 0.7302 | 0.7136 | 0.7893 | 0.7860 | +0.0591 | +0.0724 |
+| 3 | 0.7636 | 0.7818 | 0.8061 | 0.8211 | +0.0425 | +0.0393 |
+| 4 | 0.7896 | 0.7726 | 0.8366 | 0.8261 | +0.0470 | +0.0535 |
+| 5 | 0.6965 | 0.6901 | 0.7738 | 0.7635 | +0.0773 | +0.0734 |
 
 ### Per draw, 5% data
 
-| Draw | patient_only (val) | patient_only (test) | marginalized (val) | marginalized (test) | Δ (val) | Δ (test) |
+| Draw | patient_only (val) | patient_only (test) | marginalized (val, k=4) | marginalized (test, top1) | Δ (val) | Δ (test) |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 0.5238 | 0.5422 | 0.7113 | 0.7137 | +0.1875 | +0.1715 |
-| 2 | 0.5043 | 0.5287 | 0.6166 | 0.5811 | +0.1123 | +0.0524 |
-| 3 | 0.5263 | 0.5421 | 0.6989 | 0.7073 | +0.1726 | +0.1652 |
-| 4 | 0.5546 | 0.5428 | 0.7460 | 0.6879 | +0.1914 | +0.1451 |
-| 5 | 0.5186 | 0.5111 | 0.6416 | 0.6135 | +0.1230 | +0.1024 |
+| 1 | 0.5238 | 0.5422 | 0.7113 | 0.7080 | +0.1875 | +0.1658 |
+| 2 | 0.5043 | 0.5287 | 0.6166 | 0.5832 | +0.1123 | +0.0545 |
+| 3 | 0.5263 | 0.5421 | 0.6989 | 0.7069 | +0.1726 | +0.1648 |
+| 4 | 0.5546 | 0.5428 | 0.7460 | 0.6839 | +0.1914 | +0.1411 |
+| 5 | 0.5186 | 0.5111 | 0.6416 | 0.6132 | +0.1230 | +0.1021 |
