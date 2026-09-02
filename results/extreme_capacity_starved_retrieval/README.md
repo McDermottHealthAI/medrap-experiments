@@ -1,12 +1,15 @@
 # Capacity sweep retrieval (N=25, 30d)
 
-Status: complete. Two experiments: (1) a clean 6-point capacity-only
+Status: complete. Three experiments: (1) a clean 6-point capacity-only
 sweep with context length held fixed, (2) an extreme capacity+context cut
-crossed with 3 training-data levels.
+crossed with 3 training-data levels (percentage-based), (3) the same
+extreme capacity+context cut crossed with 4 absolute training-set sizes
+(100/1,000/10,000/100,000 rows), with loss reported alongside AUROC.
 
 Scripts: `mimic_iv_sweep/scripts/sweep_{patient_only,marginalized_binary_learned_linear}_capacity_sweep_n25_30d_dim{4,8,16,32,64}.sh`
 and matching `eval_test_*` scripts (experiment 1); `sweep_{patient_only,marginalized_binary_learned_linear}_extreme_starved_n25_30d{,_train50pct,_train5pct}.sh`
-and matching `eval_test_*` scripts (experiment 2). All in
+and matching `eval_test_*` scripts (experiment 2); `sweep_{patient_only,marginalized_binary_learned_linear}_extreme_starved_n25_30d_trainN{100,1000,10000,100000}.sh`
+and matching `eval_test_*` scripts (experiment 3). All in
 `mimic_iv_sweep/scripts/`.
 
 ## Task
@@ -214,3 +217,112 @@ splits are full-size at every data level.
 | 3 | 0.5263 | 0.5421 | 0.6989 | 0.7069 | +0.1726 | +0.1648 |
 | 4 | 0.5546 | 0.5428 | 0.7460 | 0.6839 | +0.1914 | +0.1411 |
 | 5 | 0.5186 | 0.5111 | 0.6416 | 0.6132 | +0.1230 | +0.1021 |
+
+---
+
+## Experiment 3: extreme capacity x absolute training-set size (with loss)
+
+Same capacity cut as Experiment 2 (`embedding_dim=4, num_heads=1,
+num_layers=1, ff_dim=8, max_seq_len=8`), but the data axis is now exact
+absolute training-row counts instead of percentages, and loss is reported
+alongside AUROC. `train.parquet` is subsampled uniformly at random by row,
+fixed seed per (level, draw), via `subsample_train_labels.py --n-rows`;
+`patient_only` and `marginalized` train on the identical subsampled label
+file per (draw, level).
+
+| N (train rows) | `max_epochs` | `warmup_steps` |
+| --- | --- | --- |
+| 100 | 20 | 15 |
+| 1,000 | 10 | 60 |
+| 10,000 | 5 | 200 |
+| 100,000 | 3 | 200 |
+
+Epoch/warmup schedule is capped, not fully step-matched to the ~14,360
+total optimizer steps of Experiment 1/2's full-data runs (which would need
+~4,790 epochs at N=100) -- see the schedule table for exact per-level
+values. `marginalized` test-split numbers use top-1-only retrieval
+(`retriever.k=1, ablation_mode=none`), matching Experiment 2's convention.
+
+### Summary
+
+| N | patient_only (val AUROC) | patient_only (val loss) | patient_only (test AUROC) | patient_only (test loss) | marginalized (val AUROC) | marginalized (val loss) | marginalized (test AUROC) | marginalized (test loss) | Δ AUROC (test) | Draws won |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 100 | 0.5075 ± 0.0060 | 0.6474 ± 0.0015 | 0.5206 ± 0.0131 | 0.6476 ± 0.0015 | 0.5107 ± 0.0250 | 0.0685 ± 0.0205 | 0.5183 ± 0.0137 | 0.0685 ± 0.0203 | -0.0023 | 2/5 |
+| 1,000 | 0.5115 ± 0.0118 | 0.3282 ± 0.0055 | 0.5326 ± 0.0078 | 0.3283 ± 0.0054 | 0.5358 ± 0.0283 | 0.0646 ± 0.0189 | 0.5580 ± 0.0284 | 0.0646 ± 0.0188 | +0.0254 | 4/5 |
+| 10,000 | 0.5457 ± 0.0296 | 0.0713 ± 0.0180 | 0.5561 ± 0.0340 | 0.0714 ± 0.0178 | 0.7413 ± 0.0310 | 0.0562 ± 0.0159 | 0.7297 ± 0.0430 | 0.0562 ± 0.0158 | +0.1737 | 5/5 |
+| 100,000 | 0.7709 ± 0.0334 | 0.0532 ± 0.0151 | 0.7652 ± 0.0343 | 0.0533 ± 0.0149 | 0.8182 ± 0.0283 | 0.0510 ± 0.0146 | 0.8109 ± 0.0286 | 0.0510 ± 0.0145 | +0.0457 | 5/5 |
+
+### Per draw, N=100
+
+| Draw | patient_only (val AUROC) | patient_only (val loss) | patient_only (test AUROC) | patient_only (test loss) | marginalized (val AUROC) | marginalized (val loss) | marginalized (test AUROC) | marginalized (test loss) | Δ (test AUROC) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.5087 | 0.6451 | 0.5230 | 0.6452 | 0.4978 | 0.0953 | 0.5072 | 0.0956 | -0.0158 |
+| 2 | 0.4962 | 0.6494 | 0.5262 | 0.6497 | 0.4717 | 0.0347 | 0.5039 | 0.0355 | -0.0223 |
+| 3 | 0.5106 | 0.6474 | 0.5117 | 0.6471 | 0.5160 | 0.0638 | 0.5369 | 0.0624 | +0.0252 |
+| 4 | 0.5136 | 0.6469 | 0.5402 | 0.6475 | 0.5468 | 0.0655 | 0.5327 | 0.0665 | -0.0075 |
+| 5 | 0.5087 | 0.6484 | 0.5018 | 0.6486 | 0.5214 | 0.0830 | 0.5108 | 0.0824 | +0.0090 |
+
+### Per draw, N=1,000
+
+| Draw | patient_only (val AUROC) | patient_only (val loss) | patient_only (test AUROC) | patient_only (test loss) | marginalized (val AUROC) | marginalized (val loss) | marginalized (test AUROC) | marginalized (test loss) | Δ (test AUROC) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.5157 | 0.3368 | 0.5310 | 0.3369 | 0.5420 | 0.0875 | 0.5754 | 0.0876 | +0.0444 |
+| 2 | 0.4881 | 0.3198 | 0.5367 | 0.3201 | 0.4842 | 0.0334 | 0.5069 | 0.0339 | -0.0298 |
+| 3 | 0.5201 | 0.3264 | 0.5341 | 0.3260 | 0.5695 | 0.0608 | 0.5813 | 0.0596 | +0.0472 |
+| 4 | 0.5180 | 0.3288 | 0.5421 | 0.3292 | 0.5485 | 0.0602 | 0.5792 | 0.0614 | +0.0371 |
+| 5 | 0.5157 | 0.3293 | 0.5188 | 0.3291 | 0.5347 | 0.0808 | 0.5471 | 0.0807 | +0.0283 |
+
+### Per draw, N=10,000
+
+| Draw | patient_only (val AUROC) | patient_only (val loss) | patient_only (test AUROC) | patient_only (test loss) | marginalized (val AUROC) | marginalized (val loss) | marginalized (test AUROC) | marginalized (test loss) | Δ (test AUROC) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.5742 | 0.0933 | 0.6156 | 0.0935 | 0.7710 | 0.0701 | 0.7766 | 0.0705 | +0.1610 |
+| 2 | 0.4992 | 0.0409 | 0.5256 | 0.0417 | 0.7138 | 0.0299 | 0.6845 | 0.0307 | +0.1589 |
+| 3 | 0.5556 | 0.0671 | 0.5627 | 0.0660 | 0.7535 | 0.0530 | 0.7713 | 0.0509 | +0.2086 |
+| 4 | 0.5749 | 0.0698 | 0.5557 | 0.0707 | 0.7722 | 0.0529 | 0.7425 | 0.0536 | +0.1868 |
+| 5 | 0.5244 | 0.0852 | 0.5207 | 0.0851 | 0.6960 | 0.0752 | 0.6739 | 0.0752 | +0.1532 |
+
+### Per draw, N=100,000
+
+| Draw | patient_only (val AUROC) | patient_only (val loss) | patient_only (test AUROC) | patient_only (test loss) | marginalized (val AUROC) | marginalized (val loss) | marginalized (test AUROC) | marginalized (test loss) | Δ (test AUROC) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.7806 | 0.0642 | 0.7924 | 0.0649 | 0.8359 | 0.0617 | 0.8439 | 0.0627 | +0.0515 |
+| 2 | 0.7802 | 0.0288 | 0.7445 | 0.0297 | 0.8060 | 0.0273 | 0.7885 | 0.0281 | +0.0440 |
+| 3 | 0.7747 | 0.0495 | 0.7936 | 0.0477 | 0.8197 | 0.0486 | 0.8175 | 0.0465 | +0.0239 |
+| 4 | 0.8101 | 0.0503 | 0.7883 | 0.0511 | 0.8568 | 0.0475 | 0.8363 | 0.0481 | +0.0480 |
+| 5 | 0.7090 | 0.0732 | 0.7072 | 0.0730 | 0.7728 | 0.0701 | 0.7684 | 0.0699 | +0.0612 |
+
+### Positive-count caveat
+
+At the two smallest levels, many of the 25 task codes have zero
+training-set positives:
+
+| N | Draw | # tasks with 0 positives (of 25) | min positives across tasks |
+| --- | --- | --- | --- |
+| 100 | 1 | 15 | 0 |
+| 100 | 2 | 18 | 0 |
+| 100 | 3 | 14 | 0 |
+| 100 | 4 | 15 | 0 |
+| 100 | 5 | 11 | 0 |
+| 1,000 | 1 | 2 | 0 |
+| 1,000 | 2 | 10 | 0 |
+| 1,000 | 3 | 0 | 1 |
+| 1,000 | 4 | 6 | 0 |
+| 1,000 | 5 | 2 | 0 |
+| 10,000 | 1-4 | 0 | 1 (draws 1,2,4), 4 (draw 3) |
+| 10,000 | 5 | 1 | 0 |
+| 100,000 | all | 0 | 4-51 |
+
+`patient_only` and `marginalized` train on the identical subsampled label
+file for a given (draw, N), so both architectures face the same
+positive-count handicap per task.
+
+### Note: loss/AUROC divergence at N=100
+
+At N=100, `patient_only` test loss (0.6476, near `ln(2)=0.693`, the loss
+of uninformative 50/50 predictions) is far higher than `marginalized` test
+loss (0.0685), despite both architectures having near-chance test AUROC
+(0.5206 vs. 0.5183). Given the high fraction of zero-positive tasks at this
+level (see caveat table above), this reflects `patient_only` producing
+high-entropy predictions while `marginalized` produces confident-but-still
+uninformative ones -- low loss here does not imply better discrimination.
