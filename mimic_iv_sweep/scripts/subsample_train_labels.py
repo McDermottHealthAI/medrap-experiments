@@ -21,6 +21,12 @@ Usage:
         data/tasks_zach_uniform_event_n25_30d/draw1/tasks \
         data/tasks_zach_uniform_event_n25_30d_train10pct/draw1/tasks \
         --fraction 0.10 --seed 101
+
+    # or target an exact absolute row count instead of a fraction:
+    python scripts/subsample_train_labels.py \
+        data/tasks_zach_uniform_event_n25_30d/draw1/tasks \
+        data/tasks_zach_uniform_event_n25_30d_trainN100/draw1/tasks \
+        --n-rows 100 --seed 201
 """
 
 import argparse
@@ -34,8 +40,9 @@ def subsample_train_labels(
     *,
     source_tasks_dir: Path,
     output_tasks_dir: Path,
-    fraction: float,
     seed: int,
+    fraction: float | None = None,
+    n_rows: int | None = None,
 ) -> None:
     """Write a copy of ``source_tasks_dir`` with ``train.parquet`` subsampled.
 
@@ -44,22 +51,29 @@ def subsample_train_labels(
             ``{train,tuning,held_out}.parquet``, ``code_index.json``, and
             ``metadata.json``.
         output_tasks_dir: Directory to write the subsampled copy to.
-        fraction: Fraction of train subjects to keep, in ``(0, 1]``.
         seed: Random seed for the subsample draw.
+        fraction: Fraction of train subjects to keep, in ``(0, 1]``. Exactly
+            one of ``fraction``/``n_rows`` must be given.
+        n_rows: Exact number of train rows to keep. Exactly one of
+            ``fraction``/``n_rows`` must be given.
 
     Raises:
-        ValueError: If ``fraction`` is not in ``(0, 1]``.
+        ValueError: If neither or both of ``fraction``/``n_rows`` are given,
+            or if ``fraction`` is not in ``(0, 1]``.
     """
-    if not (0.0 < fraction <= 1.0):
+    if (fraction is None) == (n_rows is None):
+        raise ValueError("exactly one of fraction or n_rows must be given")
+    if fraction is not None and not (0.0 < fraction <= 1.0):
         raise ValueError(f"fraction must be in (0, 1], got {fraction}")
 
     output_tasks_dir.mkdir(parents=True, exist_ok=True)
 
     train = pl.read_parquet(source_tasks_dir / "train.parquet")
-    n_keep = max(1, round(train.height * fraction))
+    n_keep = n_rows if n_rows is not None else max(1, round(train.height * fraction))
     subsampled = train.sample(n=n_keep, seed=seed, shuffle=True)
     subsampled.write_parquet(output_tasks_dir / "train.parquet")
-    print(f"train.parquet: {train.height} -> {subsampled.height} rows (fraction={fraction})")
+    target_desc = f"n_rows={n_rows}" if n_rows is not None else f"fraction={fraction}"
+    print(f"train.parquet: {train.height} -> {subsampled.height} rows ({target_desc})")
 
     for name in ("tuning.parquet", "held_out.parquet", "code_index.json", "metadata.json"):
         src = source_tasks_dir / name
@@ -72,7 +86,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source_tasks_dir", type=Path, help="e.g. data/tasks_.../draw1/tasks")
     parser.add_argument("output_tasks_dir", type=Path, help="e.g. data/tasks_..._train10pct/draw1/tasks")
-    parser.add_argument("--fraction", type=float, required=True, help="fraction of train subjects to keep")
+    target = parser.add_mutually_exclusive_group(required=True)
+    target.add_argument("--fraction", type=float, help="fraction of train subjects to keep")
+    target.add_argument("--n-rows", type=int, help="exact number of train rows to keep")
     parser.add_argument("--seed", type=int, required=True, help="subsample random seed")
     args = parser.parse_args()
 
@@ -80,6 +96,7 @@ def main() -> None:
         source_tasks_dir=args.source_tasks_dir,
         output_tasks_dir=args.output_tasks_dir,
         fraction=args.fraction,
+        n_rows=args.n_rows,
         seed=args.seed,
     )
 
