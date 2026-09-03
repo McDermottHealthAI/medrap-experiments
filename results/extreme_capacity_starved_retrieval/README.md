@@ -349,11 +349,24 @@ This experiment is **not** apples-to-apples with Experiments 1-3, for
 reasons that could not be resolved without a risky, unverified cluster
 operation:
 
-1. **Old label-generation methodology.** These labels reuse the
-   pre-existing set at `data/tasks/n{N}/tasks/` from an earlier line of
-   this project: `horizon_days=7.0` (not the 30-day window used in
-   Experiments 1-3), generated before the anchor-sampling fix (not
-   `anchor_strategy=uniform_event`, MedRAP#100).
+1. **Old label-generation methodology, with a known AUROC-inflating leak.**
+   These labels reuse the pre-existing set at `data/tasks/n{N}/tasks/` from
+   an earlier line of this project: `horizon_days=7.0` (not the 30-day
+   window used in Experiments 1-3), and generated with the **original**
+   continuous-time anchor sampling, before either anchor-sampling fix
+   (MedRAP#99/#100). [`results/anchor_sampling_fix/README.md`](../anchor_sampling_fix/README.md)
+   already measured this exact effect on the same architectures at full
+   capacity: original continuous-time anchors could land in "dead" gaps
+   between hospital visits, which inflates AUROC by **+0.05 to +0.07**
+   (e.g. 30d patient_only: 0.9429 original vs. 0.9037 anchor-fixed) because
+   the task becomes artificially easy at those gap-anchors. The high AUROC
+   values in this experiment (especially at low N, where a small
+   task-count effect compounds with this leak -- see the "Base N-sweep"
+   precedent in `mimic_iv_sweep/README.md`) are **not** primarily evidence
+   that the capacity constraint stopped binding; the constraint
+   (`embedding_dim=4` etc.) is applied identically to Experiments 2/3.
+   They substantially reflect this known, already-documented anchor
+   leakage plus the small-N effect, not a capacity-vs-difficulty finding.
 2. **Single draw, not 5.** These label sets were only ever generated once
    per N (no repeated random task-code draws), so there is no
    draw-to-draw variance estimate here, unlike Experiments 1-3.
