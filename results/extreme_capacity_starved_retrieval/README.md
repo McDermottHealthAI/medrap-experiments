@@ -1,30 +1,23 @@
-# Capacity, data-scale, and task-count ablations (N=25 unless noted, 30d)
+# Capacity and data-scale ablations (N=25 task codes, 30d)
 
-Status: complete. Four experiments: (1) a clean 6-point capacity-only
+Status: complete. Three experiments: (1) a clean 6-point capacity-only
 sweep with context length held fixed, (2) an extreme capacity+context cut
 crossed with 3 training-data levels (percentage-based), (3) the same
 extreme capacity+context cut crossed with 4 absolute training-set sizes
-(100/1,000/10,000/100,000 rows), with loss reported alongside AUROC, (4)
-the same extreme capacity+context cut crossed with 8 task-count levels
-(N=1..128 task codes), using an older label set (see Experiment 4's
-methodology caveat).
+(100/1,000/10,000/100,000 rows), with loss reported alongside AUROC.
 
 Scripts: `mimic_iv_sweep/scripts/sweep_{patient_only,marginalized_binary_learned_linear}_capacity_sweep_n25_30d_dim{4,8,16,32,64}.sh`
 and matching `eval_test_*` scripts (experiment 1); `sweep_{patient_only,marginalized_binary_learned_linear}_extreme_starved_n25_30d{,_train50pct,_train5pct}.sh`
 and matching `eval_test_*` scripts (experiment 2); `sweep_{patient_only,marginalized_binary_learned_linear}_extreme_starved_n25_30d_trainN{100,1000,10000,100000}.sh`
-and matching `eval_test_*` scripts (experiment 3); `sweep_{patient_only,marginalized_binary_learned_linear}_task_count_ablation_n{1,2,4,8,16,32,64,128}.sh`
-and matching `eval_test_*` scripts (experiment 4). All in
+and matching `eval_test_*` scripts (experiment 3). All in
 `mimic_iv_sweep/scripts/`.
 
 ## Task
 
-Multi-task binary classification on MIMIC-IV: N randomly-sampled
-diagnostic codes (N=25 in Experiments 1-3; varies in Experiment 4),
-predict whether each occurs within a fixed-duration window after a
-prediction anchor time (30 days in Experiments 1-3; 7 days in Experiment
-4, see its caveat). 5 independent random draws in Experiments 1-3, single
-draw in Experiment 4. 3 training epochs per run except where noted (100%
-training data unless noted).
+Multi-task binary classification on MIMIC-IV: N=25 randomly-sampled
+diagnostic codes, predict whether each occurs within a 30-day window
+after a prediction anchor time. 5 independent random draws. 3 training
+epochs per run except where noted (100% training data unless noted).
 
 ## Shared model architecture
 
@@ -64,7 +57,7 @@ Val: `val/auroc/mean`, computed once at the end of fit against the tuning
 split, `retriever.k=4` for `marginalized`. Test: `test/auroc/mean`,
 `eval_mode=test` scoring each checkpoint's `checkpoints/last.ckpt` against
 the held-out split; for `marginalized`, test uses top-1-only retrieval
-(`retriever.k=1, ablation_mode=none`) in experiments 2-4, and the trained
+(`retriever.k=1, ablation_mode=none`) in experiments 2-3, and the trained
 `k=4` marginalization in experiment 1 (noted per table).
 
 ---
@@ -72,7 +65,7 @@ the held-out split; for `marginalized`, test uses top-1-only retrieval
 ## Experiment 1: clean capacity-only sweep
 
 Encoder capacity is varied while `max_seq_len` is held fixed at 256
-(full patient history) throughout -- unlike experiments 2-4, this
+(full patient history) throughout -- unlike experiments 2-3, this
 isolates parameter/representational capacity from context-length cutoff.
 `ff_dim = 2 x embedding_dim` at every level (matches the convention used
 everywhere else in this repo).
@@ -99,6 +92,8 @@ marginalization), not top-1.
 | 32 | 0.8777 ± 0.0341 | 0.8640 ± 0.0230 | 0.8864 ± 0.0326 | 0.8764 ± 0.0256 | +0.0124 | 5/5 |
 | 64 | 0.8907 ± 0.0281 | 0.8804 ± 0.0209 | 0.8886 ± 0.0192 | 0.8838 ± 0.0217 | +0.0034 | 4/5 |
 | 128 | 0.9037 ± 0.0246 | 0.9003 ± 0.0186 | 0.8968 ± 0.0273 | 0.8909 ± 0.0216 | -0.0094 | 1/5 |
+
+![Experiment 1: test AUROC vs. embedding_dim](plots/exp1_auroc_vs_capacity.png)
 
 ### Per draw, D=4
 
@@ -197,6 +192,8 @@ splits are full-size at every data level.
 | 50% | 0.7506 ± 0.0333 | 0.7486 ± 0.0391 | 0.8051 ± 0.0221 | 0.8051 ± 0.0259 | +0.0564 | 5/5 |
 | 5% | 0.5255 ± 0.0164 | 0.5334 ± 0.0123 | 0.6829 ± 0.0472 | 0.6590 ± 0.0513 | +0.1257 | 5/5 |
 
+![Experiment 2: test AUROC vs. train rows (percentage-based)](plots/exp2_auroc_vs_data_pct.png)
+
 ### Per draw, 100% data
 
 | Draw | patient_only (val) | patient_only (test) | marginalized (val, k=4) | marginalized (test, top1) | Δ (val) | Δ (test) |
@@ -260,6 +257,9 @@ values. `marginalized` test-split numbers use top-1-only retrieval
 | 1,000 | 0.5115 ± 0.0118 | 0.3282 ± 0.0055 | 0.5326 ± 0.0078 | 0.3283 ± 0.0054 | 0.5358 ± 0.0283 | 0.0646 ± 0.0189 | 0.5580 ± 0.0284 | 0.0646 ± 0.0188 | +0.0254 | 4/5 |
 | 10,000 | 0.5457 ± 0.0296 | 0.0713 ± 0.0180 | 0.5561 ± 0.0340 | 0.0714 ± 0.0178 | 0.7413 ± 0.0310 | 0.0562 ± 0.0159 | 0.7297 ± 0.0430 | 0.0562 ± 0.0158 | +0.1737 | 5/5 |
 | 100,000 | 0.7709 ± 0.0334 | 0.0532 ± 0.0151 | 0.7652 ± 0.0343 | 0.0533 ± 0.0149 | 0.8182 ± 0.0283 | 0.0510 ± 0.0146 | 0.8109 ± 0.0286 | 0.0510 ± 0.0145 | +0.0457 | 5/5 |
+
+![Experiment 3: test AUROC vs. N](plots/exp3_auroc_vs_n.png)
+![Experiment 3: test loss vs. N](plots/exp3_loss_vs_n.png)
 
 ### Per draw, N=100
 
@@ -335,101 +335,3 @@ loss (0.0685), despite both architectures having near-chance test AUROC
 level (see caveat table above), this reflects `patient_only` producing
 high-entropy predictions while `marginalized` produces confident-but-still
 uninformative ones -- low loss here does not imply better discrimination.
-
----
-
-## Experiment 4: task-count ablation (N=1..128 task codes)
-
-Same extreme capacity cut as Experiments 2/3, crossed with 8 task-count
-levels instead of data volume.
-
-### Methodology caveat (read before interpreting results)
-
-This experiment is **not** apples-to-apples with Experiments 1-3, for
-reasons that could not be resolved without a risky, unverified cluster
-operation:
-
-1. **Old label-generation methodology, with a known AUROC-inflating leak.**
-   These labels reuse the pre-existing set at `data/tasks/n{N}/tasks/` from
-   an earlier line of this project: `horizon_days=7.0` (not the 30-day
-   window used in Experiments 1-3), and generated with the **original**
-   continuous-time anchor sampling, before either anchor-sampling fix
-   (MedRAP#99/#100). [`results/anchor_sampling_fix/README.md`](../anchor_sampling_fix/README.md)
-   already measured this exact effect on the same architectures at full
-   capacity: original continuous-time anchors could land in "dead" gaps
-   between hospital visits, which inflates AUROC by **+0.05 to +0.07**
-   (e.g. 30d patient_only: 0.9429 original vs. 0.9037 anchor-fixed) because
-   the task becomes artificially easy at those gap-anchors. The high AUROC
-   values in this experiment (especially at low N, where a small
-   task-count effect compounds with this leak -- see the "Base N-sweep"
-   precedent in `mimic_iv_sweep/README.md`) are **not** primarily evidence
-   that the capacity constraint stopped binding; the constraint
-   (`embedding_dim=4` etc.) is applied identically to Experiments 2/3.
-   They substantially reflect this known, already-documented anchor
-   leakage plus the small-N effect, not a capacity-vs-difficulty finding.
-2. **Single draw, not 5.** These label sets were only ever generated once
-   per N (no repeated random task-code draws), so there is no
-   draw-to-draw variance estimate here, unlike Experiments 1-3.
-3. **`intermediate/` is unrecoverable.** Generating fresh labels at the
-   current methodology requires `medrap-preprocess` reading from
-   `MEDS_cohort/intermediate/` (the filtered-population MEDS data). This
-   directory was deleted alongside the original tensorized cohort
-   (~2026-08-25) and, unlike `MEDS_cohort/processed/` (restored from a
-   snapshot for the rest of this repo), no available snapshot -- checked
-   back to the earliest retained one -- contains `intermediate/`.
-   Regenerating it from raw `MEDS_cohort/data/` requires filtering
-   parameters (`min_subjects_per_code`, `min_events_per_subject`) that
-   were not confirmed, so it was not attempted -- doing so with guessed
-   parameters risks silently producing label data on a different filtered
-   population than the rest of this project, which would be worse than
-   not running the experiment at all.
-4. **Row count is constant across all N** (200,773 rows) -- this axis
-   only varies the number of task columns, not training-set size.
-5. **N only spans 1-128**, not the requested 5-2500. Extending the range
-   requires the `intermediate/` regeneration described above.
-
-Given these constraints, this experiment reuses the existing N=1-128 label
-sets as the most useful thing that could be run without a risky,
-unverified preprocessing step, and reports results with the above caveats
-attached rather than silently presenting them as equivalent to Experiments
-1-3.
-
-**Vocab compatibility check**: canary runs at N=1 and N=2 produced val
-AUROC (0.9991, 0.9814) matching known historical values from when these
-exact label sets were originally used against the pre-deletion tensorized
-cohort, confirming the restored cohort is vocab-compatible with these
-older labels.
-
-### Config
-
-Same extreme-starved capacity cut as Experiments 2/3
-(`embedding_dim=4, num_heads=1, num_layers=1, ff_dim=8, max_seq_len=8`).
-`patient_only`: masked-mean pool → `Linear(4, N)`. `marginalized`: same
-retrieval/fusion stack as Experiments 1-3, `Linear(256, N)` head.
-`max_epochs=3`, `warmup_steps=200` (fixed, since row count doesn't vary
-across N here). Test-split `marginalized` numbers use top-1-only retrieval
-(`retriever.k=1, ablation_mode=none`).
-
-### Results
-
-Val: `val/auroc/mean` / `val/loss`, computed once at end of fit. Test:
-`test/auroc/mean` / `test/loss`, `eval_mode=test` scoring
-`checkpoints/last.ckpt` against the held-out split.
-
-| N | patient_only (val AUROC) | patient_only (val loss) | patient_only (test AUROC) | patient_only (test loss) | marginalized (val AUROC) | marginalized (val loss) | marginalized (test AUROC) | marginalized (test loss) | Δ (test AUROC) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 0.9991 | 0.0012 | 0.9649 | 0.0011 | 0.9926 | 0.0020 | 0.9716 | 0.0014 | +0.0068 |
-| 2 | 0.9814 | 0.0021 | 0.7704 | 0.0007 | 0.9700 | 0.0025 | 0.8172 | 0.0006 | +0.0468 |
-| 4 | 0.9801 | 0.0015 | 0.6715 | 0.0005 | 0.9958 | 0.0012 | 0.4288 | 0.0005 | -0.2426 |
-| 8 | 0.9821 | 0.0015 | 0.8571 | 0.0010 | 0.9693 | 0.0016 | 0.8585 | 0.0010 | +0.0014 |
-| 16 | 0.9850 | 0.0012 | 0.8871 | 0.0011 | 0.9733 | 0.0012 | 0.8669 | 0.0010 | -0.0202 |
-| 32 | 0.9885 | 0.0013 | 0.8992 | 0.0011 | 0.9800 | 0.0014 | 0.8989 | 0.0011 | -0.0004 |
-| 64 | 0.9885 | 0.0016 | 0.8634 | 0.0012 | 0.9805 | 0.0017 | 0.8752 | 0.0013 | +0.0118 |
-| 128 | 0.9909 | 0.0014 | 0.8798 | 0.0010 | 0.9718 | 0.0016 | 0.8714 | 0.0011 | -0.0084 |
-
-No consistent direction across N -- Δ ranges from -0.2426 (N=4) to +0.0468
-(N=2), crossing zero repeatedly. N=4 is a striking single-draw outlier
-(`marginalized` test AUROC 0.4288, below-chance, vs. `patient_only`'s
-0.6715) -- with only one draw per level, this cannot be distinguished from
-draw-level noise in a specific held-out split without repeated draws,
-which these label sets don't have (see methodology caveat).
