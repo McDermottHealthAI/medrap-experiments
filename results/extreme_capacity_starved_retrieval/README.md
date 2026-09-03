@@ -301,37 +301,11 @@ values. `marginalized` test-split numbers use top-1-only retrieval
 | 4 | 0.8101 | 0.0503 | 0.7883 | 0.0511 | 0.8568 | 0.0475 | 0.8363 | 0.0481 | +0.0480 |
 | 5 | 0.7090 | 0.0732 | 0.7072 | 0.0730 | 0.7728 | 0.0701 | 0.7684 | 0.0699 | +0.0612 |
 
-### Positive-count caveat
-
-At the two smallest levels, many of the 25 task codes have zero
-training-set positives:
-
-| N | Draw | # tasks with 0 positives (of 25) | min positives across tasks |
-| --- | --- | --- | --- |
-| 100 | 1 | 15 | 0 |
-| 100 | 2 | 18 | 0 |
-| 100 | 3 | 14 | 0 |
-| 100 | 4 | 15 | 0 |
-| 100 | 5 | 11 | 0 |
-| 1,000 | 1 | 2 | 0 |
-| 1,000 | 2 | 10 | 0 |
-| 1,000 | 3 | 0 | 1 |
-| 1,000 | 4 | 6 | 0 |
-| 1,000 | 5 | 2 | 0 |
-| 10,000 | 1-4 | 0 | 1 (draws 1,2,4), 4 (draw 3) |
-| 10,000 | 5 | 1 | 0 |
-| 100,000 | all | 0 | 4-51 |
-
-`patient_only` and `marginalized` train on the identical subsampled label
-file for a given (draw, N), so both architectures face the same
-positive-count handicap per task.
-
 ### Note: loss/AUROC divergence at N=100
 
 At N=100, `patient_only` test loss (0.6476, near `ln(2)=0.693`, the loss
 of uninformative 50/50 predictions) is far higher than `marginalized` test
 loss (0.0685), despite both architectures having near-chance test AUROC
-(0.5206 vs. 0.5183). Given the high fraction of zero-positive tasks at this
-level (see caveat table above), this reflects `patient_only` producing
-high-entropy predictions while `marginalized` produces confident-but-still
-uninformative ones -- low loss here does not imply better discrimination.
+(0.5206 vs. 0.5183) -- `patient_only` produces high-entropy predictions
+while `marginalized` produces confident-but-still-uninformative ones, so
+low loss here does not imply better discrimination.
