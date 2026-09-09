@@ -1,15 +1,19 @@
 # Capacity and data-scale ablations (N=25 task codes, 30d)
 
-Status: complete. Three experiments: (1) a clean 6-point capacity-only
+Status: complete. Four experiments: (1) a clean 6-point capacity-only
 sweep with context length held fixed, (2) an extreme capacity+context cut
 crossed with 3 training-data levels (percentage-based), (3) the same
 extreme capacity+context cut crossed with 4 absolute training-set sizes
-(100/1,000/10,000/100,000 rows), with loss reported alongside AUROC.
+(100/1,000/10,000/100,000 rows), with loss reported alongside AUROC, (4)
+the same extreme capacity+context cut crossed with 5 task-count levels
+(5/25/125/625/2,500 randomly-selected codes).
 
 Scripts: `mimic_iv_sweep/scripts/sweep_{patient_only,marginalized_binary_learned_linear}_capacity_sweep_n25_30d_dim{4,8,16,32,64}.sh`
 and matching `eval_test_*` scripts (experiment 1); `sweep_{patient_only,marginalized_binary_learned_linear}_extreme_starved_n25_30d{,_train50pct,_train5pct}.sh`
 and matching `eval_test_*` scripts (experiment 2); `sweep_{patient_only,marginalized_binary_learned_linear}_extreme_starved_n25_30d_trainN{100,1000,10000,100000}.sh`
-and matching `eval_test_*` scripts (experiment 3). All in
+and matching `eval_test_*` scripts (experiment 3); `generate_labels_task_count_ablation_n5_2500_30d.sh` and
+`sweep_{patient_only,marginalized_binary_learned_linear}_task_count_ablation_n5_2500_30d.sh`
+and matching `eval_test_*` scripts (experiment 4). All in
 `mimic_iv_sweep/scripts/`.
 
 ## Task
@@ -57,7 +61,7 @@ Val: `val/auroc/mean`, computed once at the end of fit against the tuning
 split, `retriever.k=4` for `marginalized`. Test: `test/auroc/mean`,
 `eval_mode=test` scoring each checkpoint's `checkpoints/last.ckpt` against
 the held-out split; for `marginalized`, test uses top-1-only retrieval
-(`retriever.k=1, ablation_mode=none`) in experiments 2-3, and the trained
+(`retriever.k=1, ablation_mode=none`) in experiments 2-4, and the trained
 `k=4` marginalization in experiment 1 (noted per table).
 
 ---
@@ -335,3 +339,95 @@ loss (0.0685), despite both architectures having near-chance test AUROC
 level (see caveat table above), this reflects `patient_only` producing
 high-entropy predictions while `marginalized` produces confident-but-still
 uninformative ones -- low loss here does not imply better discrimination.
+
+---
+
+## Experiment 4: extreme capacity vs. task count (N=5-2,500, correct anchor-fixed methodology)
+
+Same capacity cut as Experiments 2-3 (`embedding_dim=4, num_heads=1,
+num_layers=1, ff_dim=8, max_seq_len=8`), full training data at every
+level, but the axis is now the number of randomly-selected task codes
+(`code_selection=random`), log-spaced from 5 to 2,500. This replaces an
+earlier task-count ablation removed from this README for using
+pre-anchor-fix labels (`results/anchor_sampling_fix/README.md`); this
+version uses `anchor_strategy=uniform_event`, `min_subjects_per_code=100`,
+`min_events_per_subject=10`, `horizon_days=30.0` -- the same methodology as
+every other experiment in this file, generated fresh from a rebuilt
+`intermediate/` MEDS dataset (the shared one was deleted 2026-08-25;
+rebuilt from the still-intact raw MEDS_cohort/data/ with the confirmed
+original filtering params). 5 independent random draws per N level, same
+draw seeds (101/202/303/404/505) as every other experiment in this file.
+
+| N (task codes) | Approx. train rows |
+| --- | --- |
+| 5 | 153,220 |
+| 25 | 153,220 |
+| 125 | 153,220 |
+| 625 | 153,220 |
+| 2,500 | 153,220 |
+
+`marginalized` test-split numbers below use top-1-only retrieval
+(`retriever.k=1, ablation_mode=none`), matching Experiments 2-3's
+convention.
+
+### Summary
+
+| N | patient_only (val AUROC) | patient_only (val loss) | patient_only (test AUROC) | patient_only (test loss) | marginalized (val AUROC) | marginalized (val loss) | marginalized (test AUROC) | marginalized (test loss) | Δ AUROC (test) | Draws won |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 5 | 0.6465 ± 0.1197 | 0.0319 ± 0.0364 | 0.6561 ± 0.0725 | 0.0325 ± 0.0362 | 0.6869 ± 0.0889 | 0.0312 ± 0.0359 | 0.6613 ± 0.0954 | 0.0321 ± 0.0358 | +0.0052 | 2/5 |
+| 25 | 0.7301 ± 0.0315 | 0.0326 ± 0.0103 | 0.7359 ± 0.0172 | 0.0322 ± 0.0097 | 0.7875 ± 0.0208 | 0.0315 ± 0.0098 | 0.7762 ± 0.0243 | 0.0312 ± 0.0094 | +0.0403 | 5/5 |
+| 125 | 0.7302 ± 0.0291 | 0.0231 ± 0.0050 | 0.7348 ± 0.0163 | 0.0231 ± 0.0052 | 0.7702 ± 0.0268 | 0.0223 ± 0.0050 | 0.7694 ± 0.0074 | 0.0224 ± 0.0052 | +0.0346 | 5/5 |
+| 625 | 0.7487 ± 0.0126 | 0.0259 ± 0.0023 | 0.7430 ± 0.0145 | 0.0259 ± 0.0023 | 0.7819 ± 0.0043 | 0.0253 ± 0.0023 | 0.7762 ± 0.0080 | 0.0254 ± 0.0021 | +0.0332 | 5/5 |
+| 2,500 | 0.7525 ± 0.0055 | 0.0271 ± 0.0011 | 0.7468 ± 0.0043 | 0.0270 ± 0.0014 | 0.7898 ± 0.0047 | 0.0264 ± 0.0012 | 0.7760 ± 0.0047 | 0.0267 ± 0.0016 | +0.0292 | 5/5 |
+
+![Experiment 4: test AUROC vs. task count](plots/exp4_auroc_vs_n_task_count.png)
+
+### Per draw, N=5
+
+| Draw | patient_only (val AUROC) | patient_only (val loss) | patient_only (test AUROC) | patient_only (test loss) | marginalized (val AUROC) | marginalized (val loss) | marginalized (test AUROC) | marginalized (test loss) | Δ (test AUROC) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.6586 | 0.0149 | 0.6664 | 0.0166 | 0.7525 | 0.0141 | 0.7445 | 0.0161 | +0.0781 |
+| 2 | 0.7218 | 0.0036 | 0.6014 | 0.0053 | 0.6060 | 0.0035 | 0.5626 | 0.0055 | -0.0388 |
+| 3 | 0.7461 | 0.0472 | 0.7727 | 0.0458 | 0.8082 | 0.0456 | 0.7720 | 0.0450 | -0.0007 |
+| 4 | 0.6628 | 0.0890 | 0.6493 | 0.0900 | 0.6188 | 0.0879 | 0.6521 | 0.0892 | +0.0028 |
+| 5 | 0.4433 | 0.0050 | 0.5905 | 0.0050 | 0.6490 | 0.0049 | 0.5751 | 0.0050 | -0.0154 |
+
+### Per draw, N=25
+
+| Draw | patient_only (val AUROC) | patient_only (val loss) | patient_only (test AUROC) | patient_only (test loss) | marginalized (val AUROC) | marginalized (val loss) | marginalized (test AUROC) | marginalized (test loss) | Δ (test AUROC) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.7689 | 0.0318 | 0.7590 | 0.0328 | 0.8088 | 0.0307 | 0.7954 | 0.0321 | +0.0364 |
+| 2 | 0.7081 | 0.0287 | 0.7367 | 0.0274 | 0.7851 | 0.0280 | 0.7515 | 0.0264 | +0.0148 |
+| 3 | 0.6974 | 0.0182 | 0.7137 | 0.0187 | 0.7616 | 0.0178 | 0.7591 | 0.0181 | +0.0454 |
+| 4 | 0.7578 | 0.0395 | 0.7436 | 0.0387 | 0.8080 | 0.0378 | 0.8079 | 0.0369 | +0.0643 |
+| 5 | 0.7185 | 0.0449 | 0.7262 | 0.0436 | 0.7741 | 0.0434 | 0.7670 | 0.0423 | +0.0408 |
+
+### Per draw, N=125
+
+| Draw | patient_only (val AUROC) | patient_only (val loss) | patient_only (test AUROC) | patient_only (test loss) | marginalized (val AUROC) | marginalized (val loss) | marginalized (test AUROC) | marginalized (test loss) | Δ (test AUROC) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.7635 | 0.0255 | 0.7411 | 0.0260 | 0.8005 | 0.0249 | 0.7681 | 0.0256 | +0.0270 |
+| 2 | 0.6919 | 0.0169 | 0.7301 | 0.0165 | 0.7278 | 0.0163 | 0.7589 | 0.0160 | +0.0288 |
+| 3 | 0.7505 | 0.0222 | 0.7575 | 0.0225 | 0.7793 | 0.0216 | 0.7797 | 0.0223 | +0.0222 |
+| 4 | 0.7347 | 0.0301 | 0.7323 | 0.0300 | 0.7775 | 0.0293 | 0.7700 | 0.0292 | +0.0377 |
+| 5 | 0.7105 | 0.0209 | 0.7130 | 0.0203 | 0.7659 | 0.0194 | 0.7704 | 0.0188 | +0.0574 |
+
+### Per draw, N=625
+
+| Draw | patient_only (val AUROC) | patient_only (val loss) | patient_only (test AUROC) | patient_only (test loss) | marginalized (val AUROC) | marginalized (val loss) | marginalized (test AUROC) | marginalized (test loss) | Δ (test AUROC) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.7570 | 0.0248 | 0.7468 | 0.0252 | 0.7864 | 0.0243 | 0.7745 | 0.0248 | +0.0277 |
+| 2 | 0.7359 | 0.0249 | 0.7369 | 0.0248 | 0.7774 | 0.0240 | 0.7739 | 0.0243 | +0.0370 |
+| 3 | 0.7623 | 0.0268 | 0.7638 | 0.0269 | 0.7864 | 0.0264 | 0.7902 | 0.0266 | +0.0264 |
+| 4 | 0.7535 | 0.0236 | 0.7432 | 0.0234 | 0.7810 | 0.0230 | 0.7722 | 0.0231 | +0.0290 |
+| 5 | 0.7348 | 0.0295 | 0.7242 | 0.0293 | 0.7786 | 0.0287 | 0.7702 | 0.0285 | +0.0460 |
+
+### Per draw, N=2,500
+
+| Draw | patient_only (val AUROC) | patient_only (val loss) | patient_only (test AUROC) | patient_only (test loss) | marginalized (val AUROC) | marginalized (val loss) | marginalized (test AUROC) | marginalized (test loss) | Δ (test AUROC) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.7591 | 0.0289 | 0.7461 | 0.0291 | 0.7967 | 0.0283 | 0.7762 | 0.0292 | +0.0301 |
+| 2 | 0.7563 | 0.0267 | 0.7526 | 0.0264 | 0.7860 | 0.0259 | 0.7690 | 0.0265 | +0.0164 |
+| 3 | 0.7522 | 0.0274 | 0.7452 | 0.0274 | 0.7913 | 0.0267 | 0.7808 | 0.0269 | +0.0356 |
+| 4 | 0.7451 | 0.0266 | 0.7412 | 0.0265 | 0.7849 | 0.0257 | 0.7744 | 0.0258 | +0.0332 |
+| 5 | 0.7495 | 0.0260 | 0.7491 | 0.0255 | 0.7899 | 0.0252 | 0.7797 | 0.0251 | +0.0306
