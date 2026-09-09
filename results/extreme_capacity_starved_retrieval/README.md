@@ -528,3 +528,94 @@ Degenerate-code rejection filters codes that are structurally degenerate
 codes that are simply easy for the model to predict without being
 degenerate in that technical sense, so this tail was not expected to
 disappear.
+
+---
+
+## Experiment 3 (v2): degenerate-code-rejection + retrieval-scaling fix
+
+Re-run of Experiment 3 above, same config, using MedRAP commit
+`227d05a7d7ea8d28a87a67359f82083cfe03c85d` (branch
+`fix/scale-marginalized-retrieval-dot-product`, PR #113 on
+McDermottHealthAI/MedRAP -- still open/unmerged at time of writing, pinned
+via branch HEAD commit rather than merged `main`). This commit includes
+both degenerate-code rejection (PR #102, already on `main`) and the
+retrieval-score-scaling fix (PR #113 itself: dividing dot-product
+retrieval scores by `sqrt(D)` before the softmax that weights
+marginalization). Labels regenerated fresh from the same rebuilt
+`intermediate/` (`code_selection=random`, `anchor_strategy=uniform_event`,
+`horizon_days=30.0`, same 5 draw seeds for the base label set;
+`subsample_train_labels.py --n-rows` with fresh seeds for the N=100/1,000/
+10,000/100,000 subsamples), so the specific task codes and subsampled rows
+differ from Experiment 3 above.
+
+### N=100 loss-gap comparison
+
+At N=100 the loss gap between architectures **did not close** with this
+fix -- it widened:
+
+| Version | patient_only test loss | marginalized test loss | Ratio |
+| --- | --- | --- | --- |
+| v1 (pre-fix) | 0.6476 | 0.0685 | ~9.5x |
+| v2 (degenerate-rejection + retrieval-scaling fix) | 0.6488 ± 0.0008 | 0.0352 ± 0.0081 | ~18.4x |
+
+The same pattern holds at N=1,000: v1 ratio ~5.1x (0.3283 / 0.0646), v2
+ratio ~9.7x (0.3171 / 0.0328). At N=10,000 and N=100,000, where v1's ratio
+was already close to 1 (small gap), v2 remains similarly close to 1
+(1.34x and 1.06x respectively). This is consistent with the
+Jensen's-inequality mechanism (marginalizing probabilities before `-log`
+is structurally ≤ the weighted average of per-document losses) being the
+dominant driver of the loss gap at extreme data scarcity, independent of
+the near-one-hot softmax-collapse bug PR #113 targeted -- that bug's fix
+does not resolve this structural effect.
+
+### Summary
+
+| N | patient_only (val AUROC) | patient_only (val loss) | patient_only (test AUROC) | patient_only (test loss) | marginalized (val AUROC) | marginalized (val loss) | marginalized (test AUROC) | marginalized (test loss) | Δ AUROC (test) | Draws won |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 100 | 0.4939 ± 0.0338 | 0.6487 ± 0.0008 | 0.5106 ± 0.0134 | 0.6488 ± 0.0008 | 0.5029 ± 0.0157 | 0.0355 ± 0.0076 | 0.5337 ± 0.0112 | 0.0352 ± 0.0081 | +0.0231 | 5/5 |
+| 1,000 | 0.5048 ± 0.0248 | 0.3170 ± 0.0036 | 0.5052 ± 0.0220 | 0.3171 ± 0.0037 | 0.5545 ± 0.0262 | 0.0329 ± 0.0069 | 0.5373 ± 0.0341 | 0.0328 ± 0.0074 | +0.0321 | 4/5 |
+| 10,000 | 0.5027 ± 0.0159 | 0.0404 ± 0.0067 | 0.5147 ± 0.0344 | 0.0404 ± 0.0073 | 0.6659 ± 0.0283 | 0.0304 ± 0.0071 | 0.6826 ± 0.0275 | 0.0302 ± 0.0073 | +0.1679 | 5/5 |
+| 100,000 | 0.7159 ± 0.0537 | 0.0292 ± 0.0070 | 0.7082 ± 0.0226 | 0.0292 ± 0.0074 | 0.7705 ± 0.0284 | 0.0278 ± 0.0069 | 0.7661 ± 0.0240 | 0.0276 ± 0.0071 | +0.0579 | 5/5 |
+
+![Experiment 3 (v2): test AUROC vs. N](plots/exp3_v2_auroc_vs_n.png)
+![Experiment 3 (v2): test loss vs. N](plots/exp3_v2_loss_vs_n.png)
+
+### Per draw, N=100
+
+| Draw | patient_only (val AUROC) | patient_only (val loss) | patient_only (test AUROC) | patient_only (test loss) | marginalized (val AUROC) | marginalized (val loss) | marginalized (test AUROC) | marginalized (test loss) | Δ (test AUROC) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.5235 | 0.6487 | 0.5089 | 0.6490 | 0.4771 | 0.0459 | 0.5151 | 0.0466 | +0.0062 |
+| 2 | 0.4510 | 0.6499 | 0.5313 | 0.6499 | 0.5121 | 0.0379 | 0.5316 | 0.0369 | +0.0003 |
+| 3 | 0.4873 | 0.6483 | 0.5120 | 0.6483 | 0.4996 | 0.0324 | 0.5422 | 0.0313 | +0.0302 |
+| 4 | 0.5323 | 0.6488 | 0.5068 | 0.6492 | 0.5093 | 0.0358 | 0.5404 | 0.0366 | +0.0336 |
+| 5 | 0.4753 | 0.6476 | 0.4942 | 0.6478 | 0.5162 | 0.0253 | 0.5392 | 0.0244 | +0.0450 |
+
+### Per draw, N=1,000
+
+| Draw | patient_only (val AUROC) | patient_only (val loss) | patient_only (test AUROC) | patient_only (test loss) | marginalized (val AUROC) | marginalized (val loss) | marginalized (test AUROC) | marginalized (test loss) | Δ (test AUROC) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.4968 | 0.3226 | 0.5025 | 0.3228 | 0.5493 | 0.0421 | 0.5948 | 0.0426 | +0.0923 |
+| 2 | 0.4816 | 0.3153 | 0.5176 | 0.3154 | 0.5731 | 0.0351 | 0.5256 | 0.0349 | +0.0080 |
+| 3 | 0.5192 | 0.3174 | 0.5312 | 0.3174 | 0.5647 | 0.0300 | 0.5175 | 0.0292 | -0.0137 |
+| 4 | 0.5407 | 0.3169 | 0.5023 | 0.3173 | 0.5741 | 0.0340 | 0.5086 | 0.0346 | +0.0063 |
+| 5 | 0.4859 | 0.3129 | 0.4723 | 0.3127 | 0.5111 | 0.0235 | 0.5400 | 0.0227 | +0.0677 |
+
+### Per draw, N=10,000
+
+| Draw | patient_only (val AUROC) | patient_only (val loss) | patient_only (test AUROC) | patient_only (test loss) | marginalized (val AUROC) | marginalized (val loss) | marginalized (test AUROC) | marginalized (test loss) | Δ (test AUROC) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.5030 | 0.0500 | 0.4871 | 0.0507 | 0.6583 | 0.0400 | 0.6941 | 0.0402 | +0.2070 |
+| 2 | 0.4898 | 0.0415 | 0.5311 | 0.0416 | 0.6443 | 0.0333 | 0.6746 | 0.0330 | +0.1435 |
+| 3 | 0.5250 | 0.0383 | 0.5677 | 0.0376 | 0.7045 | 0.0253 | 0.7241 | 0.0251 | +0.1564 |
+| 4 | 0.4855 | 0.0407 | 0.4981 | 0.0416 | 0.6373 | 0.0313 | 0.6534 | 0.0315 | +0.1553 |
+| 5 | 0.5100 | 0.0314 | 0.4897 | 0.0306 | 0.6851 | 0.0218 | 0.6666 | 0.0212 | +0.1769 |
+
+### Per draw, N=100,000
+
+| Draw | patient_only (val AUROC) | patient_only (val loss) | patient_only (test AUROC) | patient_only (test loss) | marginalized (val AUROC) | marginalized (val loss) | marginalized (test AUROC) | marginalized (test loss) | Δ (test AUROC) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.7144 | 0.0382 | 0.7279 | 0.0388 | 0.7760 | 0.0367 | 0.7484 | 0.0370 | +0.0205 |
+| 2 | 0.6637 | 0.0331 | 0.6893 | 0.0325 | 0.7684 | 0.0308 | 0.7433 | 0.0306 | +0.0540 |
+| 3 | 0.7971 | 0.0233 | 0.7181 | 0.0233 | 0.7911 | 0.0225 | 0.7892 | 0.0222 | +0.0711 |
+| 4 | 0.6719 | 0.0305 | 0.6789 | 0.0309 | 0.7232 | 0.0295 | 0.7946 | 0.0293 | +0.1157 |
+| 5 | 0.7326 | 0.0211 | 0.7266 | 0.0205 | 0.7938 | 0.0195 | 0.7552 | 0.0191 | +0.0286
