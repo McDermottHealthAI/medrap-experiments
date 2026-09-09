@@ -161,6 +161,95 @@ marginalization), not top-1.
 
 ---
 
+## Experiment 1 (v2): degenerate-code-rejection + retrieval-scaling fix
+
+Re-run of Experiment 1 above, same config, using MedRAP commit
+`227d05a7d7ea8d28a87a67359f82083cfe03c85d` (branch
+`fix/scale-marginalized-retrieval-dot-product`, PR #113 on
+McDermottHealthAI/MedRAP -- still open/unmerged at time of writing, pinned
+via branch HEAD commit rather than merged `main`). This commit includes
+both degenerate-code rejection (PR #102, already on `main`) and the
+retrieval-score-scaling fix (PR #113 itself). Labels regenerated fresh
+from the same rebuilt `intermediate/`, so the specific task codes differ
+from Experiment 1 above. `marginalized` numbers below use `retriever.k=4`
+(the trained marginalization) for both val and test, matching Experiment
+1's convention (not top-1, unlike Experiments 2-4).
+
+### Summary
+
+| D | patient_only (val) | patient_only (test) | marginalized (val, k=4) | marginalized (test, k=4) | Δ (test) | Draws won (test) |
+| --- | --- | --- | --- | --- | --- | --- |
+| 4 | 0.7988 ± 0.0256 | 0.7619 ± 0.0251 | 0.8473 ± 0.0057 | 0.8158 ± 0.0142 | +0.0539 | 5/5 |
+| 8 | 0.8049 ± 0.0194 | 0.7923 ± 0.0290 | 0.8341 ± 0.0145 | 0.8093 ± 0.0178 | +0.0170 | 3/5 |
+| 16 | 0.8288 ± 0.0131 | 0.8022 ± 0.0183 | 0.8433 ± 0.0108 | 0.8224 ± 0.0077 | +0.0202 | 4/5 |
+| 32 | 0.8504 ± 0.0182 | 0.8262 ± 0.0139 | 0.8536 ± 0.0131 | 0.8384 ± 0.0179 | +0.0122 | 4/5 |
+| 64 | 0.8655 ± 0.0088 | 0.8554 ± 0.0188 | 0.8750 ± 0.0076 | 0.8483 ± 0.0188 | -0.0071 | 2/5 |
+| 128 | 0.8757 ± 0.0167 | 0.8728 ± 0.0178 | 0.8809 ± 0.0107 | 0.8549 ± 0.0202 | -0.0179 | 0/5 |
+
+![Experiment 1 (v2): test AUROC vs. embedding_dim](plots/exp1_v2_auroc_vs_capacity.png)
+
+### Per draw, D=4
+
+| Draw | patient_only (val) | patient_only (test) | marginalized (val) | marginalized (test) | Δ (test) |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 0.7914 | 0.7260 | 0.8532 | 0.8322 | +0.1062 |
+| 2 | 0.8081 | 0.7735 | 0.8435 | 0.8266 | +0.0531 |
+| 3 | 0.8237 | 0.7942 | 0.8500 | 0.8021 | +0.0079 |
+| 4 | 0.7580 | 0.7543 | 0.8393 | 0.8175 | +0.0632 |
+| 5 | 0.8129 | 0.7614 | 0.8505 | 0.8005 | +0.0391 |
+
+### Per draw, D=8
+
+| Draw | patient_only (val) | patient_only (test) | marginalized (val) | marginalized (test) | Δ (test) |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 0.8193 | 0.7560 | 0.8298 | 0.8144 | +0.0584 |
+| 2 | 0.8109 | 0.7951 | 0.8441 | 0.8373 | +0.0422 |
+| 3 | 0.7973 | 0.8303 | 0.8540 | 0.7919 | -0.0384 |
+| 4 | 0.7748 | 0.7731 | 0.8206 | 0.8058 | +0.0327 |
+| 5 | 0.8222 | 0.8072 | 0.8222 | 0.7974 | -0.0098 |
+
+### Per draw, D=16
+
+| Draw | patient_only (val) | patient_only (test) | marginalized (val) | marginalized (test) | Δ (test) |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 0.8369 | 0.7755 | 0.8585 | 0.8250 | +0.0495 |
+| 2 | 0.8218 | 0.8242 | 0.8307 | 0.8110 | -0.0132 |
+| 3 | 0.8473 | 0.7941 | 0.8490 | 0.8226 | +0.0285 |
+| 4 | 0.8144 | 0.8099 | 0.8370 | 0.8324 | +0.0225 |
+| 5 | 0.8238 | 0.8071 | 0.8410 | 0.8211 | +0.0140 |
+
+### Per draw, D=32
+
+| Draw | patient_only (val) | patient_only (test) | marginalized (val) | marginalized (test) | Δ (test) |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 0.8366 | 0.8041 | 0.8483 | 0.8157 | +0.0116 |
+| 2 | 0.8490 | 0.8413 | 0.8595 | 0.8520 | +0.0107 |
+| 3 | 0.8812 | 0.8282 | 0.8734 | 0.8502 | +0.0220 |
+| 4 | 0.8371 | 0.8334 | 0.8400 | 0.8521 | +0.0187 |
+| 5 | 0.8479 | 0.8243 | 0.8467 | 0.8223 | -0.0020 |
+
+### Per draw, D=64
+
+| Draw | patient_only (val) | patient_only (test) | marginalized (val) | marginalized (test) | Δ (test) |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 0.8612 | 0.8490 | 0.8707 | 0.8482 | -0.0008 |
+| 2 | 0.8541 | 0.8730 | 0.8811 | 0.8513 | -0.0217 |
+| 3 | 0.8750 | 0.8272 | 0.8684 | 0.8330 | +0.0058 |
+| 4 | 0.8738 | 0.8717 | 0.8850 | 0.8778 | +0.0061 |
+| 5 | 0.8635 | 0.8562 | 0.8696 | 0.8311 | -0.0251 |
+
+### Per draw, D=128 (full capacity)
+
+| Draw | patient_only (val) | patient_only (test) | marginalized (val) | marginalized (test) | Δ (test) |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 0.8723 | 0.8648 | 0.8750 | 0.8457 | -0.0191 |
+| 2 | 0.8619 | 0.8769 | 0.8771 | 0.8658 | -0.0111 |
+| 3 | 0.8809 | 0.8538 | 0.8870 | 0.8364 | -0.0174 |
+| 4 | 0.9019 | 0.9010 | 0.8964 | 0.8851 | -0.0159 |
+| 5 | 0.8614 | 0.8674 | 0.8692 | 0.8417 | -0.0257 |
+
+---
+
 ## Experiment 2: extreme capacity+context cut x data scarcity (percentage-based)
 
 Both `embedding_dim` and `max_seq_len` are cut together (bundled, unlike
@@ -227,6 +316,62 @@ splits are full-size at every data level.
 | 3 | 0.5263 | 0.5421 | 0.6989 | 0.7069 | +0.1726 | +0.1648 |
 | 4 | 0.5546 | 0.5428 | 0.7460 | 0.6839 | +0.1914 | +0.1411 |
 | 5 | 0.5186 | 0.5111 | 0.6416 | 0.6132 | +0.1230 | +0.1021 |
+
+---
+
+## Experiment 2 (v2): degenerate-code-rejection + retrieval-scaling fix
+
+Re-run of Experiment 2 above, same config, using MedRAP commit
+`227d05a7d7ea8d28a87a67359f82083cfe03c85d` (branch
+`fix/scale-marginalized-retrieval-dot-product`, PR #113 on
+McDermottHealthAI/MedRAP -- still open/unmerged at time of writing, pinned
+via branch HEAD commit rather than merged `main`). This commit includes
+both degenerate-code rejection (PR #102, already on `main`) and the
+retrieval-score-scaling fix (PR #113 itself). Labels regenerated fresh
+from the same rebuilt `intermediate/`, so the specific task codes and
+subsampled rows differ from Experiment 2 above. `marginalized` test-split
+numbers below use top-1-only retrieval, matching Experiment 2's
+convention.
+
+### Summary
+
+| Train fraction | patient_only (val) | patient_only (test) | marginalized (val, k=4) | marginalized (test, top1) | Δ (test) | Draws won (test) |
+| --- | --- | --- | --- | --- | --- | --- |
+| 100% | 0.7413 ± 0.0355 | 0.7354 ± 0.0074 | 0.7886 ± 0.0296 | 0.7801 ± 0.0149 | +0.0447 | 5/5 |
+| 50% | 0.6811 ± 0.0776 | 0.6834 ± 0.0370 | 0.7636 ± 0.0299 | 0.7617 ± 0.0193 | +0.0783 | 5/5 |
+| 5% | 0.4946 ± 0.0055 | 0.5098 ± 0.0279 | 0.6000 ± 0.0127 | 0.6049 ± 0.0238 | +0.0951 | 5/5 |
+
+![Experiment 2 (v2): test AUROC vs. train data fraction](plots/exp2_v2_auroc_vs_data_pct.png)
+
+### Per draw, 100% data
+
+| Draw | patient_only (val) | patient_only (test) | marginalized (val, k=4) | marginalized (test, top1) | Δ (val) | Δ (test) |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.7391 | 0.7373 | 0.8048 | 0.7627 | +0.0657 | +0.0254 |
+| 2 | 0.7054 | 0.7278 | 0.7930 | 0.7825 | +0.0876 | +0.0547 |
+| 3 | 0.7942 | 0.7457 | 0.8139 | 0.7890 | +0.0197 | +0.0433 |
+| 4 | 0.7134 | 0.7287 | 0.7380 | 0.7988 | +0.0246 | +0.0701 |
+| 5 | 0.7546 | 0.7376 | 0.7931 | 0.7677 | +0.0385 | +0.0301 |
+
+### Per draw, 50% data
+
+| Draw | patient_only (val) | patient_only (test) | marginalized (val, k=4) | marginalized (test, top1) | Δ (val) | Δ (test) |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.6651 | 0.7064 | 0.7847 | 0.7517 | +0.1196 | +0.0453 |
+| 2 | 0.6136 | 0.6570 | 0.7474 | 0.7373 | +0.1338 | +0.0803 |
+| 3 | 0.7971 | 0.7064 | 0.7836 | 0.7839 | -0.0135 | +0.0775 |
+| 4 | 0.6135 | 0.6316 | 0.7184 | 0.7786 | +0.1049 | +0.1470 |
+| 5 | 0.7163 | 0.7156 | 0.7841 | 0.7571 | +0.0678 | +0.0415 |
+
+### Per draw, 5% data
+
+| Draw | patient_only (val) | patient_only (test) | marginalized (val, k=4) | marginalized (test, top1) | Δ (val) | Δ (test) |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.4982 | 0.4930 | 0.6050 | 0.6273 | +0.1068 | +0.1343 |
+| 2 | 0.4884 | 0.5252 | 0.5816 | 0.6135 | +0.0932 | +0.0883 |
+| 3 | 0.5018 | 0.5511 | 0.6004 | 0.6112 | +0.0986 | +0.0601 |
+| 4 | 0.4904 | 0.4968 | 0.6163 | 0.5645 | +0.1259 | +0.0677 |
+| 5 | 0.4944 | 0.4831 | 0.5968 | 0.6082 | +0.1024 | +0.1251 |
 
 ---
 
