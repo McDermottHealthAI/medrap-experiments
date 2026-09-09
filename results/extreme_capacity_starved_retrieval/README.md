@@ -430,4 +430,101 @@ convention.
 | 2 | 0.7563 | 0.0267 | 0.7526 | 0.0264 | 0.7860 | 0.0259 | 0.7690 | 0.0265 | +0.0164 |
 | 3 | 0.7522 | 0.0274 | 0.7452 | 0.0274 | 0.7913 | 0.0267 | 0.7808 | 0.0269 | +0.0356 |
 | 4 | 0.7451 | 0.0266 | 0.7412 | 0.0265 | 0.7849 | 0.0257 | 0.7744 | 0.0258 | +0.0332 |
-| 5 | 0.7495 | 0.0260 | 0.7491 | 0.0255 | 0.7899 | 0.0252 | 0.7797 | 0.0251 | +0.0306
+| 5 | 0.7495 | 0.0260 | 0.7491 | 0.0255 | 0.7899 | 0.0252 | 0.7797 | 0.0251 | +0.0306 |
+
+---
+
+## Experiment 4 (v2): degenerate-code-rejection + retrieval-scaling fix
+
+Re-run of Experiment 4 above, same config, using MedRAP commit
+`227d05a7d7ea8d28a87a67359f82083cfe03c85d` (branch
+`fix/scale-marginalized-retrieval-dot-product`, PR #113 on
+McDermottHealthAI/MedRAP -- still open/unmerged at time of writing, pinned
+via branch HEAD commit rather than merged `main`). This commit includes
+both degenerate-code rejection (PR #102, already on `main`) and the
+retrieval-score-scaling fix (PR #113 itself: dividing dot-product
+retrieval scores by `sqrt(D)` before the softmax that weights
+marginalization). Labels regenerated fresh from the same rebuilt
+`intermediate/` (`code_selection=random`, `anchor_strategy=uniform_event`,
+`horizon_days=30.0`, same 5 draw seeds), so the specific task codes at
+each N differ from Experiment 4 above. Experiment 4 always trains on full
+data (153,220 rows), so a large loss-magnitude shift from the
+retrieval-scaling fix was not expected here -- that effect is specific to
+Experiment 3's small-training-row-count regime (N=100/1,000 rows), not yet
+re-run.
+
+### Summary
+
+| N | patient_only (val AUROC) | patient_only (val loss) | patient_only (test AUROC) | patient_only (test loss) | marginalized (val AUROC) | marginalized (val loss) | marginalized (test AUROC) | marginalized (test loss) | Δ AUROC (test) | Draws won |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 5 | 0.7178 ± 0.0370 | 0.0312 ± 0.0343 | 0.6739 ± 0.1016 | 0.0317 ± 0.0353 | 0.7407 ± 0.0821 | 0.0305 ± 0.0334 | 0.7305 ± 0.0746 | 0.0310 ± 0.0350 | +0.0566 | 5/5 |
+| 25 | 0.7407 ± 0.0524 | 0.0275 ± 0.0119 | 0.7414 ± 0.0569 | 0.0273 ± 0.0116 | 0.7927 ± 0.0408 | 0.0268 ± 0.0117 | 0.7797 ± 0.0459 | 0.0265 ± 0.0112 | +0.0383 | 5/5 |
+| 125 | 0.7352 ± 0.0177 | 0.0268 ± 0.0049 | 0.7365 ± 0.0128 | 0.0267 ± 0.0047 | 0.7779 ± 0.0221 | 0.0260 ± 0.0052 | 0.7797 ± 0.0126 | 0.0258 ± 0.0049 | +0.0432 | 5/5 |
+| 625 | 0.7526 ± 0.0080 | 0.0270 ± 0.0032 | 0.7473 ± 0.0083 | 0.0270 ± 0.0033 | 0.7856 ± 0.0124 | 0.0263 ± 0.0033 | 0.7840 ± 0.0091 | 0.0263 ± 0.0034 | +0.0367 | 5/5 |
+| 2,500 | 0.7549 ± 0.0069 | 0.0269 ± 0.0009 | 0.7481 ± 0.0029 | 0.0269 ± 0.0008 | 0.7867 ± 0.0052 | 0.0262 ± 0.0009 | 0.7766 ± 0.0016 | 0.0263 ± 0.0008 | +0.0285 | 5/5 |
+
+![Experiment 4 (v2): test AUROC vs. task count](plots/exp4_v2_auroc_vs_n_task_count.png)
+
+### Per draw, N=5
+
+| Draw | patient_only (val AUROC) | patient_only (val loss) | patient_only (test AUROC) | patient_only (test loss) | marginalized (val AUROC) | marginalized (val loss) | marginalized (test AUROC) | marginalized (test loss) | Δ (test AUROC) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.7338 | 0.0306 | 0.6734 | 0.0311 | 0.7164 | 0.0295 | 0.7063 | 0.0297 | +0.0329 |
+| 2 | 0.7334 | 0.0088 | 0.6921 | 0.0077 | 0.7473 | 0.0088 | 0.7320 | 0.0075 | +0.0399 |
+| 3 | 0.7083 | 0.0116 | 0.8197 | 0.0101 | 0.8196 | 0.0113 | 0.8436 | 0.0094 | +0.0239 |
+| 4 | 0.7547 | 0.0906 | 0.6483 | 0.0928 | 0.8058 | 0.0886 | 0.7346 | 0.0917 | +0.0863 |
+| 5 | 0.6585 | 0.0145 | 0.5359 | 0.0168 | 0.6146 | 0.0144 | 0.6363 | 0.0168 | +0.1004 |
+
+### Per draw, N=25
+
+| Draw | patient_only (val AUROC) | patient_only (val loss) | patient_only (test AUROC) | patient_only (test loss) | marginalized (val AUROC) | marginalized (val loss) | marginalized (test AUROC) | marginalized (test loss) | Δ (test AUROC) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.6677 | 0.0204 | 0.6536 | 0.0210 | 0.7239 | 0.0200 | 0.7173 | 0.0204 | +0.0637 |
+| 2 | 0.7170 | 0.0469 | 0.7417 | 0.0468 | 0.7866 | 0.0459 | 0.7895 | 0.0450 | +0.0478 |
+| 3 | 0.7474 | 0.0287 | 0.7360 | 0.0278 | 0.8143 | 0.0282 | 0.7539 | 0.0274 | +0.0179 |
+| 4 | 0.8080 | 0.0160 | 0.7667 | 0.0166 | 0.8177 | 0.0155 | 0.8005 | 0.0159 | +0.0338 |
+| 5 | 0.7633 | 0.0253 | 0.8091 | 0.0246 | 0.8210 | 0.0242 | 0.8374 | 0.0236 | +0.0283 |
+
+### Per draw, N=125
+
+| Draw | patient_only (val AUROC) | patient_only (val loss) | patient_only (test AUROC) | patient_only (test loss) | marginalized (val AUROC) | marginalized (val loss) | marginalized (test AUROC) | marginalized (test loss) | Δ (test AUROC) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.7047 | 0.0218 | 0.7224 | 0.0217 | 0.7483 | 0.0207 | 0.7735 | 0.0206 | +0.0511 |
+| 2 | 0.7450 | 0.0288 | 0.7562 | 0.0284 | 0.7608 | 0.0282 | 0.7940 | 0.0278 | +0.0378 |
+| 3 | 0.7376 | 0.0336 | 0.7395 | 0.0334 | 0.7890 | 0.0332 | 0.7856 | 0.0328 | +0.0461 |
+| 4 | 0.7494 | 0.0221 | 0.7353 | 0.0227 | 0.7997 | 0.0211 | 0.7843 | 0.0217 | +0.0490 |
+| 5 | 0.7394 | 0.0274 | 0.7293 | 0.0271 | 0.7916 | 0.0266 | 0.7613 | 0.0264 | +0.0320 |
+
+### Per draw, N=625
+
+| Draw | patient_only (val AUROC) | patient_only (val loss) | patient_only (test AUROC) | patient_only (test loss) | marginalized (val AUROC) | marginalized (val loss) | marginalized (test AUROC) | marginalized (test loss) | Δ (test AUROC) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.7560 | 0.0260 | 0.7542 | 0.0263 | 0.7868 | 0.0254 | 0.7870 | 0.0259 | +0.0328 |
+| 2 | 0.7434 | 0.0227 | 0.7395 | 0.0224 | 0.7768 | 0.0217 | 0.7806 | 0.0216 | +0.0411 |
+| 3 | 0.7540 | 0.0277 | 0.7429 | 0.0277 | 0.7794 | 0.0272 | 0.7765 | 0.0270 | +0.0336 |
+| 4 | 0.7463 | 0.0315 | 0.7419 | 0.0316 | 0.7781 | 0.0309 | 0.7773 | 0.0310 | +0.0354 |
+| 5 | 0.7634 | 0.0273 | 0.7580 | 0.0268 | 0.8066 | 0.0261 | 0.7985 | 0.0258 | +0.0405 |
+
+### Per draw, N=2,500
+
+| Draw | patient_only (val AUROC) | patient_only (val loss) | patient_only (test AUROC) | patient_only (test loss) | marginalized (val AUROC) | marginalized (val loss) | marginalized (test AUROC) | marginalized (test loss) | Δ (test AUROC) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.7629 | 0.0265 | 0.7491 | 0.0268 | 0.7904 | 0.0258 | 0.7785 | 0.0260 | +0.0294 |
+| 2 | 0.7520 | 0.0267 | 0.7526 | 0.0266 | 0.7783 | 0.0262 | 0.7753 | 0.0263 | +0.0227 |
+| 3 | 0.7616 | 0.0257 | 0.7477 | 0.0258 | 0.7890 | 0.0250 | 0.7764 | 0.0251 | +0.0287 |
+| 4 | 0.7510 | 0.0277 | 0.7449 | 0.0277 | 0.7852 | 0.0271 | 0.7778 | 0.0271 | +0.0329 |
+| 5 | 0.7473 | 0.0280 | 0.7464 | 0.0276 | 0.7907 | 0.0269 | 0.7749 | 0.0270 | +0.0285 |
+
+### Per-task AUROC outlier check (N=2,500, draw 1, test)
+
+| Version | fraction ≥ 0.99 | fraction ≥ 0.95 |
+| --- | --- | --- |
+| v1 (pre-fix) | 0.48% | 3.4% |
+| v2 (degenerate-rejection + retrieval-scaling) | 0.64% | 2.52% |
+
+The near-perfect-AUROC tail is essentially unchanged between v1 and v2.
+Degenerate-code rejection filters codes that are structurally degenerate
+(all-positive/all-negative) at label-generation time; it does not filter
+codes that are simply easy for the model to predict without being
+degenerate in that technical sense, so this tail was not expected to
+disappear.
