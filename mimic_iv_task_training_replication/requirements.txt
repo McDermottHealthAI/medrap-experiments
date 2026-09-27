@@ -1,0 +1,14 @@
+medrap @ git+https://github.com/McDermottHealthAI/MedRAP.git@8171aeca44b92b0c778ba96fe045181b5a36acba
+# Python 3.12; analysis/runtime pins from the completed server experiment.
+numpy==2.4.3
+polars==1.30.0
+scikit-learn==1.8.0
+omegaconf==2.3.0
+torchmetrics==1.9.0
+transformers==5.3.0
+torch==2.10.0
+lightning==2.6.1
+datasets==4.8.2
+meds-torch-data==0.6.6
+# Requires GPU-enabled FAISS 1.13.2; build from source if your GPU is unsupported.
+# Installation steps: scripts/run.py --help.
