@@ -1,5 +1,5 @@
 #!/bin/bash
-# Submit one train.sh array (5 draws) per (arm, dim, pct) cell in grid.sh.
+# Submit one train.sh array (5 draws) per (arm, dim, n_patients) cell in grid.sh.
 #
 # Usage:
 #   cd mimic_iv_scaling_laws && scripts/submit_sweep.sh
@@ -9,8 +9,8 @@ source scripts/grid.sh
 
 for ARM in "${ARMS[@]}"; do
     for DIM in "${DIMS[@]}"; do
-        for PCT in "${PCTS[@]}"; do
-            sbatch --job-name="sl-${ARM}-dim${DIM}-train${PCT}pct" scripts/train.sh "${ARM}" "${DIM}" "${PCT}"
+        for N in "${N_PATIENTS[@]}"; do
+            sbatch --job-name="sl-${ARM}-dim${DIM}-trainN${N}" scripts/train.sh "${ARM}" "${DIM}" "${N}"
         done
     done
 done
