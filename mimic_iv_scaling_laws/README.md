@@ -14,6 +14,9 @@ are done by [`simple-scaling-laws`](https://github.com/mmcdermott/simple-scaling
 question is whether retrieval's AUROC advantage over `patient_only` shrinks, holds,
 or grows as `N` and `D` scale.
 
+For the reasoning behind each choice (models, configs, grid, schedule, and known
+limitations), see [`DESIGN.md`](DESIGN.md).
+
 The previous capacity sweep (`mimic_iv_sweep/*capacity_sweep*`) and data-scarcity sweep
 (`mimic_iv_sweep/*data_scarcity*`) each varied one axis with the other fixed. This
 experiment runs the full cross product so both exponents can be fit together.
