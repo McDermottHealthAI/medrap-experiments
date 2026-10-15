@@ -18,9 +18,14 @@ two axes interact, or extrapolate past the largest point run. This experiment ru
 full cross product and fits a scaling law to each arm, so the two arms' curves can be
 compared anywhere on the grid and a short distance past it.
 
+A third axis, the **number of tasks** trained jointly (5 to 2,500), asks whether the
+answer depends on how much supervision the shared encoder gets. More tasks give the
+encoder more signal per patient, which may make retrieved knowledge less useful. Each task
+count gets its own pair of fits, and the arms are compared within a task count.
+
 ## Law and fitting
 
-For each arm separately:
+For each arm and each task count separately:
 
 ```
 AUROC ~ E + A * N^-alpha + B * D^-beta      (fit on the logit scale)
@@ -30,7 +35,7 @@ AUROC ~ E + A * N^-alpha + B * D^-beta      (fit on the logit scale)
 |---|---|---|
 | `N` | patient-encoder parameter count | `model_size__n_params` |
 | `D` | number of training patients | `dataset_size__n_train_patients` |
-| AUROC | test (`held_out`) AUROC, mean over the 25 tasks | `test_metric__auroc` |
+| AUROC | test (`held_out`) AUROC, mean over the T tasks | `test_metric__auroc` |
 
 Fitting is done by [`simple-scaling-laws`](https://github.com/mmcdermott/simple-scaling-laws),
 pinned by commit in `pyproject.toml`. It fits the separable power law, bootstraps over
@@ -51,9 +56,9 @@ different `beta`. Comparisons happen afterwards, on predictions.
 
 | simple-scaling-laws column | Value | Why |
 |---|---|---|
-| `training_run_id` | `<arm>_dim<D>_trainN<N>_draw<d>` | one per trained model |
-| `train_set_id` | `trainN<N>_draw<d>` | both arms train on the identical label file |
-| `test_set_id` | `held_out_draw<d>` | each draw has its own 25 tasks, so its own test labels |
+| `training_run_id` | `<arm>_dim<D>_trainN<N>_tasks<T>_draw<d>` | one per trained model |
+| `train_set_id` | `trainN<N>_tasks<T>_draw<d>` | both arms train on the identical label file |
+| `test_set_id` | `held_out_tasks<T>_draw<d>` | each (task count, draw) has its own tasks, so its own test labels |
 | `optimizer_seed` | draw | `seed=${DRAW}` in `train.sh` |
 
 The 5 draws at a given (dim, N) are repeats of one configuration, which is what lets the
@@ -70,9 +75,12 @@ All values live in `scripts/grid.sh`:
 | arm | `patient_only`, `retrieval` | 2 |
 | `encoder.embedding_dim` | 4, 8, 16, 32, 64, 128 | 6 |
 | training patients | 1,000, 3,000, 10,000, 30,000, 100,000 | 5 |
+| task count (`TASK_COUNTS`) | 5, 25, 125, 625, 2,500 | 5 |
 | draw | 1–5 | 5 |
 
-That's 300 training runs, submitted as 60 SLURM arrays of 5 tasks each.
+That's 1,500 training runs, submitted as 300 SLURM arrays with one array job per draw.
+Trimming `TASK_COUNTS` in `grid.sh` is the cheapest way to cut cost: each level adds 300
+runs.
 
 - **Both axes are log-spaced** (roughly ×2 for width, ×3 for data), because a power law
   is linear in log-log space and evenly spaced log points pin the exponents down best.
@@ -84,6 +92,8 @@ That's 300 training runs, submitted as 60 SLURM arrays of 5 tasks each.
 - **Data starts at 1k.** Experiment 3 of `results/extreme_capacity_starved_retrieval`
   showed that at N=100 both arms sit at chance (AUROC ≈ 0.52) even with tuned epochs.
   Points like that carry no signal about the exponents.
+- **Task counts match `mimic_iv_sweep`'s task-count ablation** (×5 steps, 5 to 2,500), so
+  the results line up with it. 25 is the level every earlier N=25 result used.
 
 ## Models
 
@@ -91,7 +101,7 @@ Both arms share the patient side. They differ only in what sits between the enco
 the head.
 
 ```
-patient_only:  codes ─▶ RoPE encoder ─▶ passthrough ─▶ masked-mean pool ─▶ linear head (25 logits)
+patient_only:  codes ─▶ RoPE encoder ─▶ passthrough ─▶ masked-mean pool ─▶ linear head (T logits)
 
 retrieval:     codes ─▶ RoPE encoder ─┬─▶ query projector ─▶ FAISS top-4 docs ─▶ token-embedding encoder ─┐
                                       └──────────────────────────────────────────────────────────────────┴─▶ per-doc cross-attention fusion
@@ -126,7 +136,7 @@ Patient-encoder parameter counts (`N`). The code-embedding table (65,536 × DIM)
 `aggregate_results.py` computes these by building the encoder with the same shape as
 `train.sh`, so the two must be kept in sync.
 
-Shared settings: `pooling=masked_mean`, `head=linear` with 25 outputs,
+Shared settings: `pooling=masked_mean`, `head=linear` with T outputs,
 `training/task=multitask_binary`, `training/datamodule=meds_multitask`, batch size 32,
 `seq_sampling_strategy=to_end` (the most recent 256 events), `lr=1e-3`, gradient clipping 1.0.
 
@@ -174,23 +184,42 @@ runs.
 
 ## Data
 
-- **Cohort:** MIMIC-IV MEDS, the tensorized restore at
-    `/groups/mm6677_gp/zzw2102/data/MIMIC_MEDS_restored/processed`. This is the same copy
-    recent `mimic_iv_sweep` scripts and the ablation lines use, since the original was
-    deleted.
-- **Tasks:** the existing `mimic_iv_sweep/data/tasks_zach_uniform_event_n25_30d/draw{1..5}`
-    labels. Each draw has 25 binary tasks (does code X occur within 30 days of the
-    prediction time), one `uniform_event` prediction time per patient, and its own task
-    sample. No new labels are generated. Reusing them keeps the results comparable with
-    every earlier N=25 30d result.
+Everything is rebuilt from the raw MEDS data by this experiment. No cohort, tensorization
+or task labels are borrowed from other experiments or other people's directories.
+
+- **Cohort (`scripts/build_cohort.sh`):** one `medrap-preprocess` run on the raw, unfiltered
+    MIMIC-IV MEDS root `/groups/mm6677_gp/data/MIMIC_MEDS/MEDS_cohort` (`data/` +
+    `metadata/`). Stage 1 (MEDS-transforms) filters with `min_subjects_per_code=100` and
+    `min_events_per_subject=10`, the original cohort's parameters, and writes
+    `data/cohort/intermediate`. Stage 2 (MTD_preprocess) tokenizes and tensorizes it into
+    `data/cohort/tensorized`, which `train.sh` trains on. `medrap-preprocess` always generates
+    one task set at the end of a run. That set lands in `data/cohort/tasks` and isn't used.
+- **Tasks (`scripts/generate_tasks.sh T`):** for each task count T and draw d,
+    `medrap-preprocess` runs against `data/cohort/intermediate` (the filtered population that
+    training sees) with `tensorized_dir` set so the pipeline isn't rerun:
+    `num_tasks=T`, `horizon_days=30`, `min_history_days=1`, `code_selection=random`,
+    `anchor_strategy=uniform_event`, `seed` = 101/202/303/404/505 for draws 1–5. Each task
+    is "does code X occur within 30 days of the prediction time", with one `uniform_event`
+    prediction time per patient. Codes that come out all-positive or all-negative in any split
+    are rejected and redrawn, so every task is valid in train, tuning and held_out.
+    Output: `data/tasks_n<T>_30d/draw<d>/tasks`.
+- **Same patients across task counts:** prediction times depend only on the seed, not on
+    `num_tasks`, so within a draw every task count labels the same patients at the same
+    times. Only the codes differ.
+- **Codes are not nested across task counts:** each T draws its codes independently, so
+    the 5-task set isn't a subset of the 25-task set. This is what running `medrap-preprocess`
+    once per T gives, and it matches the earlier task-count ablation. Averaging over 5 draws
+    keeps any single code set from dominating.
 - **Unit of data:** a training patient. MedRAP's task generation writes one row per patient
-    (wide `task_0..task_24` columns, one shared prediction time), so rows and patients are
+    (wide `task_0..task_{T-1}` columns, one shared prediction time), so rows and patients are
     the same thing.
-- **Subsampling (`scripts/make_labels.sh`):** for each N and draw,
-    `subsample_train_labels.py --n-rows N --seed 1000000*draw + N` draws N patients from that
-    draw's `train.parquet`, uniformly at random. `tuning.parquet` and `held_out.parquet` are
-    copied unchanged, so within a draw every grid point is validated and tested on the same
-    patients. Both arms read the same subsampled file.
+- **Subsampling (end of `generate_tasks.sh`):** for each N, `subsample_train_labels.py
+    --n-rows N --seed 1000000*draw + N` draws N patients from that draw's `train.parquet`,
+    uniformly at random, into `data/tasks_n<T>_30d_trainN<N>/draw<d>/tasks`.
+    `tuning.parquet` and `held_out.parquet` are copied unchanged, so within a (T, draw) every
+    grid point is validated and tested on the same patients. Because the patient rows are
+    identical across T and the seed doesn't depend on T, the same N training patients are
+    picked at every task count. Both arms read the same subsampled file.
 - **Subsets are independent, not nested:** the 1k set is not a subset of the 3k set. This
     matches the existing script. Nesting would lower variance along the data axis slightly,
     but would mean changing a script shared with earlier experiments.
@@ -241,19 +270,21 @@ MedRAP changes. The experiment pins a MedRAP commit and passes Hydra overrides.
 ```
 uv sync                       # .venv with pinned medrap + simple-scaling-laws
 ln -s .../mimic_iv_sweep/data/retrieval_db data/retrieval_db
-scripts/make_labels.sh        # 25 label dirs: data/tasks_n25_30d_trainN<N>/draw<d>/tasks
-scripts/submit_sweep.sh       # 60 × sbatch scripts/train.sh <arm> <dim> <N>   (array 0-4 = draws)
+scripts/submit_tasks.sh       # build_cohort.sh, then (afterok) one generate_tasks.sh array per T
+scripts/submit_sweep.sh       # 300 × sbatch scripts/train.sh <arm> <dim> <N> <T>   (array 0-4 = draws)
 .venv/bin/python scripts/aggregate_results.py
 ```
 
 | File | Role |
 |---|---|
-| `scripts/grid.sh` | the grid. Sourced by `make_labels.sh` and `submit_sweep.sh` |
-| `scripts/make_labels.sh` | builds the subsampled label dirs |
+| `scripts/grid.sh` | the grid. Sourced by `submit_tasks.sh`, `generate_tasks.sh` and `submit_sweep.sh` |
+| `scripts/build_cohort.sh` | raw MEDS → `data/cohort/{intermediate,tensorized}` (one CPU job) |
+| `scripts/generate_tasks.sh` | one SLURM array per T: generates the tasks for each draw, then writes every subsampled label dir |
+| `scripts/submit_tasks.sh` | submits `build_cohort.sh` and the `generate_tasks.sh` arrays with an `afterok` dependency (`--skip-cohort` reuses an existing cohort) |
 | `scripts/subsample_train_labels.py` | copied unchanged from `mimic_iv_sweep` so this directory is self-contained |
-| `scripts/train.sh` | one SLURM array per cell: `ARM DIM N_TRAIN`, with shared overrides, the arm-specific block, the per-N schedule, train, then test eval |
+| `scripts/train.sh` | one SLURM array per cell: `ARM DIM N_TRAIN NUM_TASKS`, with shared overrides, the arm-specific block, the per-N schedule, train, then test eval |
 | `scripts/submit_sweep.sh` | loops over the grid and submits each cell |
-| `scripts/aggregate_results.py` | collects AUROC, fits each arm, compares them, writes two parquets and prints the summary |
+| `scripts/aggregate_results.py` | collects AUROC, fits each arm per task count, compares them, writes two parquets and prints the summary |
 
 `train.sh` builds one override array shared by `medrap-train` and `medrap-eval`, so the
 eval model is guaranteed to have the same architecture as the trained one. Training-only
@@ -265,11 +296,11 @@ scripts, with extra time to cover the 10-epoch small-N cells and the eval step.
 ## Outputs
 
 - `outputs/scaling_laws_results.parquet`: the fit input, one row per test eval.
-- `outputs/scaling_laws_comparison.parquet`: for every (N, D) point on the grid plus one
+- `outputs/scaling_laws_comparison.parquet`: for every task count, and every (N, D) point on the grid plus one
     step of 10× in each direction, each arm's fitted AUROC (median and 95% interval), the
     retrieval − patient_only difference, `p_better_than_reference`, and whether the point is
     interpolated or extrapolated.
-- Printed: each arm's `model.summary()` (parameters, confidence intervals, R², and warnings
+- Printed: each (task count, arm) `model.summary()` (parameters, confidence intervals, R², and warnings
     such as `weakly_identified_exponent` and `lack_of_fit`) and the difference table.
 
 Extrapolated rows (`domain == "extrapolation"`) are predictions outside the fitted range.
@@ -277,14 +308,27 @@ Read them alongside the confidence interval, not as point estimates.
 
 ## What was verified before launch
 
-- `train.sh` was run under bash for both arms, with `medrap-train`/`medrap-eval` replaced by
-    wrappers that add Hydra's `--cfg job`. Both compose against the pinned MedRAP commit.
-    Dims, seed, labels path, checkpoint path, per-N epochs/warmup and `eval_mode=test`
-    resolve as intended.
-- `aggregate_results.py` was run on a synthetic `outputs/` tree generated from a known law.
-    It finds 30 configurations × 5 runs per arm and recovers the planted retrieval advantage.
-- Not yet run on the cluster: `make_labels.sh` and `submit_sweep.sh`. The cluster paths are
-    unverified.
+All of this ran locally against the pinned MedRAP commit, on a small synthetic dataset.
+Nothing has run on the cluster yet.
+
+- **Full chain on a small synthetic raw MEDS dataset** (1,200 subjects, 40 codes, raw
+    `data/` + `metadata/` layout). `build_cohort.sh` ran both preprocessing stages and wrote
+    `data/cohort/{intermediate,tensorized}`. `generate_tasks.sh` generated the tasks and every
+    subsampled dir. `train.sh` then trained and test-evaluated both arms on CPU, using 1
+    epoch, a 32-event context, a 16-document fake retrieval DB and N=100 (a shrunken grid).
+    Both arms wrote test AUROC to the CSV logger.
+- **Task-count plumbing:** with the same draw, T=5 and T=10 produce 5 and 10 task columns
+    over identical `(subject_id, prediction_time)` rows, and the same subsampled patients.
+    Subsampled `held_out` is byte-identical to the full-size one.
+- **Composition at real grid values:** `train.sh` for both arms at `dim=16, N=1000, T=125`,
+    run with Hydra's `--cfg job`, resolves `head.out_dim`, every `num_tasks`, the label and
+    cohort paths, seed, the per-N schedule and `eval_mode=test` as intended.
+- **`aggregate_results.py`** on a synthetic `outputs/` tree (2 task counts × 30
+    configurations × 5 draws per arm, generated from a known law) fits each (task count, arm)
+    and recovers the planted retrieval advantage at both task counts.
+- **Not verified:** cluster paths (the raw MEDS root, the retrieval DB symlink) and
+    wall-clock or memory needs at real scale. Building the cohort is the slowest unknown, so
+    it has a 24 h, 128 GB allocation.
 
 ## Known limitations
 
@@ -297,3 +341,9 @@ Read them alongside the confidence interval, not as point estimates.
     intervals, and add points before drawing conclusions from extrapolations.
 5. The dim=128 cell differs from the earlier full-capacity baseline (1 head and 1 layer,
     vs. 4 heads and 2 layers).
+6. Task identity changes with T: codes aren't nested across task counts, so a difference
+    between task counts mixes "more tasks" with "different tasks". The five draws average
+    this out, but can't remove it.
+7. The cohort is rebuilt from raw data, so the T=25 cell isn't byte-identical to earlier
+    N=25 results, which used a different cohort copy. Numbers should be close, but compare
+    them as separate runs.

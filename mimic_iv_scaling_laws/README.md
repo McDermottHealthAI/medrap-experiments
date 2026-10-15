@@ -1,10 +1,10 @@
 # mimic_iv_scaling_laws
 
 Scaling laws for retrieval vs. patient-only, fit jointly over model capacity and
-number of training patients on the N=25, 30d MIMIC-IV tasks:
+number of training patients, at several numbers of 30d MIMIC-IV tasks:
 
 ```
-AUROC ~ E + A * N^-alpha + B * D^-beta     (fit per arm, on the logit scale)
+AUROC ~ E + A * N^-alpha + B * D^-beta     (fit per arm and task count, on the logit scale)
 ```
 
 `N` = patient-encoder parameter count, `D` = training patients (`train.parquet` has one
@@ -12,14 +12,18 @@ row per patient, ~153k at full size). Fitting and arm comparison
 are done by [`simple-scaling-laws`](https://github.com/mmcdermott/simple-scaling-laws)
 (wild cluster bootstrap over configurations, paired draws for comparisons). The
 question is whether retrieval's AUROC advantage over `patient_only` shrinks, holds,
-or grows as `N` and `D` scale.
+or grows as `N` and `D` scale, and whether that depends on how many tasks the model
+trains on.
 
-For the reasoning behind each choice (models, configs, grid, schedule, and known
+The cohort and all task labels are rebuilt from the raw MEDS data by this experiment's
+own scripts. Nothing is reused from other experiments' label or cohort directories.
+
+For the reasoning behind each choice (models, configs, grid, data, schedule, and known
 limitations), see [`DESIGN.md`](DESIGN.md).
 
-The previous capacity sweep (`mimic_iv_sweep/*capacity_sweep*`) and data-scarcity sweep
-(`mimic_iv_sweep/*data_scarcity*`) each varied one axis with the other fixed. This
-experiment runs the full cross product so both exponents can be fit together.
+The previous capacity sweep (`mimic_iv_sweep/*capacity_sweep*`), data-scarcity sweep
+(`mimic_iv_sweep/*data_scarcity*`) and task-count ablation each varied one axis with the
+others fixed. This experiment runs the full cross product.
 
 ## Grid
 
@@ -30,10 +34,12 @@ Defined in [`scripts/grid.sh`](scripts/grid.sh):
 | arm | `patient_only`, `retrieval` (marginalized binary, learned-linear query, K=4) |
 | `encoder.embedding_dim` | 4, 8, 16, 32, 64, 128 (num_heads=1, num_layers=1, ff_dim=2*dim, max_seq_len=256) |
 | training patients | 1,000, 3,000, 10,000, 30,000, 100,000 (exact count, same for every draw) |
-| draw | 1-5 (each draw has its own 25 tasks; seed = draw) |
+| tasks (`TASK_COUNTS`) | 5, 25, 125, 625, 2,500 random codes, 30-day horizon |
+| draw | 1-5 (task seed 101/202/303/404/505; training seed = draw) |
 
-2 × 6 × 5 = 60 SLURM arrays of 5 tasks = 300 training runs. Each task trains, then
-evaluates `last.ckpt` on `held_out` in the same job.
+2 × 6 × 5 × 5 = 300 SLURM arrays, each with one job per draw = 1,500 training runs. Each
+job trains, then evaluates `last.ckpt` on `held_out` in the same job. Every task count adds
+300 runs, so trimming `TASK_COUNTS` is the easiest way to cut cost.
 
 Epochs and warmup scale with the number of training patients, so small-data cells still
 get enough optimizer steps. 1k/10k/100k follow `mimic_iv_sweep`'s `extreme_starved_*_trainN*`
@@ -57,19 +63,29 @@ uv sync                                                              # once
 mkdir -p data
 ln -s /groups/mm6677_gp/hs3627/medrap-experiments/mimic_iv_sweep/data/retrieval_db data/retrieval_db
 
-scripts/make_labels.sh      # subsampled train label dirs (exact patient counts) from mimic_iv_sweep's full N=25 30d labels
-scripts/submit_sweep.sh     # one sbatch per (arm, dim, n_patients)
+scripts/submit_tasks.sh     # build_cohort.sh, then (afterok) one generate_tasks.sh array per task count
+scripts/submit_sweep.sh     # after the task jobs finish: one sbatch per (task count, arm, dim, n_patients)
 
 # after every job finishes
 .venv/bin/python scripts/aggregate_results.py
 ```
 
-To run a single cell: `sbatch --job-name=sl-retrieval-dim16-trainN10000 scripts/train.sh retrieval 16 10000`.
+What the data steps write:
+
+| Script | Output |
+|---|---|
+| `build_cohort.sh` | `data/cohort/intermediate` (MEDS-transforms filtered, `min_subjects_per_code=100`, `min_events_per_subject=10`) and `data/cohort/tensorized`, from the raw `/groups/mm6677_gp/data/MIMIC_MEDS/MEDS_cohort` |
+| `generate_tasks.sh T` | `data/tasks_n<T>_30d/draw<d>/tasks` (full size) and `data/tasks_n<T>_30d_trainN<N>/draw<d>/tasks` for every N |
+
+`scripts/submit_tasks.sh --skip-cohort` regenerates only the tasks, reusing an existing
+`data/cohort`.
+
+To run a single cell: `sbatch --job-name=sl-retrieval-dim16-trainN10000-tasks25 scripts/train.sh retrieval 16 10000 25`.
 
 `aggregate_results.py` writes `outputs/scaling_laws_results.parquet` (fit input, one
 row per test eval) and `outputs/scaling_laws_comparison.parquet` (fitted AUROC and
-`p_better_than_reference` per arm at every grid point, plus points 10x past the
-largest model and dataset). It prints both fitted laws and the retrieval − patient_only
+`p_better_than_reference` per arm and task count at every grid point, plus points 10x past
+the largest model and dataset). It prints each fitted law and the retrieval − patient_only
 AUROC difference table.
 
 ## Notes
@@ -79,5 +95,8 @@ AUROC difference table.
     retrieval arm's curve but are not part of the capacity axis.
 - Subsets are drawn independently per (size, draw), so the 1k set is not contained in
     the 3k set. tuning/held_out are full-size and identical across sizes within a draw.
+- Within a draw, every task count labels the same patients at the same prediction times
+    and trains on the same subsampled patients. Only the task codes differ, and they are
+    drawn independently per task count, not nested.
 - With one test eval per run, evaluation noise can't be separated from run-to-run noise.
     `simple-scaling-laws` warns about this, and the run-level variance absorbs it.

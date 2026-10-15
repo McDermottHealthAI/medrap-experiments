@@ -1,7 +1,7 @@
 #!/bin/bash
 # ============================================================
-# SLURM array: one (arm, capacity, data fraction) cell of the scaling-law
-# grid -- trains on the subsampled labels, then evaluates the last
+# SLURM array: one (arm, capacity, training patients, task count) cell of the
+# scaling-law grid -- trains on the subsampled labels, then evaluates the last
 # checkpoint on the held_out (test) split. 5 array tasks = 5 draws.
 #
 # Args:
@@ -9,14 +9,15 @@
 #   DIM   encoder.embedding_dim (num_heads=1, num_layers=1, ff_dim=2*DIM,
 #         max_seq_len fixed at 256 -- same capacity cut as
 #         mimic_iv_sweep's capacity_sweep line)
-#   N_TRAIN  number of training patients (labels from scripts/make_labels.sh)
+#   N_TRAIN  number of training patients
+#   NUM_TASKS  number of tasks (labels from scripts/generate_tasks.sh)
 #
 # Epochs/warmup scale with N_TRAIN (mimic_iv_sweep's extreme_starved trainN
 # schedule) so small-data cells get enough optimizer steps.
 #
 # Usage:
 #   cd mimic_iv_scaling_laws
-#   sbatch --job-name=sl-retrieval-dim16-trainN10000 scripts/train.sh retrieval 16 10000
+#   sbatch --job-name=sl-retrieval-dim16-trainN10000-tasks25 scripts/train.sh retrieval 16 10000 25
 #   (or scripts/submit_sweep.sh for the whole grid)
 # ============================================================
 
@@ -35,18 +36,18 @@ set -euo pipefail
 ARM=$1
 DIM=$2
 N_TRAIN=$3
+NUM_TASKS=$4
 
 IDX=${SLURM_ARRAY_TASK_ID}
 DRAW=$((IDX + 1))
-N=25
 
 REPO_DIR="${SLURM_SUBMIT_DIR}"
 VENV="${REPO_DIR}/.venv/bin/activate"  # created by: cd mimic_iv_scaling_laws && uv sync
 
 RETRIEVAL_DB="${REPO_DIR}/data/retrieval_db"
-TENSORIZED_DIR="/groups/mm6677_gp/zzw2102/data/MIMIC_MEDS_restored/processed"
-LABELS_DIR="${REPO_DIR}/data/tasks_n25_30d_trainN${N_TRAIN}/draw${DRAW}/tasks"
-RUN_NAME="${ARM}_dim${DIM}_trainN${N_TRAIN}"
+TENSORIZED_DIR="${REPO_DIR}/data/cohort/tensorized"  # built by scripts/build_cohort.sh
+LABELS_DIR="${REPO_DIR}/data/tasks_n${NUM_TASKS}_30d_trainN${N_TRAIN}/draw${DRAW}/tasks"
+RUN_NAME="${ARM}_dim${DIM}_trainN${N_TRAIN}_tasks${NUM_TASKS}"
 TRAIN_OUTPUT_DIR="${REPO_DIR}/outputs/${RUN_NAME}/draw${DRAW}"
 EVAL_OUTPUT_DIR="${REPO_DIR}/outputs/${RUN_NAME}_test/draw${DRAW}"
 
@@ -56,7 +57,7 @@ source "${VENV}"
 mkdir -p logs "${TRAIN_OUTPUT_DIR}" "${EVAL_OUTPUT_DIR}"
 
 if [ ! -d "${LABELS_DIR}" ]; then
-    echo "ERROR: ${LABELS_DIR} not found. Run scripts/make_labels.sh first." >&2
+    echo "ERROR: ${LABELS_DIR} not found. Run scripts/submit_tasks.sh first." >&2
     exit 1
 fi
 
@@ -68,15 +69,15 @@ MODEL_ARGS=(
     "encoder.ff_dim=$((2 * DIM))"
     pooling=masked_mean
     head=linear
-    "head.out_dim=${N}"
+    "head.out_dim=${NUM_TASKS}"
     training/task=multitask_binary
-    "training.task.num_tasks=${N}"
+    "training.task.num_tasks=${NUM_TASKS}"
     training/datamodule=meds_multitask
     "training.datamodule.config.tensorized_cohort_dir=${TENSORIZED_DIR}"
     training.datamodule.config.max_seq_len=256
     "training.datamodule.config.task_labels_dir=${LABELS_DIR}"
     "training.datamodule.mt_labels_dir=${LABELS_DIR}"
-    "training.datamodule.num_tasks=${N}"
+    "training.datamodule.num_tasks=${NUM_TASKS}"
     training.datamodule.batch_size=32
     training.datamodule.config.seq_sampling_strategy=to_end
     training/trainer=lightning_wandb
@@ -113,7 +114,7 @@ case "${ARM}" in
             marginalized_output_mode=binary
             head.in_dim=256
             training/loss=multitask_binary_bce_marginalized
-            "training.loss.num_tasks=${N}"
+            "training.loss.num_tasks=${NUM_TASKS}"
         )
         ;;
     *)
@@ -139,6 +140,7 @@ echo "  Array job     : ${SLURM_ARRAY_JOB_ID:-local}[${IDX}]"
 echo "  Node          : ${SLURMD_NODENAME:-$(hostname)}"
 echo "  Arm           : ${ARM}"
 echo "  embedding_dim : ${DIM}"
+echo "  Tasks         : ${NUM_TASKS}"
 echo "  Train patients: ${N_TRAIN} (${MAX_EPOCHS} epochs, ${WARMUP_STEPS} warmup steps)"
 echo "  Draw          : ${DRAW}/5"
 echo "  Started       : $(date)"
