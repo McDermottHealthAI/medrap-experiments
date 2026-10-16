@@ -326,9 +326,16 @@ Nothing has run on the cluster yet.
 - **`aggregate_results.py`** on a synthetic `outputs/` tree (2 task counts × 30
     configurations × 5 draws per arm, generated from a known law) fits each (task count, arm)
     and recovers the planted retrieval advantage at both task counts.
-- **Not verified:** cluster paths (the raw MEDS root, the retrieval DB symlink) and
-    wall-clock or memory needs at real scale. Building the cohort is the slowest unknown, so
-    it has a 24 h, 128 GB allocation.
+- **Cluster sample run (C2B2):** the real scripts ran on a slice of the raw MEDS data (20
+    of 292 train shards and 3 of 37 each of tuning and held_out, 10,369 training patients),
+    with the real retrieval DB on an L40S GPU. `build_cohort.sh` took 18 min.
+    `generate_tasks.sh` took under 40 s per draw. Then `train.sh` ran at dim=16, N=1,000,
+    T=25, draw 1: patient_only took 5 min and reached test AUROC 0.547; retrieval took 12 min,
+    used 12.7 GB of RAM, and reached 0.612. All 25 tasks were valid on held_out. The cohort
+    vocabulary is 9,740 codes, under the encoder's 65,536 `vocab_size`. The run surfaced the
+    polars tokenization panic that `scripts/polars_patch` now works around.
+- **Not verified at full scale:** wall-clock time and memory for the full cohort build
+    (24 h, 128 GB allocated) and for the 2,500-task cells.
 
 ## Known limitations
 
