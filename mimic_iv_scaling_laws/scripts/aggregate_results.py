@@ -1,16 +1,16 @@
-"""Fit a scaling law per (arm, task count) from this experiment's outputs/ and compare the arms.
+"""Fit the scaling laws from this experiment's outputs/ and summarize the task-count ablation.
 
-Reads test/auroc/mean from every outputs/<arm>_dim<D>_trainN<P>_tasks<T>_test/draw<d> eval,
-fits ``AUROC ~ E + A * N^-alpha + B * D^-beta`` per arm and task count with
-simple-scaling-laws (N = patient-encoder parameter count, D = training patients), and,
-within each task count, compares the arms at every grid point plus 10x beyond the largest
-model / dataset.
+Reads test/auroc/mean from every outputs/<arm>_dim<D>_trainN<P>_tasks<T>_test/draw<d> eval.
 
-Writes outputs/scaling_laws_results.parquet (one row per eval, the fit input) and
-outputs/scaling_laws_comparison.parquet (fitted AUROC + p_better_than_reference per
-arm per point per task count), and prints every fitted law and the comparison.
+- Main grid (T = MAIN_NUM_TASKS): fits ``AUROC ~ E + A * N^-alpha + B * D^-beta`` per arm with
+  simple-scaling-laws (N = patient-encoder parameter count, D = training patients) and compares
+  the arms at every grid point plus 10x beyond the largest model / dataset.
+- Task-count ablation (dim = ABLATION_DIM, every T): mean +- std test AUROC over draws per
+  (T, training patients, arm), and the retrieval - patient_only difference.
 
-Usage:  cd mimic_iv_scaling_laws && .venv/bin/python scripts/aggregate_results.py
+Writes outputs/scaling_laws_results.parquet (one row per eval), outputs/scaling_laws_comparison.parquet
+(main-grid fitted AUROC + p_better_than_reference per arm per point) and
+outputs/task_count_ablation.parquet, and prints the fitted laws and both tables.
 """
 
 import csv
@@ -25,6 +25,8 @@ from simple_scaling_laws import compare, fit
 
 RUN_RE = re.compile(r"outputs/(?P<arm>\w+?)_dim(?P<dim>\d+)_trainN(?P<n_train>\d+)_tasks(?P<num_tasks>\d+)_test/draw(?P<draw>\d+)$")
 REFERENCE_ARM = "patient_only"
+MAIN_NUM_TASKS = 25  # keep in sync with scripts/grid.sh
+ABLATION_DIM = 32
 N_DRAWS = 1000
 
 
@@ -90,23 +92,38 @@ def fit_and_compare(results: pl.DataFrame) -> pl.DataFrame:
     return compare(models, points, target="test_metric__auroc", reference=REFERENCE_ARM)
 
 
+def task_count_ablation(results: pl.DataFrame) -> pl.DataFrame:
+    """Mean/std test AUROC over draws per (task count, training patients, arm) at ABLATION_DIM."""
+    per_arm = (
+        results.filter(pl.col("model_size__n_params") == encoder_n_params(ABLATION_DIM))
+        .group_by("num_tasks", "dataset_size__n_train_patients", "arm")
+        .agg(
+            pl.col("test_metric__auroc").mean().alias("auroc_mean"),
+            pl.col("test_metric__auroc").std().alias("auroc_std"),
+            pl.len().alias("n_draws"),
+        )
+    )
+    wide = per_arm.pivot(
+        on="arm", index=["num_tasks", "dataset_size__n_train_patients"], values="auroc_mean"
+    )
+    if {"retrieval", REFERENCE_ARM} <= set(wide.columns):
+        wide = wide.with_columns((pl.col("retrieval") - pl.col(REFERENCE_ARM)).alias("retrieval_minus_ref"))
+    return per_arm.join(wide, on=["num_tasks", "dataset_size__n_train_patients"]).sort(
+        "num_tasks", "dataset_size__n_train_patients", "arm"
+    )
+
+
 def main() -> None:
     results = collect_results()
     results.write_parquet("outputs/scaling_laws_results.parquet")
     print(results.group_by("num_tasks", "arm").len().sort("num_tasks", "arm"))
 
-    comparisons = []
-    for num_tasks in sorted(results["num_tasks"].unique()):
-        print(f"\n##### {num_tasks} tasks #####")
-        comparison = fit_and_compare(results.filter(pl.col("num_tasks") == num_tasks))
-        comparisons.append(comparison.with_columns(pl.lit(num_tasks).alias("num_tasks")))
-    comparison = pl.concat(comparisons)
+    print(f"\n##### Main grid: {MAIN_NUM_TASKS} tasks #####")
+    comparison = fit_and_compare(results.filter(pl.col("num_tasks") == MAIN_NUM_TASKS))
     comparison.write_parquet("outputs/scaling_laws_comparison.parquet")
-
     retrieval_vs_reference = (
         comparison.filter(pl.col("system") != REFERENCE_ARM)
         .select(
-            "num_tasks",
             pl.col("model_size__n_params", "dataset_size__n_train_patients").cast(pl.Int64),
             "domain",
             "difference__q025",
@@ -114,11 +131,15 @@ def main() -> None:
             "difference__q975",
             "p_better_than_reference",
         )
-        .sort("num_tasks", "model_size__n_params", "dataset_size__n_train_patients")
+        .sort("model_size__n_params", "dataset_size__n_train_patients")
     )
-    print(f"\n=== AUROC difference vs {REFERENCE_ARM} ===")
+    ablation = task_count_ablation(results)
+    ablation.write_parquet("outputs/task_count_ablation.parquet")
     with pl.Config(tbl_rows=-1, tbl_cols=-1, float_precision=4):
+        print(f"\n=== AUROC difference vs {REFERENCE_ARM} (main grid) ===")
         print(retrieval_vs_reference)
+        print(f"\n=== Task-count ablation (dim={ABLATION_DIM}) ===")
+        print(ablation)
 
 
 if __name__ == "__main__":

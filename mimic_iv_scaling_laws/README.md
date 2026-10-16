@@ -34,12 +34,17 @@ Defined in [`scripts/grid.sh`](scripts/grid.sh):
 | arm | `patient_only`, `retrieval` (marginalized binary, learned-linear query, K=4) |
 | `encoder.embedding_dim` | 4, 8, 16, 32, 64, 128 (num_heads=1, num_layers=1, ff_dim=2*dim, max_seq_len=256) |
 | training patients | 1,000, 3,000, 10,000, 30,000, 100,000 (exact count, same for every draw) |
-| tasks (`TASK_COUNTS`) | 5, 25, 125, 625, 2,500 random codes, 30-day horizon |
+| tasks | 25 random codes, 30-day horizon (`MAIN_NUM_TASKS`) |
 | draw | 1-5 (task seed 101/202/303/404/505; training seed = draw) |
 
-2 × 6 × 5 × 5 = 300 SLURM arrays, each with one job per draw = 1,500 training runs. Each
-job trains, then evaluates `last.ckpt` on `held_out` in the same job. Every task count adds
-300 runs, so trimming `TASK_COUNTS` is the easiest way to cut cost.
+That's the main grid: 2 × 6 × 5 × 5 draws = 300 runs.
+
+**Task-count ablation:** 5, 125, 625 and 2,500 tasks (`ABLATION_TASK_COUNTS`) at dim=32
+(`ABLATION_DIM`), for both arms × all 5 training-set sizes × 5 draws, adds 200 runs. The
+25-task point comes from the main grid.
+
+The total is 500 runs (100 SLURM arrays of 5 draws). Each job trains, then evaluates
+`last.ckpt` on `held_out` in the same job.
 
 Epochs and warmup scale with the number of training patients, so small-data cells still
 get enough optimizer steps. 1k/10k/100k follow `mimic_iv_sweep`'s `extreme_starved_*_trainN*`
@@ -64,7 +69,8 @@ mkdir -p data
 ln -s /groups/mm6677_gp/hs3627/medrap-experiments/mimic_iv_sweep/data/retrieval_db data/retrieval_db
 
 scripts/submit_tasks.sh     # build_cohort.sh, then (afterok) one generate_tasks.sh array per task count
-scripts/submit_sweep.sh     # after the task jobs finish: one sbatch per (task count, arm, dim, n_patients)
+                            # its last line is SBATCH_DEPENDENCY=afterok:<task job ids>
+SBATCH_DEPENDENCY=afterok:<ids> scripts/submit_sweep.sh   # queued behind the task jobs
 
 # after every job finishes
 .venv/bin/python scripts/aggregate_results.py
@@ -82,11 +88,15 @@ What the data steps write:
 
 To run a single cell: `sbatch --job-name=sl-retrieval-dim16-trainN10000-tasks25 scripts/train.sh retrieval 16 10000 25`.
 
-`aggregate_results.py` writes `outputs/scaling_laws_results.parquet` (fit input, one
-row per test eval) and `outputs/scaling_laws_comparison.parquet` (fitted AUROC and
-`p_better_than_reference` per arm and task count at every grid point, plus points 10x past
-the largest model and dataset). It prints each fitted law and the retrieval − patient_only
-AUROC difference table.
+`aggregate_results.py` writes three files:
+
+- `outputs/scaling_laws_results.parquet`: one row per test eval.
+- `outputs/scaling_laws_comparison.parquet`: fitted AUROC and `p_better_than_reference`
+  per arm at every 25-task grid point, plus points 10x past the largest model and dataset.
+- `outputs/task_count_ablation.parquet`: mean and std AUROC over draws per (task count,
+  training patients, arm) at dim=32, plus the retrieval − patient_only difference.
+
+It prints both fitted laws and both tables.
 
 ## Notes
 

@@ -1,5 +1,6 @@
 #!/bin/bash
-# Build the cohort, then (once it succeeds) generate every TASK_COUNTS level in grid.sh.
+# Build the cohort, then (once it succeeds) generate every task count in grid.sh.
+# The last line printed is the afterok dependency for submit_sweep.sh.
 #
 # Usage:
 #   cd mimic_iv_scaling_laws && scripts/submit_tasks.sh
@@ -16,6 +17,11 @@ if [ "${1:-}" != "--skip-cohort" ]; then
     DEPENDENCY=(--dependency="afterok:${COHORT_JOB}")
 fi
 
+TASK_JOBS=()
 for T in "${TASK_COUNTS[@]}"; do
-    sbatch "${DEPENDENCY[@]}" --job-name="sl-tasks-n${T}" scripts/generate_tasks.sh "${T}"
+    JOB=$(sbatch --parsable "${DEPENDENCY[@]}" --job-name="sl-tasks-n${T}" scripts/generate_tasks.sh "${T}")
+    echo "generate_tasks n${T}: ${JOB}"
+    TASK_JOBS+=("${JOB}")
 done
+
+echo "SBATCH_DEPENDENCY=afterok:$(IFS=:; echo "${TASK_JOBS[*]}")"

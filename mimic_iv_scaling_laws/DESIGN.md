@@ -20,8 +20,9 @@ compared anywhere on the grid and a short distance past it.
 
 A third axis, the **number of tasks** trained jointly (5 to 2,500), asks whether the
 answer depends on how much supervision the shared encoder gets. More tasks give the
-encoder more signal per patient, which may make retrieved knowledge less useful. Each task
-count gets its own pair of fits, and the arms are compared within a task count.
+encoder more signal per patient, which may make retrieved knowledge less useful. The task
+count isn't crossed with the full grid. The capacity × data law is fit at a fixed 25 tasks,
+and the task count is ablated separately at one width (dim=32) across every training-set size.
 
 ## Law and fitting
 
@@ -75,12 +76,16 @@ All values live in `scripts/grid.sh`:
 | arm | `patient_only`, `retrieval` | 2 |
 | `encoder.embedding_dim` | 4, 8, 16, 32, 64, 128 | 6 |
 | training patients | 1,000, 3,000, 10,000, 30,000, 100,000 | 5 |
-| task count (`TASK_COUNTS`) | 5, 25, 125, 625, 2,500 | 5 |
 | draw | 1–5 | 5 |
 
-That's 1,500 training runs, submitted as 300 SLURM arrays with one array job per draw.
-Trimming `TASK_COUNTS` in `grid.sh` is the cheapest way to cut cost: each level adds 300
-runs.
+That's the **main grid** at `MAIN_NUM_TASKS=25`: 300 training runs.
+
+The **task-count ablation** adds `ABLATION_TASK_COUNTS` = 5, 125, 625 and 2,500 tasks at
+`ABLATION_DIM=32`, for both arms × all 5 training-set sizes × 5 draws: 200 more runs. The
+25-task point at dim=32 comes from the main grid, so each task count gets a full data-scaling
+curve at one width. The total is 500 runs, submitted as 100 SLURM arrays with one array job
+per draw. Crossing the task count with the full grid would cost 1,500 runs, mostly on
+capacity points the ablation question doesn't need.
 
 - **Both axes are log-spaced** (roughly ×2 for width, ×3 for data), because a power law
   is linear in log-log space and evenly spaced log points pin the exponents down best.
@@ -92,7 +97,7 @@ runs.
 - **Data starts at 1k.** Experiment 3 of `results/extreme_capacity_starved_retrieval`
   showed that at N=100 both arms sit at chance (AUROC ≈ 0.52) even with tuned epochs.
   Points like that carry no signal about the exponents.
-- **Task counts match `mimic_iv_sweep`'s task-count ablation** (×5 steps, 5 to 2,500), so
+- **Ablation task counts match `mimic_iv_sweep`'s task-count ablation** (×5 steps, 5 to 2,500), so
   the results line up with it. 25 is the level every earlier N=25 result used.
 
 ## Models
@@ -270,8 +275,8 @@ MedRAP changes. The experiment pins a MedRAP commit and passes Hydra overrides.
 ```
 uv sync                       # .venv with pinned medrap + simple-scaling-laws
 ln -s .../mimic_iv_sweep/data/retrieval_db data/retrieval_db
-scripts/submit_tasks.sh       # build_cohort.sh, then (afterok) one generate_tasks.sh array per T
-scripts/submit_sweep.sh       # 300 × sbatch scripts/train.sh <arm> <dim> <N> <T>   (array 0-4 = draws)
+scripts/submit_tasks.sh       # build_cohort.sh, then (afterok) one generate_tasks.sh array per T; prints SBATCH_DEPENDENCY=...
+SBATCH_DEPENDENCY=afterok:... scripts/submit_sweep.sh   # 100 × sbatch scripts/train.sh <arm> <dim> <N> <T>   (array 0-4 = draws)
 .venv/bin/python scripts/aggregate_results.py
 ```
 
@@ -283,8 +288,8 @@ scripts/submit_sweep.sh       # 300 × sbatch scripts/train.sh <arm> <dim> <N> <
 | `scripts/submit_tasks.sh` | submits `build_cohort.sh` and the `generate_tasks.sh` arrays with an `afterok` dependency (`--skip-cohort` reuses an existing cohort) |
 | `scripts/subsample_train_labels.py` | copied unchanged from `mimic_iv_sweep` so this directory is self-contained |
 | `scripts/train.sh` | one SLURM array per cell: `ARM DIM N_TRAIN NUM_TASKS`, with shared overrides, the arm-specific block, the per-N schedule, train, then test eval |
-| `scripts/submit_sweep.sh` | loops over the grid and submits each cell |
-| `scripts/aggregate_results.py` | collects AUROC, fits each arm per task count, compares them, writes two parquets and prints the summary |
+| `scripts/submit_sweep.sh` | submits each main-grid and ablation cell |
+| `scripts/aggregate_results.py` | collects AUROC, fits each arm on the 25-task main grid, compares them, tabulates the task-count ablation, writes three parquets and prints the summary |
 
 `train.sh` builds one override array shared by `medrap-train` and `medrap-eval`, so the
 eval model is guaranteed to have the same architecture as the trained one. Training-only
