@@ -37,6 +37,9 @@ cd "${REPO_DIR}"
 source "${VENV}"
 mkdir -p logs "${COHORT_DIR}"
 
+# Work around a polars 1.30 parquet-read panic in tokenization; see the module docstring.
+export PYTHONPATH="${REPO_DIR}/scripts/polars_patch${PYTHONPATH:+:${PYTHONPATH}}"
+
 echo "=== Building cohort: ${RAW_MEDS_DIR} -> ${COHORT_DIR} ($(date)) ==="
 
 medrap-preprocess \
