@@ -1,6 +1,6 @@
 #!/bin/bash
 # Build the cohort, then (once it succeeds) generate every task count in grid.sh.
-# The last line printed is the afterok dependency for submit_sweep.sh.
+# The last line printed is the afterok dependency to pass to submit_sweep.sh.
 #
 # Usage:
 #   cd mimic_iv_scaling_laws && scripts/submit_tasks.sh
@@ -24,4 +24,4 @@ for T in "${TASK_COUNTS[@]}"; do
     TASK_JOBS+=("${JOB}")
 done
 
-echo "SBATCH_DEPENDENCY=afterok:$(IFS=:; echo "${TASK_JOBS[*]}")"
+echo "afterok:$(IFS=:; echo "${TASK_JOBS[*]}")"

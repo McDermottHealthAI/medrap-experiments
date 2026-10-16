@@ -6,13 +6,18 @@
 # Usage:
 #   cd mimic_iv_scaling_laws && scripts/submit_sweep.sh
 #   # or queued behind the task jobs, using the line submit_tasks.sh prints last:
-#   SBATCH_DEPENDENCY=afterok:<ids> scripts/submit_sweep.sh
+#   scripts/submit_sweep.sh afterok:<ids>
 
 set -euo pipefail
 source scripts/grid.sh
 
+DEPENDENCY=()
+if [ -n "${1:-}" ]; then
+    DEPENDENCY=(--dependency="$1")
+fi
+
 submit() {  # ARM DIM N T
-    sbatch --job-name="sl-$1-dim$2-trainN$3-tasks$4" scripts/train.sh "$1" "$2" "$3" "$4"
+    sbatch "${DEPENDENCY[@]}" --job-name="sl-$1-dim$2-trainN$3-tasks$4" scripts/train.sh "$1" "$2" "$3" "$4"
 }
 
 for ARM in "${ARMS[@]}"; do

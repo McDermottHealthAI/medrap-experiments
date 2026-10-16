@@ -275,8 +275,8 @@ MedRAP changes. The experiment pins a MedRAP commit and passes Hydra overrides.
 ```
 uv sync                       # .venv with pinned medrap + simple-scaling-laws
 ln -s .../mimic_iv_sweep/data/retrieval_db data/retrieval_db
-scripts/submit_tasks.sh       # build_cohort.sh, then (afterok) one generate_tasks.sh array per T; prints SBATCH_DEPENDENCY=...
-SBATCH_DEPENDENCY=afterok:... scripts/submit_sweep.sh   # 100 × sbatch scripts/train.sh <arm> <dim> <N> <T>   (array 0-4 = draws)
+scripts/submit_tasks.sh       # build_cohort.sh, then (afterok) one generate_tasks.sh array per T; prints afterok:<ids>
+scripts/submit_sweep.sh afterok:<ids>   # 100 × sbatch scripts/train.sh <arm> <dim> <N> <T>   (array 0-4 = draws)
 .venv/bin/python scripts/aggregate_results.py
 ```
 

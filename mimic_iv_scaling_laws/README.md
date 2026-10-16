@@ -69,8 +69,8 @@ mkdir -p data
 ln -s /groups/mm6677_gp/hs3627/medrap-experiments/mimic_iv_sweep/data/retrieval_db data/retrieval_db
 
 scripts/submit_tasks.sh     # build_cohort.sh, then (afterok) one generate_tasks.sh array per task count
-                            # its last line is SBATCH_DEPENDENCY=afterok:<task job ids>
-SBATCH_DEPENDENCY=afterok:<ids> scripts/submit_sweep.sh   # queued behind the task jobs
+                            # its last line is afterok:<task job ids>
+scripts/submit_sweep.sh afterok:<ids>   # queued behind the task jobs (sbatch --dependency)
 
 # after every job finishes
 .venv/bin/python scripts/aggregate_results.py
