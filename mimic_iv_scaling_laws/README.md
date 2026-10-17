@@ -98,6 +98,18 @@ To run a single cell: `sbatch --job-name=sl-retrieval-dim16-trainN10000-tasks25 
 
 It prints both fitted laws and both tables.
 
+`scripts/plot_results.py` turns the same evals into presentation figures (PNG and PDF) and
+markdown/LaTeX tables under `results/` (`--out` to change). It works on partial results:
+cells without results are marked pending, and the fitted-law curves and the fitted-law table
+appear once the 25-task grid is complete for both arms. To plot locally, copy just the eval
+CSVs:
+
+```bash
+rsync -am --include='*/' --include='*_test/draw*/loggers/csv/*/metrics.csv' --exclude='*' \
+    <cluster>:.../mimic_iv_scaling_laws/outputs <local_dir>/
+cd <local_dir> && <this dir>/.venv/bin/python <this dir>/scripts/plot_results.py --out .
+```
+
 ## Notes
 
 - `N` counts only the patient encoder. The retrieval arm also has fusion and
