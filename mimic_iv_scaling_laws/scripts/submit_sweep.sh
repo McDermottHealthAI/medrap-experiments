@@ -16,8 +16,15 @@ if [ -n "${1:-}" ]; then
     DEPENDENCY=(--dependency="$1")
 fi
 
-submit() {  # ARM DIM N T
-    sbatch "${DEPENDENCY[@]}" --job-name="sl-$1-dim$2-trainN$3-tasks$4" scripts/train.sh "$1" "$2" "$3" "$4"
+submit() {  # ARM DIM N T -- only the draws that don't have test metrics yet, so reruns are safe
+    local missing=()
+    for IDX in 0 1 2 3 4; do
+        compgen -G "outputs/$1_dim$2_trainN$3_tasks$4_test/draw$((IDX + 1))/loggers/csv/*/metrics.csv" >/dev/null \
+            || missing+=("${IDX}")
+    done
+    [ "${#missing[@]}" -eq 0 ] && return
+    sbatch "${DEPENDENCY[@]}" --array="$(IFS=,; echo "${missing[*]}")" \
+        --job-name="sl-$1-dim$2-trainN$3-tasks$4" scripts/train.sh "$1" "$2" "$3" "$4"
 }
 
 for ARM in "${ARMS[@]}"; do

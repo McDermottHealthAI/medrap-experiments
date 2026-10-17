@@ -166,5 +166,9 @@ medrap-eval \
     do_overwrite=true \
     "wandb_run_name=sl-${RUN_NAME}-test-draw${DRAW}-${SLURM_ARRAY_JOB_ID:-local}_${IDX}"
 
+# Only the test metrics (CSV logger) feed the analysis; keep last.ckpt for re-evaluation and
+# drop the epoch=/progress= snapshots (~5x the disk otherwise).
+find "${TRAIN_OUTPUT_DIR}/checkpoints" -name "*.ckpt" ! -name last.ckpt -delete
+
 echo ""
 echo "=== Done: $(date) ==="
