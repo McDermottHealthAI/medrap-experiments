@@ -18,6 +18,8 @@ trains on.
 The cohort and all task labels are rebuilt from the raw MEDS data by this experiment's
 own scripts. Nothing is reused from other experiments' label or cohort directories.
 
+**Results write-up:** [`results/mimic_iv_scaling_laws/`](../results/mimic_iv_scaling_laws/README.md).
+
 For the reasoning behind each choice (models, configs, grid, data, schedule, and known
 limitations), see [`DESIGN.md`](DESIGN.md).
 
