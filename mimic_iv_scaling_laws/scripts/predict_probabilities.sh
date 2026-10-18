@@ -48,6 +48,11 @@ mkdir -p logs "${OUTPUT_DIR}"
 
 # shellcheck source=scripts/model_args.sh
 source "${REPO_DIR}/scripts/model_args.sh"
+# _predict_probabilities.yaml (pinned MedRAP) doesn't declare the marginalization keys that
+# _train.yaml / _eval.yaml do, so append them with "+" -- the model factory reads them if present.
+for i in "${!MODEL_ARGS[@]}"; do
+    case "${MODEL_ARGS[$i]}" in marginalized_*) MODEL_ARGS[$i]="+${MODEL_ARGS[$i]}" ;; esac
+done
 
 medrap-predict-probabilities \
     "${MODEL_ARGS[@]}" \
