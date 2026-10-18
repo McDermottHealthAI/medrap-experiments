@@ -48,8 +48,15 @@ RETRIEVAL_DB="${REPO_DIR}/data/retrieval_db"
 TENSORIZED_DIR="${REPO_DIR}/data/cohort/tensorized"  # built by scripts/build_cohort.sh
 LABELS_DIR="${REPO_DIR}/data/tasks_n${NUM_TASKS}_30d_trainN${N_TRAIN}/draw${DRAW}/tasks"
 RUN_NAME="${ARM}_dim${DIM}_trainN${N_TRAIN}_tasks${NUM_TASKS}"
-TRAIN_OUTPUT_DIR="${REPO_DIR}/outputs/${RUN_NAME}/draw${DRAW}"
-EVAL_OUTPUT_DIR="${REPO_DIR}/outputs/${RUN_NAME}_test/draw${DRAW}"
+# Train and eval write to the node's local NVMe scratch (Slurm creates and deletes
+# /localscratch/$USER/$SLURM_JOB_ID); only the small CSV logs and configs are copied back to
+# outputs/ at the end. The shared /groups quota (snapshots count against it) can't absorb
+# checkpoints from dozens of concurrent jobs.
+FINAL_TRAIN_DIR="${REPO_DIR}/outputs/${RUN_NAME}/draw${DRAW}"
+FINAL_EVAL_DIR="${REPO_DIR}/outputs/${RUN_NAME}_test/draw${DRAW}"
+SCRATCH_DIR="/localscratch/${USER}/${SLURM_JOB_ID:-local}/${RUN_NAME}"
+TRAIN_OUTPUT_DIR="${SCRATCH_DIR}/draw${DRAW}"
+EVAL_OUTPUT_DIR="${SCRATCH_DIR}/draw${DRAW}_test"
 
 cd "${REPO_DIR}"
 # shellcheck source=/dev/null
@@ -116,9 +123,16 @@ medrap-eval \
     do_overwrite=true \
     "wandb_run_name=sl-${RUN_NAME}-test-draw${DRAW}-${SLURM_ARRAY_JOB_ID:-local}_${IDX}"
 
-# Only the test metrics (CSV logger) feed the analysis; keep last.ckpt for re-evaluation and
-# drop the epoch=/progress= snapshots (~5x the disk otherwise).
-find "${TRAIN_OUTPUT_DIR}/checkpoints" -name "*.ckpt" ! -name last.ckpt -delete
+# Copy back what the analysis reads (CSV logs: test metrics, val curves) plus configs. The final
+# dirs are replaced, not merged, so a crashed earlier attempt can't leave a stale csv version.
+for pair in "${TRAIN_OUTPUT_DIR}:${FINAL_TRAIN_DIR}" "${EVAL_OUTPUT_DIR}:${FINAL_EVAL_DIR}"; do
+    src="${pair%%:*}"
+    dst="${pair##*:}"
+    rm -rf "${dst}"
+    mkdir -p "${dst}/loggers"
+    cp "${src}"/*.yaml "${dst}/" 2>/dev/null || true
+    cp -r "${src}/loggers/csv" "${dst}/loggers/"
+done
 
 echo ""
 echo "=== Done: $(date) ==="
