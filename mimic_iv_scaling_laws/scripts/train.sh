@@ -42,7 +42,12 @@ IDX=${SLURM_ARRAY_TASK_ID}
 DRAW=$((IDX + 1))
 
 REPO_DIR="${SLURM_SUBMIT_DIR}"
-VENV="${REPO_DIR}/.venv/bin/activate"  # created by: cd mimic_iv_scaling_laws && uv sync
+# Optional environment switches (set by the submit script; sbatch passes the environment through):
+#   SL_VENV         venv to use instead of .venv (v2env/.venv pins MedRAP with bias init)
+#   SL_OUTPUT_ROOT  results root instead of outputs/ (v2 runs: outputs_v2/)
+#   SL_BIAS_INIT=1  training.module.init_bias_from_base_rate=true (needs v2env's MedRAP)
+VENV="${SL_VENV:-${REPO_DIR}/.venv}/bin/activate"  # created by: cd mimic_iv_scaling_laws && uv sync
+OUTPUT_ROOT="${REPO_DIR}/${SL_OUTPUT_ROOT:-outputs}"
 
 RETRIEVAL_DB="${REPO_DIR}/data/retrieval_db"
 TENSORIZED_DIR="${REPO_DIR}/data/cohort/tensorized"  # built by scripts/build_cohort.sh
@@ -52,8 +57,8 @@ RUN_NAME="${ARM}_dim${DIM}_trainN${N_TRAIN}_tasks${NUM_TASKS}"
 # /localscratch/$USER/$SLURM_JOB_ID); only the small CSV logs and configs are copied back to
 # outputs/ at the end. The shared /groups quota (snapshots count against it) can't absorb
 # checkpoints from dozens of concurrent jobs.
-FINAL_TRAIN_DIR="${REPO_DIR}/outputs/${RUN_NAME}/draw${DRAW}"
-FINAL_EVAL_DIR="${REPO_DIR}/outputs/${RUN_NAME}_test/draw${DRAW}"
+FINAL_TRAIN_DIR="${OUTPUT_ROOT}/${RUN_NAME}/draw${DRAW}"
+FINAL_EVAL_DIR="${OUTPUT_ROOT}/${RUN_NAME}_test/draw${DRAW}"
 SCRATCH_DIR="/localscratch/${USER}/${SLURM_JOB_ID:-local}/${RUN_NAME}"
 TRAIN_OUTPUT_DIR="${SCRATCH_DIR}/draw${DRAW}"
 EVAL_OUTPUT_DIR="${SCRATCH_DIR}/draw${DRAW}_test"
@@ -70,6 +75,9 @@ fi
 
 # shellcheck source=scripts/model_args.sh
 source "${REPO_DIR}/scripts/model_args.sh"
+if [ "${SL_BIAS_INIT:-0}" = 1 ]; then
+    MODEL_ARGS+=(training.module.init_bias_from_base_rate=true)
+fi
 MODEL_ARGS+=(
     training/trainer=lightning_wandb
     training.trainer.accelerator=gpu
@@ -113,7 +121,7 @@ medrap-train \
     "seed=${DRAW}" \
     "output_dir=${TRAIN_OUTPUT_DIR}" \
     do_overwrite=true \
-    "wandb_run_name=sl-${RUN_NAME}-draw${DRAW}-${SLURM_ARRAY_JOB_ID:-local}_${IDX}"
+    "wandb_run_name=sl${SL_OUTPUT_ROOT:+-${SL_OUTPUT_ROOT}}-${RUN_NAME}-draw${DRAW}-${SLURM_ARRAY_JOB_ID:-local}_${IDX}"
 
 medrap-eval \
     "${MODEL_ARGS[@]}" \
@@ -121,7 +129,7 @@ medrap-eval \
     eval_mode=test \
     "output_dir=${EVAL_OUTPUT_DIR}" \
     do_overwrite=true \
-    "wandb_run_name=sl-${RUN_NAME}-test-draw${DRAW}-${SLURM_ARRAY_JOB_ID:-local}_${IDX}"
+    "wandb_run_name=sl${SL_OUTPUT_ROOT:+-${SL_OUTPUT_ROOT}}-${RUN_NAME}-test-draw${DRAW}-${SLURM_ARRAY_JOB_ID:-local}_${IDX}"
 
 # Copy back what the analysis reads (CSV logs: test metrics, val curves) plus configs. The final
 # dirs are replaced, not merged, so a crashed earlier attempt can't leave a stale csv version.
