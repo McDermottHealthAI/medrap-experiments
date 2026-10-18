@@ -18,6 +18,9 @@
   125–2,500 tasks, retrieval wins **5/5 draws in every cell**, by +0.02–0.04 even at 100K
   patients. At 25 tasks the same cells look borderline only because the choice of tasks adds
   noise.
+- **Test loss shows the same picture, with a bigger small-model gap.** Both arms' test BCE is
+  the same quantity. Retrieval's loss is lower in 20/30 cells, by up to 0.27 at width 4 with 1K
+  patients, and the gap closes at large width or data.
 - **A power-law scaling fit is not identifiable on this data.** AUROC still rises roughly
   linearly in log(patients) up to 100K with no plateau, so the curves below are descriptive.
   Their exponents shouldn't be extrapolated.
@@ -130,6 +133,41 @@ bound, and the width exponent's CI spans 2–3 orders of magnitude. The library 
 linearly in log(D), so there is no plateau for a power law to anchor to. The fitted curves
 interpolate the grid well (the lines in the figures above), but the exponents can't support
 extrapolation.
+
+## Results: test loss (25 tasks)
+
+Both arms log the **same** test loss: binary cross-entropy of their final predicted
+probability, averaged over (patient, task) pairs. For `retrieval`, that probability is the
+marginal over its 4 documents, Σₖ P(docₖ | x)·σ(logitₖ). Lower is better, so here a
+**negative** value means retrieval is better. The format matches the AUROC table:
+<sub>[95% CI] · draws retrieval won</sub>, and **bold** = significant.
+
+| Width ↓ / patients → | 1K | 3K | 10K | 30K | 100K |
+|---|---|---|---|---|---|
+| dim 4 | **-0.2694** <sub>[-0.3452, -0.1935] · 5/5</sub> | **-0.0743** <sub>[-0.0990, -0.0496] · 5/5</sub> | **-0.0177** <sub>[-0.0278, -0.0077] · 5/5</sub> | **-0.0055** <sub>[-0.0089, -0.0022] · 5/5</sub> | **-0.0016** <sub>[-0.0028, -0.0003] · 5/5</sub> |
+| dim 8 | **-0.1000** <sub>[-0.1124, -0.0877] · 5/5</sub> | **-0.0278** <sub>[-0.0349, -0.0207] · 5/5</sub> | **-0.0103** <sub>[-0.0134, -0.0073] · 5/5</sub> | **-0.0036** <sub>[-0.0056, -0.0017] · 5/5</sub> | **-0.0011** <sub>[-0.0022, -0.0000] · 5/5</sub> |
+| dim 16 | **-0.0350** <sub>[-0.0421, -0.0279] · 5/5</sub> | **-0.0150** <sub>[-0.0239, -0.0062] · 5/5</sub> | **-0.0055** <sub>[-0.0069, -0.0040] · 5/5</sub> | **-0.0026** <sub>[-0.0040, -0.0012] · 5/5</sub> | -0.0009 <sub>[-0.0020, +0.0001] · 5/5</sub> |
+| dim 32 | **-0.0137** <sub>[-0.0199, -0.0075] · 5/5</sub> | **-0.0077** <sub>[-0.0095, -0.0060] · 5/5</sub> | **-0.0027** <sub>[-0.0037, -0.0017] · 5/5</sub> | -0.0017 <sub>[-0.0037, +0.0003] · 4/5</sub> | -0.0003 <sub>[-0.0006, +0.0001] · 4/5</sub> |
+| dim 64 | **-0.0059** <sub>[-0.0081, -0.0036] · 5/5</sub> | **-0.0026** <sub>[-0.0037, -0.0016] · 5/5</sub> | -0.0010 <sub>[-0.0020, +0.0001] · 4/5</sub> | -0.0005 <sub>[-0.0010, +0.0001] · 5/5</sub> | +0.0003 <sub>[-0.0002, +0.0007] · 1/5</sub> |
+| dim 128 | **-0.0019** <sub>[-0.0037, -0.0001] · 5/5</sub> | -0.0002 <sub>[-0.0009, +0.0005] · 3/5</sub> | +0.0003 <sub>[-0.0009, +0.0014] · 3/5</sub> | +0.0003 <sub>[-0.0001, +0.0006] · 1/5</sub> | +0.0003 <sub>[-0.0006, +0.0013] · 1/5</sub> |
+
+- **Retrieval's loss is significantly lower in 20 of 30 cells and never significantly
+  higher.** The pattern matches AUROC: the gap is largest for small encoders on little data,
+  and it closes toward dim 64–128 and 100K patients.
+- **Retrieval's loss is nearly flat** at ~0.03–0.04 across the whole grid. `patient_only`
+  starts far higher (0.31 at dim 4, 1K patients) and falls until the two meet.
+- **Loss also rewards calibration.** That's why the small-model gap is much larger in loss
+  (−0.27) than in AUROC (+0.18). A small, overfit `patient_only` model is both less
+  discriminative and badly overconfident, while averaging over 4 documents keeps
+  retrieval's probabilities moderate.
+- **The power law fits loss poorly** (R² 0.50 for `patient_only`, 0.06 for `retrieval`).
+  The loss figures therefore show the measured means, on a log y-axis, without fitted curves.
+
+![Test-loss difference heatmap](plots/fig3_retrieval_advantage_loss.png)
+
+![Test loss vs training patients, by width](plots/fig1_data_scaling_loss.png)
+
+![Test loss vs encoder parameters, by training size](plots/fig2_capacity_scaling_loss.png)
 
 ## Results: task-count ablation (width 32)
 

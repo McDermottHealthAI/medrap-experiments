@@ -14,6 +14,7 @@ Usage:
 
 import datetime
 import html
+import math
 import re
 import sys
 from pathlib import Path
@@ -41,7 +42,7 @@ def compact(n: float) -> str:
     return f"{n / 1e6:.1f}M" if n >= 1e6 else f"{n / 1e3:.0f}K" if n >= 1e3 else str(int(n))
 
 
-def per_draw(results: pl.DataFrame) -> pl.DataFrame:
+def per_draw(results: pl.DataFrame, col: str = "test_metric__auroc") -> pl.DataFrame:
     dims = {encoder_n_params(d): d for d in DIMS}
     return results.select(
         "arm",
@@ -49,7 +50,7 @@ def per_draw(results: pl.DataFrame) -> pl.DataFrame:
         pl.col("dataset_size__n_train_patients").alias("n"),
         pl.col("num_tasks").alias("t"),
         pl.col("optimizer_seed").alias("draw"),
-        pl.col("test_metric__auroc").alias("auroc"),
+        pl.col(col).alias("auroc"),
     )
 
 
@@ -68,15 +69,23 @@ def paired(draws: pl.DataFrame, arm: str, ref: str = "patient_only") -> dict:
 
 
 def tint(v: float, lim: float = 0.2) -> str:
-    """Diverging cell background: blue (patient only better) -> gray -> orange (retrieval better)."""
-    x = max(-1.0, min(1.0, v / lim))
+    """Diverging cell background: blue (patient only better) -> gray -> orange (retrieval better).
+
+    A negative lim flips the sign (for loss, where lower is better); abs(lim) < 0.01 is
+    read as a log scale so small loss gaps stay visible next to large ones.
+    """
+    if abs(lim) < 0.01:
+        mag = min(1.0, max(0.0, (math.log10(abs(v) + 1e-12) + 4) / 3.5))  # 1e-4 -> 0, ~3e-1 -> 1
+        x = math.copysign(mag, v * lim)
+    else:
+        x = max(-1.0, min(1.0, v / lim))
     end = ORANGE if x > 0 else BLUE
     w = abs(x) * 0.75
     r, g, b = (round(GRAY[i] * (1 - w) + end[i] * w) for i in range(3))
     return f"rgb({r},{g},{b})"
 
 
-def diff_table(stats_: dict, t: int, dims, ns, caption: str) -> str:
+def diff_table(stats_: dict, t: int, dims, ns, caption: str, lim: float = 0.2, dec: int = 3) -> str:
     head = "".join(f"<th>{compact(n)}</th>" for n in ns)
     rows = []
     for dim in dims:
@@ -87,10 +96,13 @@ def diff_table(stats_: dict, t: int, dims, ns, caption: str) -> str:
                 cells.append('<td class="pending">pending</td>')
                 continue
             m, hw, wins, k = s
+            if lim < 0:  # lower is better: a retrieval "win" is a negative difference
+                wins = k - wins
             sig = "sig" if m - hw > 0 or m + hw < 0 else ""
+            lo, hi = f"{m - hw:+.{dec}f}", f"{m + hw:+.{dec}f}"
             cells.append(
-                f'<td class="num tinted {sig}" style="background:{tint(m)}" title="95% CI [{m - hw:+.3f}, {m + hw:+.3f}], '
-                f'{wins}/{k} draws won"><b>{m:+.3f}</b><span>[{m - hw:+.3f}, {m + hw:+.3f}] · {wins}/{k}</span></td>'
+                f'<td class="num tinted {sig}" style="background:{tint(m, lim)}" title="95% CI [{lo}, {hi}], '
+                f'{wins}/{k} draws won by retrieval"><b>{m:+.{dec}f}</b><span>[{lo}, {hi}] · {wins}/{k}</span></td>'
             )
         rows.append(f"<tr><th>dim {dim}</th>{''.join(cells)}</tr>")
     return (
@@ -147,7 +159,7 @@ def fit_summary(path: Path) -> str:
         return "<p class='muted'>Fit pending (needs the full grid).</p>"
     text = path.read_text()
     arms = re.findall(
-        r"## (.+?)\n.*?E=([\d.e+-]+), A=([\d.e+-]+), alpha=([\d.e+-]+), B=([\d.e+-]+), beta=([\d.e+-]+).*?R2=([\d.]+)",
+        r"## (.+?)\n.*?test_metric__auroc[^:]*: E=([\d.e+-]+), A=([\d.e+-]+), alpha=([\d.e+-]+), B=([\d.e+-]+), beta=([\d.e+-]+).*?R2=([\d.]+)",
         text,
         re.DOTALL,
     )
@@ -436,6 +448,14 @@ Tasks ask whether code X occurs within 30 days of a prediction time sampled unif
 <h3 style="margin-top:8px">Fitted law</h3>
 <p class="lead" style="margin-top:6px">AUROC ≈ E + A·N<sup>−α</sup> + B·D<sup>−β</sup> per arm, on the logit scale (simple-scaling-laws, wild cluster bootstrap).</p>
 {fit_summary(Path("tables/table4_fitted_laws.md"))}
+<h3 style="margin-top:26px">Test loss</h3>
+<p class="lead" style="margin-top:6px">Both arms log the same test loss: binary cross-entropy of their final predicted probability
+(retrieval's is the marginal over its 4 documents), averaged over patient–task pairs. Lower is better, so <b>negative = retrieval better</b>.
+Retrieval's loss stays flat at ~0.03–0.04 in every cell. Patient only starts far higher for small models on little data, then
+falls to meet it at dim 64–128 or ~100K patients. Loss also rewards calibration, which is why the small-model gap is much larger here than in AUROC.</p>
+{diff_table(paired(per_draw(results, "test_loss__bce"), "retrieval"), 25, DIMS, NS, "Retrieval − patient only, test loss, 25 tasks (paired, 95% CI · draws retrieval won)", lim=-0.005, dec=4)}
+{figure("figures/fig1_data_scaling_loss.png", "Test loss vs training patients by encoder width (log y-axis; means joined, since the power-law fit to loss is poor).")}
+{figure("figures/fig2_capacity_scaling_loss.png", "Test loss vs patient-encoder parameters, by training-set size.")}
 </section>
 
 <section id="ablation"><h2>Task-count ablation · dim 32</h2>

@@ -37,11 +37,16 @@ CONTROL_NUM_TASKS = 625
 N_DRAWS = 1000
 
 
-def test_auroc(eval_dir: str) -> float:
+def test_metrics(eval_dir: str) -> tuple[float, float]:
+    """(test AUROC averaged over tasks, test loss) from an eval's CSV logger.
+
+    Both arms log ``test/loss`` as binary cross-entropy against their final predicted probability
+    (retrieval's is the marginal over its retrieved documents), so the two are on the same scale.
+    """
     files = sorted(glob.glob(f"{eval_dir}/loggers/csv/*/metrics.csv"))
     with open(files[-1]) as f:
         rows = [r for r in csv.DictReader(f) if r.get("test/auroc/mean")]
-    return float(rows[-1]["test/auroc/mean"])
+    return float(rows[-1]["test/auroc/mean"]), float(rows[-1]["test/loss"])
 
 
 def encoder_n_params(dim: int) -> int:
@@ -71,7 +76,7 @@ def collect_results() -> pl.DataFrame:
                 "optimizer_seed": draw,
                 "model_size__n_params": encoder_n_params(dim),
                 "dataset_size__n_train_patients": n_train,
-                "test_metric__auroc": test_auroc(eval_dir),
+                **dict(zip(("test_metric__auroc", "test_loss__bce"), test_metrics(eval_dir), strict=True)),
             }
         )
     return pl.DataFrame(rows)

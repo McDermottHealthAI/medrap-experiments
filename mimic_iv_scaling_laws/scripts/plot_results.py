@@ -35,7 +35,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
-from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm
+from matplotlib.colors import LinearSegmentedColormap, SymLogNorm, TwoSlopeNorm
 from matplotlib.ticker import FuncFormatter
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -103,6 +103,29 @@ plt.rcParams.update(
 )
 
 
+# What the y-axis shows; --metric picks one. "better" sets which sign of retrieval - patient_only
+# counts as a retrieval win (orange in the heatmap).
+METRICS = {
+    "auroc": {
+        "col": "test_metric__auroc",
+        "axis": "Test AUROC",
+        "short": "AUROC",
+        "better": "higher",
+        "suffix": "",
+        "dec": 3,
+    },
+    "loss": {
+        "col": "test_loss__bce",
+        "axis": "Test loss (BCE)",
+        "short": "test loss",
+        "better": "lower",
+        "suffix": "_loss",
+        "dec": 4,
+    },
+}
+METRIC = METRICS["auroc"]
+
+
 def compact(x: float, _pos: object = None) -> str:
     for div, suffix in ((1e6, "M"), (1e3, "K")):
         if x >= div:
@@ -112,15 +135,15 @@ def compact(x: float, _pos: object = None) -> str:
 
 
 def summarize(results: pl.DataFrame) -> pl.DataFrame:
-    """Mean/std/count of test AUROC over draws per (arm, dim, n_train, num_tasks)."""
+    """Mean/std/count of the selected metric over draws per (arm, dim, n_train, num_tasks)."""
     dims = {encoder_n_params(d): d for d in (4, 8, 16, 32, 64, 128)}
     return (
         results.with_columns(pl.col("model_size__n_params").replace_strict(dims).alias("dim"))
         .rename({"dataset_size__n_train_patients": "n_train"})
         .group_by("arm", "dim", "model_size__n_params", "n_train", "num_tasks")
         .agg(
-            pl.col("test_metric__auroc").mean().alias("mean"),
-            pl.col("test_metric__auroc").std().fill_null(0.0).alias("std"),
+            pl.col(METRIC["col"]).mean().alias("mean"),
+            pl.col(METRIC["col"]).std().fill_null(0.0).alias("std"),
             pl.len().alias("n"),
         )
         .sort("arm", "num_tasks", "dim", "n_train")
@@ -147,7 +170,7 @@ def fitted_curves(results: pl.DataFrame, summary: pl.DataFrame) -> tuple[dict, p
         "model_size__n_params": [float(p) for p, _ in pts],
         "dataset_size__n_train_patients": [float(n) for _, n in pts],
     }
-    curves = compare(models, points, target="test_metric__auroc", reference=REFERENCE_ARM)
+    curves = compare(models, points, target=METRIC["col"], reference=REFERENCE_ARM)
     return {arm: m.summary() for arm, m in models.items()}, curves
 
 
@@ -197,13 +220,17 @@ def arm_legend(fig, note: str) -> None:
 
 def save(fig, out: Path, name: str) -> None:
     for ext in ("png", "pdf"):
-        fig.savefig(out / f"{name}.{ext}", dpi=200, bbox_inches="tight")
+        fig.savefig(out / f"{name}{METRIC['suffix']}.{ext}", dpi=200, bbox_inches="tight")
     plt.close(fig)
 
 
 def fig_scaling(summary, curves, out, *, axis: str) -> None:
     """axis='data': x = training patients, panel per dim. axis='capacity': x = params, panel per N."""
     main = summary.filter(pl.col("num_tasks") == MAIN_NUM_TASKS)
+    # The separable power law fits test loss poorly here (R² ~0.5 / ~0.06), so loss plots show the
+    # measured means only; the fit itself is still written to table4_fitted_laws_loss.md.
+    fit_drawn = curves is not None and METRIC["better"] == "higher"
+    curves = curves if fit_drawn else None
     if axis == "data":
         panels, panel_col, x_col, fit_x, fixed_col = (
             sorted(main["dim"].unique()),
@@ -240,6 +267,9 @@ def fig_scaling(summary, curves, out, *, axis: str) -> None:
             else [encoder_n_params(d) for d in sorted(summary["dim"].unique())]
         )
         log_x(ax, xs[0], xs[-1])
+        if METRIC["better"] == "lower":
+            ax.set_yscale("log")  # loss spans an order of magnitude; scaling-law convention is log-log
+            ax.set_ylim(main["mean"].min() / 1.6, (main["mean"] + main["std"]).max() * 1.3)
         title = (
             f"dim {panel}  ({compact(encoder_n_params(panel))} params)"
             if axis == "data"
@@ -252,16 +282,18 @@ def fig_scaling(summary, curves, out, *, axis: str) -> None:
     for ax in axes[-1]:
         ax.set_xlabel(xlabel)
     for row in axes:
-        row[0].set_ylabel(f"Test AUROC (mean of {MAIN_NUM_TASKS} tasks)")
+        row[0].set_ylabel(f"{METRIC['axis']} (mean of {MAIN_NUM_TASKS} tasks)")
     head = (
-        "AUROC vs training-set size, by encoder width"
+        f"{METRIC['axis']} vs training-set size, by encoder width"
         if axis == "data"
-        else "AUROC vs encoder size, by training-set size"
+        else f"{METRIC['axis']} vs encoder size, by training-set size"
     )
     fig.suptitle(head, x=0.01, ha="left", fontsize=12, color=INK)
     note = "Points: mean over 5 draws, bars ±1 std. " + (
         "Lines: fitted separable power law per arm (median, 95% band)."
-        if curves is not None
+        if fit_drawn
+        else "Lines join the means (the power-law fit to test loss is poor; see table4_fitted_laws_loss.md)."
+        if METRIC["better"] == "lower"
         else "Lines join the means (fit shown once the grid is complete)."
     )
     arm_legend(fig, note)
@@ -284,9 +316,16 @@ def fig_advantage(summary, out) -> None:
     for r in g.iter_rows(named=True):
         if r["diff"] is not None:
             mat[dims.index(r["dim"]), ns.index(r["n_train"])] = r["diff"]
-    lim = max(0.05, np.nanmax(np.abs(mat))) if np.isfinite(mat).any() else 0.1
+    floor = 0.05 if METRIC["better"] == "higher" else 1e-3
+    lim = max(floor, np.nanmax(np.abs(mat))) if np.isfinite(mat).any() else 0.1
+    cmap = DIVERGING if METRIC["better"] == "higher" else DIVERGING.reversed()  # orange = retrieval better
     fig, ax = plt.subplots(figsize=(6.4, 4.2))
-    im = ax.imshow(mat, cmap=DIVERGING, norm=TwoSlopeNorm(0, -lim, lim), aspect="auto", origin="lower")
+    # Loss gaps span orders of magnitude (one small-model cell dwarfs the rest), so color loss on a
+    # symmetric log scale; AUROC stays linear.
+    norm = (
+        TwoSlopeNorm(0, -lim, lim) if METRIC["better"] == "higher" else SymLogNorm(1e-3, vmin=-lim, vmax=lim)
+    )
+    im = ax.imshow(mat, cmap=cmap, norm=norm, aspect="auto", origin="lower")
     ax.grid(False)
     for i, j in itertools.product(range(len(dims)), range(len(ns))):
         v = mat[i, j]
@@ -295,7 +334,15 @@ def fig_advantage(summary, out) -> None:
             continue
         rgb = np.array(im.cmap(im.norm(v))[:3])
         lum = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]
-        ax.text(j, i, f"{v:+.3f}", ha="center", va="center", fontsize=9, color=INK if lum > 0.5 else SURFACE)
+        ax.text(
+            j,
+            i,
+            f"{v:+.{METRIC['dec']}f}",
+            ha="center",
+            va="center",
+            fontsize=9,
+            color=INK if lum > 0.5 else SURFACE,
+        )
     ax.set_xticks(range(len(ns)), [compact(n) for n in ns])
     ax.set_yticks(range(len(dims)), [str(d) for d in dims])
     ax.set_xlabel("Training patients")
@@ -305,9 +352,10 @@ def fig_advantage(summary, out) -> None:
     cb = fig.colorbar(im, ax=ax, fraction=0.04, pad=0.02)
     cb.outline.set_visible(False)
     cb.ax.tick_params(colors=INK_2)
-    cb.set_label("Retrieval − patient only (AUROC)", color=INK_2)
+    cb.set_label(f"Retrieval − patient only ({METRIC['short']})", color=INK_2)
     ax.set_title(
-        f"Retrieval advantage, {MAIN_NUM_TASKS} tasks (orange: retrieval better, blue: patient only better)",
+        f"Retrieval − patient only, {METRIC['short']}, {MAIN_NUM_TASKS} tasks "
+        "(orange: retrieval better, blue: patient only better)",
         loc="left",
         fontsize=10,
         color=INK,
@@ -338,7 +386,7 @@ def fig_ablation(summary, out) -> None:
         log_x(ax, ab["n_train"].min(), ab["n_train"].max())
         ax.set_title(f"{t:,} tasks", loc="left", fontsize=10, color=INK)
         ax.set_xlabel("Training patients")
-    axes[0][0].set_ylabel("Test AUROC (mean over tasks)")
+    axes[0][0].set_ylabel(f"{METRIC['axis']} (mean over tasks)")
     fig.suptitle(f"Task-count ablation at dim {ABLATION_DIM}", x=0.01, ha="left", fontsize=12, color=INK)
     arm_legend(fig, "Points: mean over 5 draws, bars ±1 std. Each task count draws its own random codes.")
     fig.tight_layout(rect=(0, 0.04, 1, 0.93))
@@ -364,7 +412,7 @@ def fig_ablation(summary, out) -> None:
         )
     log_x(ax, ab["n_train"].min(), ab["n_train"].max())
     ax.set_xlabel("Training patients")
-    ax.set_ylabel("Retrieval − patient only (AUROC)")
+    ax.set_ylabel(f"Retrieval − patient only ({METRIC['short']})")
     ax.set_title(f"Retrieval advantage by task count, dim {ABLATION_DIM}", loc="left", fontsize=11, color=INK)
     ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1.0), fontsize=9)
     fig.tight_layout()
@@ -406,7 +454,7 @@ def fig_control(summary, out) -> bool:
             f"dim {dim}  ({compact(encoder_n_params(dim))} params)", loc="left", fontsize=10, color=INK
         )
         ax.set_xlabel("Training patients")
-    axes[0][0].set_ylabel(f"Test AUROC (mean of {CONTROL_NUM_TASKS} tasks)")
+    axes[0][0].set_ylabel(f"{METRIC['axis']} (mean of {CONTROL_NUM_TASKS} tasks)")
     fig.suptitle(
         "Is the retrieval gain knowledge or extra capacity?", x=0.01, ha="left", fontsize=12, color=INK
     )
@@ -432,7 +480,8 @@ def fig_control(summary, out) -> bool:
 
 
 def fmt(m, s) -> str:
-    return "—" if m is None else f"{m:.3f} ± {s:.3f}"
+    d = METRIC["dec"]
+    return "—" if m is None else f"{m:.{d}f} ± {s:.{d}f}"
 
 
 def write_table(df: pl.DataFrame, out: Path, name: str, caption: str) -> None:
@@ -468,29 +517,34 @@ def tables(summary, fits, out) -> None:
         write_table(
             pl.DataFrame(rows),
             out,
-            f"table1_{arm}_auroc",
-            f"{ARM_LABEL[arm]}: test AUROC (mean ± std over draws), {MAIN_NUM_TASKS} tasks",
+            f"table1_{arm}{METRIC['suffix'] or '_auroc'}",
+            f"{ARM_LABEL[arm]}: {METRIC['short']} (mean ± std over draws), {MAIN_NUM_TASKS} tasks",
         )
     g = advantage_grid(summary)
     adv = (
         g.with_columns(pl.col("n_train").map_elements(lambda n: f"N={compact(n)}", return_dtype=pl.String))
-        .with_columns(pl.col("diff").map_elements(lambda v: f"{v:+.3f}", return_dtype=pl.String))
+        .with_columns(
+            pl.col("diff").map_elements(lambda v: f"{v:+.{METRIC['dec']}f}", return_dtype=pl.String)
+        )
         .pivot(on="n_train", index="dim", values="diff")
         .sort("dim")
     )
     write_table(
         adv,
         out,
-        "table2_retrieval_advantage",
-        f"Retrieval − patient only, test AUROC, {MAIN_NUM_TASKS} tasks",
+        f"table2_retrieval_advantage{METRIC['suffix']}",
+        f"Retrieval − patient only, {METRIC['short']}, {MAIN_NUM_TASKS} tasks",
     )
     ab = ablation_table(summary).with_columns(
         pl.col("n_train").map_elements(compact, return_dtype=pl.String),
-        pl.col(REFERENCE_ARM, "retrieval").round(3),
-        pl.col("diff").map_elements(lambda v: f"{v:+.3f}", return_dtype=pl.String),
+        pl.col(REFERENCE_ARM, "retrieval").round(METRIC["dec"]),
+        pl.col("diff").map_elements(lambda v: f"{v:+.{METRIC['dec']}f}", return_dtype=pl.String),
     )
     write_table(
-        ab, out, "table3_task_count_ablation", f"Task-count ablation at dim {ABLATION_DIM}: mean test AUROC"
+        ab,
+        out,
+        f"table3_task_count_ablation{METRIC['suffix']}",
+        f"Task-count ablation at dim {ABLATION_DIM}: mean {METRIC['short']}",
     )
     c = summary.filter(pl.col("num_tasks") == CONTROL_NUM_TASKS)
     dims = sorted(c.filter(pl.col("arm").is_in(CONTROL_ARMS))["dim"].unique())
@@ -506,23 +560,30 @@ def tables(summary, fits, out) -> None:
         write_table(
             pl.DataFrame(rows),
             out,
-            "table5_knowledge_control",
-            f"Retrieval vs no-knowledge controls: test AUROC (mean ± std over draws), {CONTROL_NUM_TASKS} tasks",
+            f"table5_knowledge_control{METRIC['suffix']}",
+            f"Retrieval vs no-knowledge controls: {METRIC['short']} (mean ± std over draws), "
+            f"{CONTROL_NUM_TASKS} tasks",
         )
     if fits:
         text = "\n\n".join(f"## {ARM_LABEL[a]}\n\n```\n{s}\n```" for a, s in fits.items())
-        (out / "table4_fitted_laws.md").write_text(f"# Fitted laws ({MAIN_NUM_TASKS} tasks)\n\n{text}\n")
+        (out / f"table4_fitted_laws{METRIC['suffix']}.md").write_text(
+            f"# Fitted laws ({MAIN_NUM_TASKS} tasks)\n\n{text}\n"
+        )
 
 
 def main() -> None:
-    global MAIN_NUM_TASKS
+    global MAIN_NUM_TASKS, METRIC
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", type=Path, default=Path("results"))
     parser.add_argument(
         "--main-tasks", type=int, default=MAIN_NUM_TASKS, help="task count of the main grid to plot"
     )
+    parser.add_argument(
+        "--metric", choices=sorted(METRICS), default="auroc", help="y-axis: test AUROC or test loss"
+    )
     args = parser.parse_args()
     MAIN_NUM_TASKS = args.main_tasks
+    METRIC = METRICS[args.metric]
     figs, tabs = args.out / "figures", args.out / "tables"
     figs.mkdir(parents=True, exist_ok=True)
     tabs.mkdir(parents=True, exist_ok=True)

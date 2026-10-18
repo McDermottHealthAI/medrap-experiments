@@ -45,9 +45,12 @@ like AUROC on the logit scale so predictions stay inside (0, 1). `compare` then 
 both arms' bootstrap draws at the same points and reports the difference and
 `p_better_than_reference`. This experiment adds no statistics of its own.
 
-**Why AUROC and not loss:** the two arms train with different losses (BCE vs. a
-marginalized BCE over retrieved documents), so their loss values aren't on the same scale.
-AUROC is.
+**AUROC and test loss.** Both are reported. Test loss is directly comparable across arms:
+`patient_only` logs BCE on σ(logit), and `retrieval` logs BCE on its marginal prediction
+Σₖ P(docₖ | x)·σ(logitₖ). Both are cross-entropy of a predicted probability for the same label,
+averaged over (patient, task) pairs. The scaling law is fit to both. The AUROC fit draws the
+curves in the AUROC figures. The loss fit is poor (R² ~0.5 / ~0.06), so the loss figures show
+measured means only.
 
 **Why one fit per arm** rather than one joint fit with an arm term: each arm gets its own
 exponents, so "retrieval improves faster or slower with data" shows up directly as a
