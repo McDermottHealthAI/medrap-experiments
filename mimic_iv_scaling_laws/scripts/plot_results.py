@@ -464,7 +464,7 @@ def fig_control(summary, out) -> bool:
         )
         for a in arms
     ]
-    fig.legend(handles=handles, loc="upper right", ncol=4, bbox_to_anchor=(0.99, 1.0), fontsize=9)
+    fig.legend(handles=handles, loc="upper left", ncol=4, bbox_to_anchor=(0.005, 0.93), fontsize=9)
     fig.text(
         0.01,
         0.005,
@@ -474,7 +474,7 @@ def fig_control(summary, out) -> bool:
         fontsize=8,
         va="bottom",
     )
-    fig.tight_layout(rect=(0, 0.04, 1, 0.9))
+    fig.tight_layout(rect=(0, 0.04, 1, 0.84))
     save(fig, out, "fig5_knowledge_control")
     return True
 
