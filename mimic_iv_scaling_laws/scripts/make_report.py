@@ -452,7 +452,10 @@ Tasks ask whether code X occurs within 30 days of a prediction time sampled unif
 <p class="lead" style="margin-top:6px">Both arms log the same test loss: binary cross-entropy of their final predicted probability
 (retrieval's is the marginal over its 4 documents), averaged over patient–task pairs. Lower is better, so <b>negative = retrieval better</b>.
 Retrieval's loss stays flat at ~0.03–0.04 in every cell. Patient only starts far higher for small models on little data, then
-falls to meet it at dim 64–128 or ~100K patients. Loss also rewards calibration, which is why the small-model gap is much larger here than in AUROC.</p>
+falls to meet it at dim 64–128 or ~100K patients. <b>Caution:</b> the big small-model gaps are mostly an optimization artifact.
+Labels are ~1.1% positive, but patient only at dim 4 with 1K patients still predicts a mean probability of 0.25. Its 4-wide head, starting
+from a ~0 bias, can't move its logits far enough in a few hundred Adam steps, while retrieval's 256-wide head can. AUROC is unaffected,
+because it's invariant to that offset.</p>
 {diff_table(paired(per_draw(results, "test_loss__bce"), "retrieval"), 25, DIMS, NS, "Retrieval − patient only, test loss, 25 tasks (paired, 95% CI · draws retrieval won)", lim=-0.005, dec=4)}
 {figure("figures/fig1_data_scaling_loss.png", "Test loss vs training patients by encoder width (log y-axis; means joined, since the power-law fit to loss is poor).")}
 {figure("figures/fig2_capacity_scaling_loss.png", "Test loss vs patient-encoder parameters, by training-set size.")}
