@@ -156,10 +156,16 @@ marginal over its 4 documents, Σₖ P(docₖ | x)·σ(logitₖ). Lower is bette
   and it closes toward dim 64–128 and 100K patients.
 - **Retrieval's loss is nearly flat** at ~0.03–0.04 across the whole grid. `patient_only`
   starts far higher (0.31 at dim 4, 1K patients) and falls until the two meet.
-- **Loss also rewards calibration.** That's why the small-model gap is much larger in loss
-  (−0.27) than in AUROC (+0.18). A small, overfit `patient_only` model is both less
-  discriminative and badly overconfident, while averaging over 4 documents keeps
-  retrieval's probabilities moderate.
+- **⚠️ The large small-model loss gaps are mostly an optimization artifact, not knowledge.**
+  Labels are ~1.1% positive. At dim 4 with 1K patients, `patient_only` still predicts a
+  **mean probability of 0.246** (mean logit −1.2), while every well-trained model predicts
+  ~0.011 (logit ≈ −6 to −8). A constant 0.246 prediction alone gives BCE ≈ 0.29, which
+  matches the logged 0.308. The model hasn't learned the base rate. The likely cause: the
+  linear head's bias starts at ~0 (p ≈ 0.5), and Adam moves each weight by about `lr` per
+  step. A head with `in_dim = 4` can't shift its logits by −5 in ~320 steps, but retrieval's
+  `in_dim = 256` head can. AUROC is rank-based per task, so this constant offset doesn't
+  affect the AUROC results. Where both arms are well trained, the losses agree (0.0267 vs
+  0.0270 at dim 128, 100K patients), so the loss is computed consistently.
 - **The power law fits loss poorly** (R² 0.50 for `patient_only`, 0.06 for `retrieval`).
   The loss figures therefore show the measured means, on a log y-axis, without fitted curves.
 
