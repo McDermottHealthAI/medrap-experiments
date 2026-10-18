@@ -5,7 +5,7 @@
 # checkpoint on the held_out (test) split. 5 array tasks = 5 draws.
 #
 # Args:
-#   ARM   patient_only | retrieval | retrieval_random_docs | retrieval_null_docs
+#   ARM   patient_only | retrieval | retrieval_random_docs | retrieval_null_docs | retrieval_qwen3
 #   DIM   encoder.embedding_dim (num_heads=1, num_layers=1, ff_dim=2*DIM,
 #         max_seq_len fixed at 256 -- same capacity cut as
 #         mimic_iv_sweep's capacity_sweep line)

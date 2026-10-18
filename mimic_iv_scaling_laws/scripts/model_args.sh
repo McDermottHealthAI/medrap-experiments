@@ -23,18 +23,18 @@ MODEL_ARGS=(
     training.datamodule.batch_size=32
     training.datamodule.config.seq_sampling_strategy=to_end
     training.module.validation_auroc_log_per_task=true
-    "query_projector.in_dim=${DIM}"
 )
 
 case "${ARM}" in
     patient_only)
         MODEL_ARGS+=(
             fusion=passthrough
+            "query_projector.in_dim=${DIM}"
             "head.in_dim=${DIM}"
             training/loss=multitask_binary_bce
         )
         ;;
-    retrieval | retrieval_random_docs | retrieval_null_docs)
+    retrieval | retrieval_random_docs | retrieval_null_docs | retrieval_qwen3)
         # Control arms: identical model, but the documents carry no knowledge -- random
         # corpus documents (retriever.ablation_mode=random_docs) or the content-free corpus
         # from scripts/make_null_retrieval_db.py -- at train AND test time.
@@ -48,8 +48,21 @@ case "${ARM}" in
             echo "ERROR: ${RETRIEVAL_DB} not found. See README.md for the symlink." >&2
             exit 1
         fi
+        if [ "${ARM}" = retrieval_qwen3 ]; then
+            # Patient-specific query: the patient's last 32 codes rendered as text (code
+            # descriptions) and embedded by a frozen Qwen3-Embedding-0.6B -- the same model that
+            # embedded the corpus -- instead of a learned projection of the encoder state.
+            MODEL_ARGS+=(
+                query_projector=qwen3_text
+                query_projector.model_name_or_path=Qwen/Qwen3-Embedding-0.6B
+                "query_projector.code_metadata_path=${TENSORIZED_DIR}/metadata/codes.parquet"
+                query_projector.max_codes=32
+                query_projector.device=cuda
+            )
+        else
+            MODEL_ARGS+=(query_projector=sequence_mean_1024 "query_projector.in_dim=${DIM}")
+        fi
         MODEL_ARGS+=(
-            query_projector=sequence_mean_1024
             retriever=hf_dataset
             "retriever.dataset_path=${RETRIEVAL_DB}"
             retriever.doc_ids_column=null
@@ -67,7 +80,7 @@ case "${ARM}" in
         )
         ;;
     *)
-        echo "ERROR: unknown ARM '${ARM}' (expected patient_only, retrieval, retrieval_random_docs or retrieval_null_docs)." >&2
+        echo "ERROR: unknown ARM '${ARM}' (expected patient_only, retrieval, retrieval_random_docs, retrieval_null_docs or retrieval_qwen3)." >&2
         exit 1
         ;;
 esac
