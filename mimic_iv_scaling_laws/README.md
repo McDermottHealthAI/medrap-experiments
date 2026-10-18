@@ -46,6 +46,16 @@ That's the main grid: 2 × 6 × 5 × 5 draws = 300 runs.
 The total is 500 runs (100 SLURM arrays of 5 draws). Each job trains, then evaluates
 `last.ckpt` on `held_out` in the same job.
 
+**Second round** (added after the first 500 runs):
+- **Main grid at 625 tasks** (`MAIN_TASK_COUNTS=(25 625)`): 250 more runs. The dim=32 cells
+  already exist from the ablation. Across draws, 625 tasks are 3–5× less noisy than 25.
+- **Knowledge-vs-capacity control** (`CONTROL_*` in `grid.sh`): 90 runs. The retrieval model
+  is trained *and* tested on documents that carry no knowledge, as two arms:
+  `retrieval_random_docs` (`retriever.ablation_mode=random_docs`) and `retrieval_null_docs`
+  (the content-free corpus from `scripts/make_null_retrieval_db.py`). It runs at dims 4, 16
+  and 64 × 1K, 10K and 100K patients × 625 tasks. If those arms match `retrieval`, its gain
+  comes from the extra fusion and head capacity, not from the documents.
+
 Epochs and warmup scale with the number of training patients, so small-data cells still
 get enough optimizer steps. 1k/10k/100k follow `mimic_iv_sweep`'s `extreme_starved_*_trainN*`
 schedule, and 3k/30k sit between them:
@@ -67,6 +77,7 @@ cd mimic_iv_scaling_laws
 uv sync                                                              # once
 mkdir -p data
 ln -s /groups/mm6677_gp/hs3627/medrap-experiments/mimic_iv_sweep/data/retrieval_db data/retrieval_db
+.venv/bin/python scripts/make_null_retrieval_db.py                 # data/retrieval_db_null (null-docs control)
 
 scripts/submit_tasks.sh     # build_cohort.sh, then (afterok) one generate_tasks.sh array per task count
                             # its last line is afterok:<task job ids>

@@ -5,7 +5,7 @@
 # checkpoint on the held_out (test) split. 5 array tasks = 5 draws.
 #
 # Args:
-#   ARM   patient_only | retrieval
+#   ARM   patient_only | retrieval | retrieval_random_docs | retrieval_null_docs
 #   DIM   encoder.embedding_dim (num_heads=1, num_layers=1, ff_dim=2*DIM,
 #         max_seq_len fixed at 256 -- same capacity cut as
 #         mimic_iv_sweep's capacity_sweep line)
@@ -95,7 +95,16 @@ case "${ARM}" in
             training/loss=multitask_binary_bce
         )
         ;;
-    retrieval)
+    retrieval | retrieval_random_docs | retrieval_null_docs)
+        # Control arms: identical model, but the documents carry no knowledge -- random
+        # corpus documents (retriever.ablation_mode=random_docs) or the content-free corpus
+        # from scripts/make_null_retrieval_db.py -- at train AND test time.
+        ABLATION_MODE=none
+        if [ "${ARM}" = retrieval_random_docs ]; then
+            ABLATION_MODE=random_docs
+        elif [ "${ARM}" = retrieval_null_docs ]; then
+            RETRIEVAL_DB="${REPO_DIR}/data/retrieval_db_null"
+        fi
         if [ ! -d "${RETRIEVAL_DB}" ]; then
             echo "ERROR: ${RETRIEVAL_DB} not found. See README.md for the symlink." >&2
             exit 1
@@ -106,6 +115,7 @@ case "${ARM}" in
             "retriever.dataset_path=${RETRIEVAL_DB}"
             retriever.doc_ids_column=null
             retriever.k=4
+            "retriever.ablation_mode=${ABLATION_MODE}"
             retrieval_encoder=token_feature
             retrieval_encoder.vocab_size=151936
             retrieval_encoder.embedding_dim=64
@@ -118,7 +128,7 @@ case "${ARM}" in
         )
         ;;
     *)
-        echo "ERROR: unknown ARM '${ARM}' (expected patient_only or retrieval)." >&2
+        echo "ERROR: unknown ARM '${ARM}' (expected patient_only, retrieval, retrieval_random_docs or retrieval_null_docs)." >&2
         exit 1
         ;;
 esac

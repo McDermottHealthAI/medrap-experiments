@@ -41,6 +41,8 @@ from matplotlib.ticker import FuncFormatter
 sys.path.insert(0, str(Path(__file__).parent))
 from aggregate_results import (
     ABLATION_DIM,
+    CONTROL_ARMS,
+    CONTROL_NUM_TASKS,
     MAIN_NUM_TASKS,
     N_DRAWS,
     REFERENCE_ARM,
@@ -50,9 +52,23 @@ from aggregate_results import (
 from simple_scaling_laws import compare, fit
 
 ARMS = ["patient_only", "retrieval"]
-ARM_LABEL = {"patient_only": "Patient only", "retrieval": "Retrieval"}
+ARM_LABEL = {
+    "patient_only": "Patient only",
+    "retrieval": "Retrieval",
+    "retrieval_random_docs": "Retrieval, random docs",
+    "retrieval_null_docs": "Retrieval, null docs",
+}
 # Reference data-viz palette (validated: light mode, adjacent + all pairs for two slots).
 ARM_COLOR = {"patient_only": "#2a78d6", "retrieval": "#eb6834"}
+# Control figure: categorical slots 1-4 in fixed order (validated adjacent pairs; slots 3-4 sit
+# below 3:1 on the surface, so that figure ships with marker shapes and a table view).
+CONTROL_COLOR = {**ARM_COLOR, "retrieval_random_docs": "#1baf7a", "retrieval_null_docs": "#eda100"}
+CONTROL_MARKER = {
+    "patient_only": "o",
+    "retrieval": "o",
+    "retrieval_random_docs": "s",
+    "retrieval_null_docs": "^",
+}
 TASK_RAMP = ["#86b6ef", "#5598e7", "#2a78d6", "#1c5cab", "#104281"]  # ordinal, light -> dark
 SURFACE, INK, INK_2, GRID, NEUTRAL = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df", "#f0efec"
 DIVERGING = LinearSegmentedColormap.from_list(
@@ -236,7 +252,7 @@ def fig_scaling(summary, curves, out, *, axis: str) -> None:
     for ax in axes[-1]:
         ax.set_xlabel(xlabel)
     for row in axes:
-        row[0].set_ylabel("Test AUROC (mean of 25 tasks)")
+        row[0].set_ylabel(f"Test AUROC (mean of {MAIN_NUM_TASKS} tasks)")
     head = (
         "AUROC vs training-set size, by encoder width"
         if axis == "data"
@@ -355,6 +371,66 @@ def fig_ablation(summary, out) -> None:
     save(fig, out, "fig4b_task_count_advantage")
 
 
+def fig_control(summary, out) -> bool:
+    """Retrieval vs its no-knowledge controls and patient only, CONTROL_NUM_TASKS tasks."""
+    c = summary.filter(pl.col("num_tasks") == CONTROL_NUM_TASKS)
+    dims = sorted(c.filter(pl.col("arm").is_in(CONTROL_ARMS))["dim"].unique())
+    if not dims:
+        return False
+    arms = [*ARMS, *CONTROL_ARMS]
+    ns = sorted(c.filter(pl.col("arm").is_in(CONTROL_ARMS))["n_train"].unique())
+    fig, axes = plt.subplots(1, len(dims), figsize=(3.4 * len(dims), 3.4), sharey=True, squeeze=False)
+    for ax, dim in zip(axes[0], dims, strict=True):
+        for arm in arms:
+            d = c.filter((pl.col("arm") == arm) & (pl.col("dim") == dim) & pl.col("n_train").is_in(ns)).sort(
+                "n_train"
+            )
+            if d.is_empty():
+                continue
+            ax.plot(d["n_train"], d["mean"], color=CONTROL_COLOR[arm], zorder=2)
+            ax.errorbar(
+                d["n_train"],
+                d["mean"],
+                yerr=d["std"],
+                fmt=CONTROL_MARKER[arm],
+                ms=6,
+                color=CONTROL_COLOR[arm],
+                mec=SURFACE,
+                mew=1.5,
+                elinewidth=1.2,
+                capsize=0,
+                zorder=3,
+            )
+        log_x(ax, ns[0], ns[-1])
+        ax.set_title(
+            f"dim {dim}  ({compact(encoder_n_params(dim))} params)", loc="left", fontsize=10, color=INK
+        )
+        ax.set_xlabel("Training patients")
+    axes[0][0].set_ylabel(f"Test AUROC (mean of {CONTROL_NUM_TASKS} tasks)")
+    fig.suptitle(
+        "Is the retrieval gain knowledge or extra capacity?", x=0.01, ha="left", fontsize=12, color=INK
+    )
+    handles = [
+        plt.Line2D(
+            [], [], color=CONTROL_COLOR[a], marker=CONTROL_MARKER[a], ms=6, mec=SURFACE, label=ARM_LABEL[a]
+        )
+        for a in arms
+    ]
+    fig.legend(handles=handles, loc="upper right", ncol=4, bbox_to_anchor=(0.99, 1.0), fontsize=9)
+    fig.text(
+        0.01,
+        0.005,
+        "Controls train and test the same retrieval model on random corpus documents or a content-free corpus. "
+        "Points: mean over 5 draws, bars ±1 std.",
+        color=INK_2,
+        fontsize=8,
+        va="bottom",
+    )
+    fig.tight_layout(rect=(0, 0.04, 1, 0.9))
+    save(fig, out, "fig5_knowledge_control")
+    return True
+
+
 def fmt(m, s) -> str:
     return "—" if m is None else f"{m:.3f} ± {s:.3f}"
 
@@ -416,15 +492,37 @@ def tables(summary, fits, out) -> None:
     write_table(
         ab, out, "table3_task_count_ablation", f"Task-count ablation at dim {ABLATION_DIM}: mean test AUROC"
     )
+    c = summary.filter(pl.col("num_tasks") == CONTROL_NUM_TASKS)
+    dims = sorted(c.filter(pl.col("arm").is_in(CONTROL_ARMS))["dim"].unique())
+    if dims:
+        ns = sorted(c.filter(pl.col("arm").is_in(CONTROL_ARMS))["n_train"].unique())
+        rows = []
+        for dim, n in itertools.product(dims, ns):
+            r = {"dim": dim, "n_train": compact(n)}
+            for arm in [*ARMS, *CONTROL_ARMS]:
+                v = c.filter((pl.col("arm") == arm) & (pl.col("dim") == dim) & (pl.col("n_train") == n))
+                r[ARM_LABEL[arm]] = fmt(v["mean"][0], v["std"][0]) if v.height else "—"
+            rows.append(r)
+        write_table(
+            pl.DataFrame(rows),
+            out,
+            "table5_knowledge_control",
+            f"Retrieval vs no-knowledge controls: test AUROC (mean ± std over draws), {CONTROL_NUM_TASKS} tasks",
+        )
     if fits:
         text = "\n\n".join(f"## {ARM_LABEL[a]}\n\n```\n{s}\n```" for a, s in fits.items())
         (out / "table4_fitted_laws.md").write_text(f"# Fitted laws ({MAIN_NUM_TASKS} tasks)\n\n{text}\n")
 
 
 def main() -> None:
+    global MAIN_NUM_TASKS
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", type=Path, default=Path("results"))
+    parser.add_argument(
+        "--main-tasks", type=int, default=MAIN_NUM_TASKS, help="task count of the main grid to plot"
+    )
     args = parser.parse_args()
+    MAIN_NUM_TASKS = args.main_tasks
     figs, tabs = args.out / "figures", args.out / "tables"
     figs.mkdir(parents=True, exist_ok=True)
     tabs.mkdir(parents=True, exist_ok=True)
@@ -439,6 +537,7 @@ def main() -> None:
     fig_scaling(summary, curves, figs, axis="capacity")
     fig_advantage(summary, figs)
     fig_ablation(summary, figs)
+    fig_control(summary, figs)
     tables(summary, fits, tabs)
     print(f"wrote {figs} and {tabs}")
 

@@ -342,6 +342,23 @@ Nothing has run on the cluster yet.
 - **Not verified at full scale:** wall-clock time and memory for the full cohort build
     (24 h, 128 GB allocated) and for the 2,500-task cells.
 
+## Second round: 625-task main grid and knowledge-vs-capacity control
+
+The first 500 runs showed that at 25 tasks, the choice of task codes dominates the spread
+across draws (patient_only std 0.02–0.07 at dim=32, against ~0.005–0.02 at 625 and 2,500
+tasks). They also showed that retrieval's gain is largest exactly where its fixed 256-d fusion
+block and head dwarf the patient encoder. Two additions follow from that:
+
+- **Main grid at 625 tasks:** same arms × dims × patients, giving a less noisy version of
+  the scaling surface.
+- **Control arms:** `retrieval_random_docs` and `retrieval_null_docs` are the retrieval model
+  with the same fusion, head and training, but with documents that carry no information. The
+  ablation is applied at **train and test** time, so the extra layers get the same chance to
+  help without knowledge. Earlier MIMIC ablations were eval-only on checkpoints trained with
+  real documents, which only shows whether a trained model *relies* on its documents. The
+  null corpus is rebuilt here by `scripts/make_null_retrieval_db.py`, with the same structure
+  as the one those ablations used.
+
 ## Known limitations
 
 1. The two arms aren't parameter-matched (see [Parameter accounting](#parameter-accounting)).
