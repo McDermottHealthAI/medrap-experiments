@@ -67,6 +67,10 @@ MODEL_ARGS+=(
     training/trainer=lightning_wandb
     training.trainer.accelerator=gpu
     training.trainer.devices=1
+    # Only last.ckpt (the one the test eval uses): no best-val or progress snapshots, which the
+    # shared /groups quota can't absorb across ~45 concurrent retrieval jobs. Training is unchanged.
+    +training.trainer.callbacks.0.save_top_k=0
+    "training.trainer.callbacks.1.fractions=[]"
 )
 
 case "${N_TRAIN}" in
