@@ -128,8 +128,8 @@ def fitted_curves(results: pl.DataFrame, summary: pl.DataFrame) -> tuple[dict, p
     pts = [(encoder_n_params(d), n) for d in dims for n in n_grid] + [(p, n) for n in ns for p in p_grid]
     points = {
         "point_id": [f"p{i}" for i in range(len(pts))],
-        "model_size__n_params": [p for p, _ in pts],
-        "dataset_size__n_train_patients": [n for _, n in pts],
+        "model_size__n_params": [float(p) for p, _ in pts],
+        "dataset_size__n_train_patients": [float(n) for _, n in pts],
     }
     curves = compare(models, points, target="test_metric__auroc", reference=REFERENCE_ARM)
     return {arm: m.summary() for arm, m in models.items()}, curves
