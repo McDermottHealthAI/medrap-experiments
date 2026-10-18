@@ -25,7 +25,7 @@ from medrap.model.encoders import TimeDeltaRoPEPatientEncoder
 from simple_scaling_laws import compare, fit
 
 RUN_RE = re.compile(
-    r"outputs/(?P<arm>\w+?)_dim(?P<dim>\d+)_trainN(?P<n_train>\d+)_tasks(?P<num_tasks>\d+)_test/draw(?P<draw>\d+)$"
+    r"(?:^|/)(?P<arm>\w+?)_dim(?P<dim>[0-9x]+)_trainN(?P<n_train>\d+)_tasks(?P<num_tasks>\d+)_test/draw(?P<draw>\d+)$"
 )
 REFERENCE_ARM = "patient_only"
 MAIN_TASK_COUNTS = (25, 625)  # keep in sync with scripts/grid.sh
@@ -49,21 +49,29 @@ def test_metrics(eval_dir: str) -> tuple[float, float]:
     return float(rows[-1]["test/auroc/mean"]), float(rows[-1]["test/loss"])
 
 
-def encoder_n_params(dim: int) -> int:
-    """Same encoder shape as train.sh: 1 head, 1 layer, ff_dim = 2 * dim."""
+def encoder_n_params(dim: int | str) -> int:
+    """Patient-encoder parameter count for a train.sh width spec: ``W`` (1 layer, 1 head) or
+    ``WxLAYERSxHEADS``; ff_dim = 2 * W either way (see scripts/model_args.sh)."""
+    width, layers, heads = ([int(v) for v in str(dim).split("x")] + [1, 1])[:3]
     encoder = TimeDeltaRoPEPatientEncoder(
-        vocab_size=65536, embedding_dim=dim, num_heads=1, num_layers=1, ff_dim=2 * dim, dropout=0.0
+        vocab_size=65536,
+        embedding_dim=width,
+        num_heads=heads,
+        num_layers=layers,
+        ff_dim=2 * width,
+        dropout=0.0,
     )
     return sum(p.numel() for p in encoder.parameters())
 
 
-def collect_results() -> pl.DataFrame:
+def collect_results(root: str = "outputs") -> pl.DataFrame:
     rows = []
-    for eval_dir in sorted(glob.glob("outputs/*_test/draw*")):
+    for eval_dir in sorted(glob.glob(f"{root}/*_test/draw*")):
         m = RUN_RE.search(eval_dir)
         if m is None:
             continue
-        arm, dim, n_train, draw = m["arm"], int(m["dim"]), int(m["n_train"]), int(m["draw"])
+        arm, dim, n_train, draw = m["arm"], m["dim"], int(m["n_train"]), int(m["draw"])
+        dim = int(dim) if dim.isdigit() else dim
         num_tasks = int(m["num_tasks"])
         rows.append(
             {

@@ -52,6 +52,10 @@ OUTPUT_ROOT="${REPO_DIR}/${SL_OUTPUT_ROOT:-outputs}"
 RETRIEVAL_DB="${REPO_DIR}/data/retrieval_db"
 TENSORIZED_DIR="${REPO_DIR}/data/cohort/tensorized"  # built by scripts/build_cohort.sh
 LABELS_DIR="${REPO_DIR}/data/tasks_n${NUM_TASKS}_30d_trainN${N_TRAIN}/draw${DRAW}/tasks"
+FULL_N_PATIENTS=153220  # every draw's full train split
+if [ "${N_TRAIN}" = "${FULL_N_PATIENTS}" ]; then
+    LABELS_DIR="${REPO_DIR}/data/tasks_n${NUM_TASKS}_30d/draw${DRAW}/tasks"  # unsubsampled
+fi
 RUN_NAME="${ARM}_dim${DIM}_trainN${N_TRAIN}_tasks${NUM_TASKS}"
 # Train and eval write to the node's local NVMe scratch (Slurm creates and deletes
 # /localscratch/$USER/$SLURM_JOB_ID); only the small CSV logs and configs are copied back to
@@ -93,7 +97,7 @@ case "${N_TRAIN}" in
     3000) MAX_EPOCHS=7 WARMUP_STEPS=100 ;;
     10000) MAX_EPOCHS=5 WARMUP_STEPS=200 ;;
     30000) MAX_EPOCHS=4 WARMUP_STEPS=200 ;;
-    100000) MAX_EPOCHS=3 WARMUP_STEPS=200 ;;
+    100000 | 153220) MAX_EPOCHS=3 WARMUP_STEPS=200 ;;
     *)
         echo "ERROR: no epoch/warmup schedule for N_TRAIN=${N_TRAIN}." >&2
         exit 1

@@ -2,13 +2,18 @@
 # predict_probabilities.sh, so every command rebuilds exactly the same model.
 # Sourced, not run. Expects ARM, DIM, NUM_TASKS, TENSORIZED_DIR, LABELS_DIR, RETRIEVAL_DB and
 # REPO_DIR to be set; sets MODEL_ARGS (no trainer settings -- callers add their own).
+# DIM is the encoder width, or EMBxLAYERSxHEADS (e.g. 128x2x4) for multi-layer encoders;
+# ff_dim is always 2 * width.
+IFS=x read -r EMB LAYERS HEADS <<<"${DIM}"
+LAYERS=${LAYERS:-1}
+HEADS=${HEADS:-1}
 
 MODEL_ARGS=(
     encoder=rope
-    "encoder.embedding_dim=${DIM}"
-    encoder.num_heads=1
-    encoder.num_layers=1
-    "encoder.ff_dim=$((2 * DIM))"
+    "encoder.embedding_dim=${EMB}"
+    "encoder.num_heads=${HEADS}"
+    "encoder.num_layers=${LAYERS}"
+    "encoder.ff_dim=$((2 * EMB))"
     pooling=masked_mean
     head=linear
     "head.out_dim=${NUM_TASKS}"
@@ -29,8 +34,8 @@ case "${ARM}" in
     patient_only)
         MODEL_ARGS+=(
             fusion=passthrough
-            "query_projector.in_dim=${DIM}"
-            "head.in_dim=${DIM}"
+            "query_projector.in_dim=${EMB}"
+            "head.in_dim=${EMB}"
             training/loss=multitask_binary_bce
         )
         ;;
@@ -60,7 +65,7 @@ case "${ARM}" in
                 query_projector.device=cuda
             )
         else
-            MODEL_ARGS+=(query_projector=sequence_mean_1024 "query_projector.in_dim=${DIM}")
+            MODEL_ARGS+=(query_projector=sequence_mean_1024 "query_projector.in_dim=${EMB}")
         fi
         MODEL_ARGS+=(
             retriever=hf_dataset
