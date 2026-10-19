@@ -27,3 +27,7 @@ V2_CAPACITIES=(4 8 16 32 64 128 128x2x4 256x4x8)
 V2_N_PATIENTS=(1000 3000 10000 30000 100000 153220)
 V2_NUM_TASKS=625
 V2_ARMS=(patient_only retrieval_null_docs retrieval_qwen3)
+# v2 task-count axis: the same arms and data sizes at every other task count, on a capacity
+# subset that still gives >= 3 sizes below the top three (the capacity-axis fit's minimum).
+V2_TASK_COUNTS=(5 25 125 2500)
+V2_TASK_CAPACITIES=(4 16 64 128x2x4 256x4x8)

@@ -22,9 +22,9 @@
 # ============================================================
 
 #SBATCH --array=0-4
-#SBATCH --partition=gpu
+#SBATCH --partition=gpu,h100  # whichever frees first
 #SBATCH --account=mm6677_gp
-#SBATCH --gres=gpu:L40S:1
+#SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 #SBATCH --time=06:00:00
@@ -64,6 +64,11 @@ RUN_NAME="${ARM}_dim${DIM}_trainN${N_TRAIN}_tasks${NUM_TASKS}"
 FINAL_TRAIN_DIR="${OUTPUT_ROOT}/${RUN_NAME}/draw${DRAW}"
 FINAL_EVAL_DIR="${OUTPUT_ROOT}/${RUN_NAME}_test/draw${DRAW}"
 SCRATCH_DIR="/localscratch/${USER}/${SLURM_JOB_ID:-local}/${RUN_NAME}"
+if [ ! -w "/localscratch/${USER}" ]; then
+    # The h100 node has no /localscratch; its node-local /tmp (TMPDIR) is not cleaned by Slurm.
+    SCRATCH_DIR="${TMPDIR:-/tmp}/sl-${SLURM_JOB_ID:-local}/${RUN_NAME}"
+    trap 'rm -rf "${SCRATCH_DIR}"' EXIT
+fi
 TRAIN_OUTPUT_DIR="${SCRATCH_DIR}/draw${DRAW}"
 EVAL_OUTPUT_DIR="${SCRATCH_DIR}/draw${DRAW}_test"
 
