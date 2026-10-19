@@ -9,7 +9,7 @@ shows only as tables:
   test loss vs training patients.
 - fig8_v2_pilot: v2 arms vs training patients (patient_only, null docs, retrieval_qwen3).
 - fig9_document_value: retrieval - null docs per cell, round 1 vs v2, one panel per retriever.
-- fig10_headroom: headroom vs retrieval value across cells (outputs/headroom.parquet, from
+- fig10_headroom: headroom vs retrieval value across cells (outputs/headroom_tasks625.parquet, from
   scripts/headroom.py --tasks 625 --retrieval retrieval retrieval_qwen3).
 
 Usage:  cd mimic_iv_scaling_laws && .venv/bin/python scripts/plot_findings.py [--out figures]
@@ -231,7 +231,7 @@ def fig_document_value(v1: pl.DataFrame, v2: pl.DataFrame, out: Path) -> None:
 
 
 def fig_headroom(out: Path) -> None:
-    h = pl.read_parquet("outputs/headroom.parquet").with_columns(pl.col("dim").cast(pl.String))
+    h = pl.read_parquet("outputs/headroom_tasks625.parquet").with_columns(pl.col("dim").cast(pl.String))
     panels = (
         ("headroom_data", "value_retrieval", "Fitted data-axis headroom", "Retrieval − patient only"),
         ("naive_gap", "value_retrieval", "1 − AUROC (no fit)", "Retrieval − patient only"),

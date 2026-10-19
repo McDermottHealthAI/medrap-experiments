@@ -12,12 +12,14 @@ with a 95% interval from refitting on draws resampled with replacement at every 
 is then compared with what retrieval adds at the same cell: total value (retrieval arm -
 baseline) and, where the null-docs control exists, knowledge value (retrieval - null docs).
 
-Writes <outputs>/headroom.parquet and <outputs>/headroom_correlations.parquet and prints both.
+Writes <outputs>/headroom_tasks<T>.parquet and <outputs>/headroom_tasks<T>_correlations.parquet and
+prints both. A retrieval arm's value is only computed on cells where all N_DRAWS draws exist.
 
 Usage:
     cd mimic_iv_scaling_laws && .venv/bin/python scripts/headroom.py [--tasks 625] [--outputs outputs]
         [--baseline patient_only] [--retrieval retrieval retrieval_qwen3]
-    v2 grid:  .venv/bin/python scripts/headroom.py --outputs outputs_v2 --retrieval retrieval_qwen3
+    v2 grid:  .venv/bin/python scripts/headroom.py --outputs outputs_v2 --tasks T \
+                  --retrieval retrieval_null_docs retrieval_qwen3
 """
 
 import argparse
@@ -33,6 +35,7 @@ from scipy.optimize import OptimizeWarning, curve_fit
 # Plain widths plus the v2 multi-layer specs (WIDTHxLAYERSxHEADS).
 CAPACITIES = ("4", "8", "16", "32", "64", "128", "128x2x4", "256x4x8")
 N_BOOT = 200
+N_DRAWS = 5
 MIN_POINTS = 3
 
 
@@ -111,15 +114,19 @@ def main() -> None:
     out = pl.DataFrame(rows)
 
     def mean_auroc(arm: str) -> pl.DataFrame:
-        return res.filter(pl.col("arm") == arm).group_by("dim", "n").agg(pl.col("auroc").mean().alias(arm))
+        return (
+            res.filter(pl.col("arm") == arm)
+            .group_by("dim", "n")
+            .agg(pl.when(pl.len() == N_DRAWS).then(pl.col("auroc").mean()).alias(arm))
+        )
 
-    for arm in [args.baseline, *args.retrieval, "retrieval_null_docs"]:
+    for arm in dict.fromkeys([args.baseline, *args.retrieval, "retrieval_null_docs"]):
         if res.filter(pl.col("arm") == arm).height:
             out = out.join(mean_auroc(arm), on=["dim", "n"], how="left")
     for arm in args.retrieval:
         if arm in out.columns:
             out = out.with_columns((pl.col(arm) - pl.col(args.baseline)).alias(f"value_{arm}"))
-            if "retrieval_null_docs" in out.columns:
+            if "retrieval_null_docs" in out.columns and arm != "retrieval_null_docs":
                 out = out.with_columns(
                     (pl.col(arm) - pl.col("retrieval_null_docs")).alias(f"knowledge_{arm}")
                 )
@@ -138,7 +145,7 @@ def main() -> None:
     )
     out = out.sort("params", "n")
     Path(args.outputs).mkdir(exist_ok=True)
-    out.write_parquet(Path(args.outputs) / "headroom.parquet")
+    out.write_parquet(Path(args.outputs) / f"headroom_tasks{args.tasks}.parquet")
 
     corr = []
     for h in ("headroom_data", "headroom_capacity", "naive_gap"):
@@ -150,7 +157,7 @@ def main() -> None:
                     {"headroom": h, "retrieval_metric": v, "cells": d.height, "spearman": rho, "p": p}
                 )
     corr = pl.DataFrame(corr)
-    corr.write_parquet(Path(args.outputs) / "headroom_correlations.parquet")
+    corr.write_parquet(Path(args.outputs) / f"headroom_tasks{args.tasks}_correlations.parquet")
     with pl.Config(tbl_rows=-1, tbl_cols=-1, float_precision=3, tbl_width_chars=250):
         print(f"{args.tasks} tasks, baseline={args.baseline}\n")
         print(
