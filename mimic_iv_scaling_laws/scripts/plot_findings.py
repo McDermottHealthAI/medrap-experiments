@@ -12,7 +12,10 @@ shows only as tables:
 - fig10_headroom: headroom vs retrieval value across cells (outputs/headroom_tasks625.parquet, from
   scripts/headroom.py --tasks 625 --retrieval retrieval retrieval_qwen3).
 
-Usage:  cd mimic_iv_scaling_laws && .venv/bin/python scripts/plot_findings.py [--out figures]
+``--metric loss`` redraws fig8-10 on test loss (BCE) as fig8-10 *_loss; fig6 is already loss and fig7
+shows both. The loss headroom needs scripts/headroom.py --metric loss first.
+
+Usage:  cd mimic_iv_scaling_laws && .venv/bin/python scripts/plot_findings.py [--out figures] [--metric loss]
 """
 
 import argparse
@@ -44,12 +47,19 @@ ARM = {
 }
 # Two steps of one blue ramp for ordered comparisons (before -> after, round 1 -> v2).
 LIGHT, DARK = "#6da7ec", "#184f95"
+# What fig8-10 show; --metric picks one. Differences are always first arm - second arm, raw, so for
+# loss a negative difference means the first arm is better.
+METRICS = {
+    "auroc": {"col": "auroc", "axis": "Test AUROC", "short": "AUROC", "suffix": "", "helps": "Positive"},
+    "loss": {"col": "loss", "axis": "Test loss (BCE)", "short": "test loss", "suffix": "_loss", "helps": "Negative"},
+}
+METRIC = METRICS["auroc"]
 WIDTH_RAMP = dict(zip(DIMS, ["#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"], strict=True))
 
 
 def save(fig, out: Path, name: str) -> None:
     for ext in ("png", "pdf"):
-        fig.savefig(out / f"{name}.{ext}", dpi=200, bbox_inches="tight")
+        fig.savefig(out / f"{name}{METRIC['suffix']}.{ext}", dpi=200, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -179,7 +189,7 @@ def fig_v2_pilot(v2: pl.DataFrame, out: Path) -> None:
             s = (
                 v2.filter((pl.col("arm") == arm) & (pl.col("dim") == dim))
                 .group_by("n")
-                .agg(pl.col("auroc").mean().alias("m"), pl.col("auroc").std().alias("s"))
+                .agg(pl.col(METRIC["col"]).mean().alias("m"), pl.col(METRIC["col"]).std().alias("s"))
                 .sort("n")
             )
             ax.plot(s["n"], s["m"], color=color, zorder=2)
@@ -190,7 +200,7 @@ def fig_v2_pilot(v2: pl.DataFrame, out: Path) -> None:
         log_x(ax, PILOT_NS[0], PILOT_NS[-1])
         ax.set_title(f"dim {dim}  ({compact(encoder_n_params(dim))} params)", loc="left", fontsize=10, color=INK)
         ax.set_xlabel("Training patients")
-    axes[0].set_ylabel(f"Test AUROC (mean of {TASKS} tasks)")
+    axes[0].set_ylabel(f"{METRIC['axis']} (mean of {TASKS} tasks)")
     fig.suptitle("v2 pilot: all arms with the bias fix", x=0.01, ha="left", fontsize=12, color=INK)
     h, lab = axes[0].get_legend_handles_labels()
     fig.legend(h, lab, loc="upper left", ncol=3, bbox_to_anchor=(0.005, 0.92), fontsize=9)
@@ -205,7 +215,7 @@ def fig_document_value(v1: pl.DataFrame, v2: pl.DataFrame, out: Path) -> None:
     fig, axes = plt.subplots(1, 2, figsize=(8.2, 3.8), sharey=True, sharex=True)
     for ax, (arm, title) in zip(axes, retrievers, strict=True):
         for k, (r, c, mk, label) in enumerate(((v1, LIGHT, "o", "Round 1"), (v2, DARK, "s", "v2 (bias fix)"))):
-            p = paired(r, arm, "retrieval_null_docs")
+            p = paired(r, arm, "retrieval_null_docs", METRIC["col"])
             for y, (dim, n) in enumerate(cells):
                 row = p.filter((pl.col("dim") == dim) & (pl.col("n") == n))
                 if row.is_empty():
@@ -219,23 +229,31 @@ def fig_document_value(v1: pl.DataFrame, v2: pl.DataFrame, out: Path) -> None:
         ax.invert_yaxis()
         ax.grid(axis="y", visible=False)
         ax.set_title(title, loc="left", fontsize=10, color=INK)
-        ax.set_xlabel("Retrieval − null docs, test AUROC")
+        ax.set_xlabel(f"Retrieval − null docs, {METRIC['short']}")
     fig.suptitle(
         "Value of the documents themselves (architecture held fixed)", x=0.01, ha="left", fontsize=12, color=INK
     )
     h, lab = axes[0].get_legend_handles_labels()
     fig.legend(h, lab, loc="upper left", ncol=2, bbox_to_anchor=(0.005, 0.93), fontsize=9)
-    note(fig, f"{TASKS} tasks. Positive = documents help. Points: mean over 5 paired draws, bars 95% CI.")
+    note(fig, f"{TASKS} tasks. {METRIC['helps']} = documents help. Points: mean over 5 paired draws, bars 95% CI.")
     fig.tight_layout(rect=(0, 0.04, 1, 0.86))
     save(fig, out, "fig9_document_value")
 
 
 def fig_headroom(out: Path) -> None:
-    h = pl.read_parquet("outputs/headroom_tasks625.parquet").with_columns(pl.col("dim").cast(pl.String))
+    # headroom.py stores loss values sign-flipped (higher = better), so its value columns are
+    # patient only - retrieval loss: positive = retrieval better under either metric.
+    loss = METRIC["col"] == "loss"
+    h = pl.read_parquet(f"outputs/headroom_tasks{TASKS}{METRIC['suffix']}.parquet").with_columns(
+        pl.col("dim").cast(pl.String)
+    )
+    naive = "Test loss (no fit)" if loss else "1 − AUROC (no fit)"
+    total = "Patient only − retrieval" if loss else "Retrieval − patient only"
+    docs = "Null docs − frozen Qwen3" if loss else "Frozen Qwen3 − null docs"
     panels = (
-        ("headroom_data", "value_retrieval", "Fitted data-axis headroom", "Retrieval − patient only"),
-        ("naive_gap", "value_retrieval", "1 − AUROC (no fit)", "Retrieval − patient only"),
-        ("naive_gap", "knowledge_retrieval_qwen3", "1 − AUROC (no fit)", "Frozen Qwen3 − null docs"),
+        ("headroom_data", "value_retrieval", "Fitted data-axis headroom", total),
+        ("naive_gap", "value_retrieval", naive, total),
+        ("naive_gap", "knowledge_retrieval_qwen3", naive, docs),
     )
     fig, axes = plt.subplots(1, len(panels), figsize=(11, 3.7))
     for ax, (x, y, xl, yl) in zip(axes, panels, strict=True):
@@ -256,29 +274,34 @@ def fig_headroom(out: Path) -> None:
         ax.set_title(f"Spearman ρ = {rho:.2f}  (p = {p:.2g}, {d.height} cells)", loc="left", fontsize=9, color=INK)
         zero_line(ax)
         ax.set_xlabel(xl)
-        ax.set_ylabel(f"{yl}, AUROC")
-    fig.suptitle("Does headroom predict what retrieval adds? (round 1, 625 tasks)", x=0.01, ha="left",
-                 fontsize=12, color=INK)
+        ax.set_ylabel(f"{yl}, {METRIC['short']}")
+    fig.suptitle(f"Does headroom predict what retrieval adds? (round 1, 625 tasks, {METRIC['short']})", x=0.01,
+                 ha="left", fontsize=12, color=INK)
     hd, lab = axes[1].get_legend_handles_labels()
     fig.legend(hd, lab, loc="upper left", ncol=6, bbox_to_anchor=(0.005, 0.93), fontsize=9)
-    note(fig, "One point per (width, training patients) cell; mean over 5 draws. Hollow: the data-axis fit's "
-              "asymptote sits on the A = 1 bound, so its headroom equals 1 − AUROC.")
+    note(fig, "One point per (width, training patients) cell; mean over 5 draws; positive = retrieval better. Hollow: "
+              "the data-axis fit's asymptote sits on its bound (" + ("loss 0" if loss else "AUROC 1")
+              + "), so its headroom equals the naive gap.")
     fig.tight_layout(rect=(0, 0.04, 1, 0.84))
     save(fig, out, "fig10_headroom")
 
 
 def main() -> None:
+    global METRIC
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", default="figures")
-    out = Path(parser.parse_args().out)
+    parser.add_argument("--metric", choices=sorted(METRICS), default="auroc", help="metric of fig8-10")
+    args = parser.parse_args()
+    out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     v1, v2 = load("outputs"), load("outputs_v2")
     fig_bias_check(out)
     fig_bias_fix(v1, v2, out)
+    METRIC = METRICS[args.metric]
     fig_v2_pilot(v2, out)
     fig_document_value(v1, v2, out)
     fig_headroom(out)
-    print(f"wrote {out}/fig6-10")
+    print(f"wrote {out}/fig6-10{METRIC['suffix']}")
 
 
 if __name__ == "__main__":

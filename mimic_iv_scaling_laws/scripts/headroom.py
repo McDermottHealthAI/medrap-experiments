@@ -12,7 +12,12 @@ with a 95% interval from refitting on draws resampled with replacement at every 
 is then compared with what retrieval adds at the same cell: total value (retrieval arm -
 baseline) and, where the null-docs control exists, knowledge value (retrieval - null docs).
 
-Writes <outputs>/headroom_tasks<T>.parquet and <outputs>/headroom_tasks<T>_correlations.parquet and
+With ``--metric loss`` the same is done on test loss (BCE) negated, ``-loss = A - B x^-alpha`` with
+A <= 0: the headroom is then ``loss - asymptote``, the naive gap is the loss itself (distance to a
+perfect 0), and every value is ``baseline loss - retrieval loss`` (positive = retrieval better), so
+signs read the same as for AUROC.
+
+Writes <outputs>/headroom_tasks<T>[_loss].parquet and <outputs>/headroom_tasks<T>[_loss]_correlations.parquet and
 prints both. A retrieval arm's value is only computed on cells where all N_DRAWS draws exist.
 
 Usage:
@@ -36,6 +41,13 @@ from scipy.optimize import OptimizeWarning, curve_fit
 CAPACITIES = ("4", "8", "16", "32", "64", "128", "128x2x4", "256x4x8")
 N_BOOT = 200
 N_DRAWS = 5
+# Per metric: results column, sign that makes higher = better, best possible value (the upper bound on
+# the asymptote), a lower bound on it, and the starting point's margin above the best observed value.
+METRICS = {
+    "auroc": {"col": "test_metric__auroc", "sign": 1.0, "best": 1.0, "floor": 0.0, "margin": 0.05},
+    "loss": {"col": "test_loss__bce", "sign": -1.0, "best": 0.0, "floor": -10.0, "margin": 0.002},
+}
+METRIC = METRICS["auroc"]
 MIN_POINTS = 3
 
 
@@ -46,13 +58,14 @@ def law(x: np.ndarray, a: float, b: float, alpha: float) -> np.ndarray:
 def fit_asymptote(x: np.ndarray, y: np.ndarray) -> float:
     """Asymptote A of y = A - B x^-alpha fit to (x, y); NaN if the fit fails."""
     xs = x / x.min()  # unit-free x keeps B well scaled
-    p0 = (min(1.0, y.max() + 0.05), max(1e-3, y.max() - y.min()), 0.5)
+    best = METRIC["best"]
+    p0 = (min(best, y.max() + METRIC["margin"]), max(1e-3, y.max() - y.min()), 0.5)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", OptimizeWarning)
         warnings.simplefilter("ignore", RuntimeWarning)
         try:
             (a, _b, _alpha), _ = curve_fit(
-                law, xs, y, p0=p0, bounds=([0.0, 0.0, 1e-3], [1.0, 10.0, 5.0]), maxfev=20000
+                law, xs, y, p0=p0, bounds=([METRIC["floor"], 0.0, 1e-3], [best, 10.0, 5.0]), maxfev=20000
             )
         except (RuntimeError, ValueError):
             return float("nan")
@@ -78,12 +91,16 @@ def headroom(points: pl.DataFrame, x_col: str, rng: np.random.Generator) -> tupl
 
 
 def main() -> None:
+    global METRIC
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--tasks", type=int, default=625)
     parser.add_argument("--outputs", default="outputs")
     parser.add_argument("--baseline", default="patient_only")
     parser.add_argument("--retrieval", nargs="+", default=["retrieval", "retrieval_qwen3"])
+    parser.add_argument("--metric", choices=sorted(METRICS), default="auroc")
     args = parser.parse_args()
+    METRIC = METRICS[args.metric]
+    suffix = "" if args.metric == "auroc" else f"_{args.metric}"
 
     dims = {encoder_n_params(d): d for d in CAPACITIES}
     res = (
@@ -95,7 +112,7 @@ def main() -> None:
             pl.col("model_size__n_params").replace_strict(dims).alias("dim"),
             pl.col("dataset_size__n_train_patients").alias("n"),
             pl.col("optimizer_seed").alias("draw"),
-            pl.col("test_metric__auroc").alias("auroc"),
+            (METRIC["sign"] * pl.col(METRIC["col"])).alias("auroc"),  # higher = better for either metric
         )
     )
     base = res.filter(pl.col("arm") == args.baseline)
@@ -132,20 +149,21 @@ def main() -> None:
                 )
     # Reference: the naive gap 1 - AUROC needs no fit. If headroom correlates no better than this,
     # the scaling-law fit adds nothing beyond "how weak is the baseline here".
-    out = out.with_columns((1 - pl.col(args.baseline)).alias("naive_gap"))
+    out = out.with_columns((METRIC["best"] - pl.col(args.baseline)).alias("naive_gap"))
+    tol = 1e-3 if args.metric == "auroc" else 1e-5  # losses are ~0.02-0.3
     out = out.with_columns(
         (
             pl.col("headroom_data").is_not_nan()
-            & (pl.col("headroom_data") >= 1 - pl.col(args.baseline) - 1e-3)
+            & (pl.col("headroom_data") >= pl.col("naive_gap") - tol)
         ).alias("data_fit_at_bound"),
         (
             pl.col("headroom_capacity").is_not_nan()
-            & (pl.col("headroom_capacity") >= 1 - pl.col(args.baseline) - 1e-3)
+            & (pl.col("headroom_capacity") >= pl.col("naive_gap") - tol)
         ).alias("capacity_fit_at_bound"),
     )
     out = out.sort("params", "n")
     Path(args.outputs).mkdir(exist_ok=True)
-    out.write_parquet(Path(args.outputs) / f"headroom_tasks{args.tasks}.parquet")
+    out.write_parquet(Path(args.outputs) / f"headroom_tasks{args.tasks}{suffix}.parquet")
 
     corr = []
     for h in ("headroom_data", "headroom_capacity", "naive_gap"):
@@ -157,9 +175,9 @@ def main() -> None:
                     {"headroom": h, "retrieval_metric": v, "cells": d.height, "spearman": rho, "p": p}
                 )
     corr = pl.DataFrame(corr)
-    corr.write_parquet(Path(args.outputs) / f"headroom_tasks{args.tasks}_correlations.parquet")
+    corr.write_parquet(Path(args.outputs) / f"headroom_tasks{args.tasks}{suffix}_correlations.parquet")
     with pl.Config(tbl_rows=-1, tbl_cols=-1, float_precision=3, tbl_width_chars=250):
-        print(f"{args.tasks} tasks, baseline={args.baseline}\n")
+        print(f"{args.tasks} tasks, baseline={args.baseline}, metric={args.metric}\n")
         print(
             out.select(
                 "dim",
