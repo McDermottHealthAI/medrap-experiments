@@ -268,6 +268,14 @@ across draws at width 32 shrinks sharply as the task count grows:
 
 ![Retrieval advantage by task count](plots/fig4b_task_count_advantage.png)
 
+**The same plots on test loss.** Retrieval has lower loss at every task count, most at 1K
+patients, and the gap shrinks to ≤ 0.001 by 100K. Like all round-1 loss gaps, most of it is
+`patient_only`'s unlearned base rate (see [Bias check](#bias-check-the-loss-gap-was-an-unlearned-base-rate)).
+
+![Task-count ablation, test loss](plots/fig4a_task_count_ablation_loss.png)
+
+![Retrieval advantage by task count, test loss](plots/fig4b_task_count_advantage_loss.png)
+
 ## Results: main grid, 625 tasks (round 1, superseded by v2)
 
 > **Question:** with less task-sampling noise, where does retrieval help?
@@ -302,6 +310,17 @@ over 5 draws. With 625 tasks per draw, task-sampling noise is much smaller.
 ![AUROC vs training patients, 625 tasks](plots/fig1_data_scaling_t625.png)
 
 ![AUROC vs encoder parameters, 625 tasks](plots/fig2_capacity_scaling_t625.png)
+
+**The same grid on test loss** (negative = retrieval lower loss). Retrieval's loss is nearly
+flat across width and data; the gap is almost all `patient_only` at small widths with little
+data (−0.285 at width 4 / 1K, ≤ 0.001 from width 64 or 30K patients up). This is the
+unlearned-base-rate problem the bias check below diagnoses, not a retrieval effect.
+
+![Test-loss difference heatmap, 625 tasks](plots/fig3_retrieval_advantage_t625_loss.png)
+
+![Test loss vs training patients, 625 tasks](plots/fig1_data_scaling_t625_loss.png)
+
+![Test loss vs encoder parameters, 625 tasks](plots/fig2_capacity_scaling_t625_loss.png)
 
 ## Results: knowledge or capacity? (round 1 controls)
 
@@ -374,6 +393,12 @@ useful documents. Mean test AUROC, 625 tasks, 5 draws:
 
 ![Knowledge vs capacity control](plots/fig5_knowledge_control_t625.png)
 
+On test loss, all three retrieval arms lie on top of each other and only `patient_only`
+differs (width 4 and 16 at 1K patients), so the loss gap is the architecture plus the bias
+problem, with nothing from the documents.
+
+![Knowledge vs capacity control, test loss](plots/fig5_knowledge_control_t625_loss.png)
+
 ## Results: does headroom predict retrieval value? (round 1)
 
 > **Question (the experiment's main question):** if a scaling-law fit says a model is far
@@ -412,6 +437,15 @@ Values are Spearman ρ across cells. "Total value" is `arm − patient_only`; "d
   capacities, every task count) is the real test.
 
 ![Headroom vs retrieval value](plots/fig10_headroom.png)
+
+**The same analysis on test loss** (`scripts/headroom.py --metric loss`): fit
+`loss = A + B·x^-α` (A ≥ 0), headroom = loss − A, value = `patient_only` loss − retrieval loss
+(positive = retrieval better). Loss fits rarely hit their bound (data 1/18, capacity 3/20), but
+the fitted headroom predicts nothing (data ρ = −0.03, capacity ρ = −0.00). The raw loss
+predicts everything (ρ = 0.83–0.88 for total and document value), but only because a few
+small-width cells with a very high `patient_only` loss (the bias problem) dominate both axes.
+
+![Headroom vs retrieval value, test loss](plots/fig10_headroom_loss.png)
 
 ## Bias check: the loss gap was an unlearned base rate
 
