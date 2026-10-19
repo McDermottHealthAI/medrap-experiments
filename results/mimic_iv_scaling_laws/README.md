@@ -93,6 +93,15 @@ parameters). The plain widths are 1 layer, 1 head.
 
 ## Results: main grid, 25 tasks (round 1)
 
+> **Question:** where on the model-size × data-size grid does adding retrieval help?
+>
+> **Setup:** `patient_only` vs `retrieval` at 6 encoder widths × 5 training sizes, 25 random
+> tasks, 5 draws per cell (round 1, before the bias fix).
+>
+> **How to read:** the heatmap and table show retrieval − `patient_only` AUROC per cell
+> (orange / positive = retrieval better). The line plots show each arm's raw AUROC as data or
+> width grows.
+
 ### Retrieval advantage
 
 Each cell is retrieval − `patient_only` test AUROC, paired over the 5 draws: the mean, then
@@ -163,6 +172,14 @@ extrapolation.
 
 ## Results: test loss (25 tasks, round 1)
 
+> **Question:** does the retrieval advantage look the same on test loss as on AUROC?
+>
+> **Setup:** the same 300 runs as above, scored by held-out BCE instead of AUROC.
+>
+> **How to read:** negative = retrieval has lower loss (better). The heatmap colors retrieval
+> wins orange, as in the AUROC heatmap. ⚠️ The large small-model gaps here turned out to be an optimization
+> artifact; see [Bias check](#bias-check-the-loss-gap-was-an-unlearned-base-rate).
+
 Both arms log the **same** test loss: binary cross-entropy of their final predicted
 probability, averaged over (patient, task) pairs. For `retrieval`, that probability is the
 marginal over its 4 documents, Σₖ P(docₖ | x)·σ(logitₖ). Lower is better, so here a
@@ -206,6 +223,15 @@ marginal over its 4 documents, Σₖ P(docₖ | x)·σ(logitₖ). Lower is bette
 
 ## Results: task-count ablation (width 32, round 1)
 
+> **Question:** does the number of tasks a model is trained on change how much retrieval
+> helps, or just how noisy the estimate is?
+>
+> **Setup:** width 32 fixed; 5, 25, 125, 625 or 2,500 random tasks × 5 training sizes × both
+> arms, 5 draws (new random tasks per draw).
+>
+> **How to read:** each row of the table is a task count; cells are retrieval −
+> `patient_only` AUROC. The second table is the spread across draws (lower = more reliable).
+
 Each task count draws its own random codes. Table format as above: retrieval −
 `patient_only`, paired, <sub>[95% CI] · draws won</sub>, **bold** = significant.
 
@@ -244,6 +270,13 @@ across draws at width 32 shrinks sharply as the task count grows:
 
 ## Results: main grid, 625 tasks (round 1, superseded by v2)
 
+> **Question:** with less task-sampling noise, where does retrieval help?
+>
+> **Setup:** the 25-task grid repeated with 625 tasks per draw (round 1, before the bias fix).
+>
+> **How to read:** same as the 25-task grid. Treat the small-width numbers as upper bounds:
+> the controls and bias check below show most of that gap is not the documents.
+
 Same grid and table format as the 25-task grid: retrieval − `patient_only` test AUROC, paired
 over 5 draws. With 625 tasks per draw, task-sampling noise is much smaller.
 
@@ -271,6 +304,16 @@ over 5 draws. With 625 tasks per draw, task-sampling noise is much smaller.
 ![AUROC vs encoder parameters, 625 tasks](plots/fig2_capacity_scaling_t625.png)
 
 ## Results: knowledge or capacity? (round 1 controls)
+
+> **Question:** is retrieval's gain from the *content* of the documents, or from the extra
+> layers (fusion block + 256-d head) that retrieval adds?
+>
+> **Setup:** the retrieval model trained and tested on null (empty) documents, on random
+> documents, or with a frozen Qwen3 query, at widths 4/16/64 × 1K/10K/100K patients, 625 tasks.
+>
+> **How to read:** if null docs ≈ retrieval, the gain is architecture. "Architecture alone" =
+> null docs − `patient_only`; "value of the documents" = retrieval − null docs (positive =
+> documents help).
 
 The control arms keep the full retrieval architecture but are trained *and* tested without
 useful documents. Mean test AUROC, 625 tasks, 5 draws:
@@ -333,6 +376,16 @@ useful documents. Mean test AUROC, 625 tasks, 5 draws:
 
 ## Results: does headroom predict retrieval value? (round 1)
 
+> **Question (the experiment's main question):** if a scaling-law fit says a model is far
+> from its ceiling, does retrieval add more there?
+>
+> **Setup:** for each cell, fit a scaling law to `patient_only` using only smaller models or
+> less data than that cell, read off the gap to the fitted ceiling ("headroom"), and correlate
+> it across cells with how much retrieval adds.
+>
+> **How to read:** a high Spearman ρ means headroom predicts retrieval value. The fit is only
+> useful if it beats the no-fit baseline `1 − AUROC`.
+
 For every cell (width M, patients N) of `patient_only` at 625 tasks, `scripts/headroom.py` fits
 `AUROC = A − B·x^-α` (A ≤ 1) along each axis using only what is available at that cell: sizes
 ≤ N at width M (data axis) or widths ≤ M at N patients (capacity axis), with ≥ 3 sizes per fit.
@@ -361,6 +414,14 @@ Values are Spearman ρ across cells. "Total value" is `arm − patient_only`; "d
 ![Headroom vs retrieval value](plots/fig10_headroom.png)
 
 ## Bias check: the loss gap was an unlearned base rate
+
+> **Question:** is the huge small-model loss gap real knowledge, or a training bug?
+>
+> **Setup:** take round-1 predictions, re-fit only one bias (logit offset) per task on the
+> tuning split, and recompute test loss.
+>
+> **How to read:** if the gap (dark points) shrinks toward 0 after the offset (light points),
+> the gap was just a miscalibrated base rate, not retrieval doing something useful.
 
 Round 1's test-loss gap at small widths (−0.27 at width 4, 1K patients) looked too large to be
 the documents. To check, `scripts/bias_check.py` takes the saved predictions of round-1 runs
@@ -391,6 +452,15 @@ else frozen, and recomputes held-out BCE.
 ![Bias check](plots/fig6_bias_check.png)
 
 ## Results: v2 pilot (bias init, 625 tasks)
+
+> **Question:** once the bias problem is fixed, how much do retrieval and its documents
+> really add, and which retriever should the full v2 grid use?
+>
+> **Setup:** every arm retrained with the head bias set from each task's base rate, at widths
+> 4/64 × 1K/10K/100K patients, 625 tasks, same draws as round 1.
+>
+> **How to read:** first how the fix changes `patient_only`, then all arms side by side, then
+> the value of the documents (retrieval − null docs, positive = documents help) in round 1 vs v2.
 
 All arms with the head bias initialized from the base rate, on the control cells. First, what
 the fix does to `patient_only` (same task draws as round 1):
@@ -460,6 +530,9 @@ Mean test AUROC, all arms with bias init:
 ![Value of the documents, round 1 vs v2](plots/fig9_document_value.png)
 
 ## v2 grid (running)
+
+> **Question:** the full experiment, redone with the fix: does scaling-law headroom predict
+> retrieval value, at every task count?
 
 Everything above motivates a rerun with the bias fix, more points per scaling fit, larger
 encoders and every task count:
