@@ -17,6 +17,7 @@ Writes <outputs>/headroom.parquet and <outputs>/headroom_correlations.parquet an
 Usage:
     cd mimic_iv_scaling_laws && .venv/bin/python scripts/headroom.py [--tasks 625] [--outputs outputs]
         [--baseline patient_only] [--retrieval retrieval retrieval_qwen3]
+    v2 grid:  .venv/bin/python scripts/headroom.py --outputs outputs_v2 --retrieval retrieval_qwen3
 """
 
 import argparse
@@ -29,7 +30,8 @@ from aggregate_results import collect_results, encoder_n_params
 from scipy import stats
 from scipy.optimize import OptimizeWarning, curve_fit
 
-DIMS = (4, 8, 16, 32, 64, 128)
+# Plain widths plus the v2 multi-layer specs (WIDTHxLAYERSxHEADS).
+CAPACITIES = ("4", "8", "16", "32", "64", "128", "128x2x4", "256x4x8")
 N_BOOT = 200
 MIN_POINTS = 3
 
@@ -80,9 +82,9 @@ def main() -> None:
     parser.add_argument("--retrieval", nargs="+", default=["retrieval", "retrieval_qwen3"])
     args = parser.parse_args()
 
-    dims = {encoder_n_params(d): d for d in DIMS}
+    dims = {encoder_n_params(d): d for d in CAPACITIES}
     res = (
-        collect_results()
+        collect_results(root=args.outputs)
         .filter(pl.col("num_tasks") == args.tasks)
         .select(
             "arm",
@@ -96,11 +98,11 @@ def main() -> None:
     base = res.filter(pl.col("arm") == args.baseline)
     rng = np.random.default_rng(0)
     rows = []
-    for dim in sorted(base["dim"].unique()):
+    for params, dim in sorted(base.select("params", "dim").unique().iter_rows()):
         for n in sorted(base["n"].unique()):
-            row = {"dim": dim, "n": n}
+            row = {"dim": dim, "params": params, "n": n}
             data_pts = base.filter((pl.col("dim") == dim) & (pl.col("n") <= n))
-            cap_pts = base.filter((pl.col("n") == n) & (pl.col("dim") <= dim))
+            cap_pts = base.filter((pl.col("n") == n) & (pl.col("params") <= params))
             for name, pts, x_col in (("data", data_pts, "n"), ("capacity", cap_pts, "params")):
                 ok = pts[x_col].n_unique() >= MIN_POINTS
                 h, lo, hi = headroom(pts, x_col, rng) if ok else (np.nan, np.nan, np.nan)
@@ -134,7 +136,7 @@ def main() -> None:
             & (pl.col("headroom_capacity") >= 1 - pl.col(args.baseline) - 1e-3)
         ).alias("capacity_fit_at_bound"),
     )
-    out = out.sort("dim", "n")
+    out = out.sort("params", "n")
     Path(args.outputs).mkdir(exist_ok=True)
     out.write_parquet(Path(args.outputs) / "headroom.parquet")
 
