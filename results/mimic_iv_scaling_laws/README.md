@@ -122,6 +122,11 @@ zero at the top and right.
 
 ![Retrieval advantage heatmap](plots/fig3_retrieval_advantage.png)
 
+The same difference as curves, with 95% CIs over the 5 paired draws: left, against training
+patients (one line per width); right, against encoder parameters (one line per data size).
+
+![Retrieval − patient only curves](plots/fig3b_retrieval_difference.png)
+
 ### Raw AUROC
 
 Mean test AUROC over 5 draws:
@@ -217,6 +222,11 @@ marginal over its 4 documents, Σₖ P(docₖ | x)·σ(logitₖ). Lower is bette
 
 ![Test-loss difference heatmap](plots/fig3_retrieval_advantage_loss.png)
 
+The same difference as curves, with 95% CIs over the 5 paired draws: left, against training
+patients (one line per width); right, against encoder parameters (one line per data size).
+
+![Retrieval − patient only curves, test loss](plots/fig3b_retrieval_difference_loss.png)
+
 ![Test loss vs training patients, by width](plots/fig1_data_scaling_loss.png)
 
 ![Test loss vs encoder parameters, by training size](plots/fig2_capacity_scaling_loss.png)
@@ -307,6 +317,11 @@ over 5 draws. With 625 tasks per draw, task-sampling noise is much smaller.
 
 ![Retrieval advantage heatmap, 625 tasks](plots/fig3_retrieval_advantage_t625.png)
 
+The same difference as curves, with 95% CIs over the 5 paired draws: left, against training
+patients (one line per width); right, against encoder parameters (one line per data size).
+
+![Retrieval − patient only curves, 625 tasks](plots/fig3b_retrieval_difference_t625.png)
+
 ![AUROC vs training patients, 625 tasks](plots/fig1_data_scaling_t625.png)
 
 ![AUROC vs encoder parameters, 625 tasks](plots/fig2_capacity_scaling_t625.png)
@@ -317,6 +332,11 @@ data (−0.285 at width 4 / 1K, ≤ 0.001 from width 64 or 30K patients up). Thi
 unlearned-base-rate problem the bias check below diagnoses, not a retrieval effect.
 
 ![Test-loss difference heatmap, 625 tasks](plots/fig3_retrieval_advantage_t625_loss.png)
+
+The same difference as curves, with 95% CIs over the 5 paired draws: left, against training
+patients (one line per width); right, against encoder parameters (one line per data size).
+
+![Retrieval − patient only curves, test loss, 625 tasks](plots/fig3b_retrieval_difference_t625_loss.png)
 
 ![Test loss vs training patients, 625 tasks](plots/fig1_data_scaling_t625_loss.png)
 

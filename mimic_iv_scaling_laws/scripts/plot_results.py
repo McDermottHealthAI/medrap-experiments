@@ -7,6 +7,8 @@ enough) and writes, under <out>/:
 - figures/fig1_data_scaling: AUROC vs training patients, one panel per encoder width.
 - figures/fig2_capacity_scaling: AUROC vs patient-encoder parameters, one panel per data size.
 - figures/fig3_retrieval_advantage: retrieval - patient_only AUROC over the main grid.
+- figures/fig3b_retrieval_difference: the same difference as curves, with 95% CIs over paired
+  draws: vs training patients (one line per width) and vs encoder parameters (one line per size).
 - figures/fig4_task_count_ablation: (a) both arms vs training patients, one panel per task
   count; (b) retrieval - patient_only vs training patients, one line per task count.
 - tables/*.md and tables/*.tex: mean +- std AUROC per arm, the difference grid, the task-count
@@ -37,6 +39,7 @@ import numpy as np
 import polars as pl
 from matplotlib.colors import LinearSegmentedColormap, SymLogNorm, TwoSlopeNorm
 from matplotlib.ticker import FuncFormatter
+from scipy import stats
 
 sys.path.insert(0, str(Path(__file__).parent))
 from aggregate_results import (
@@ -69,6 +72,8 @@ CONTROL_MARKER = {
     "retrieval_random_docs": "s",
     "retrieval_null_docs": "^",
 }
+# Sequential blue ramp for ordered series (widths, data sizes), light -> dark.
+ORDER_RAMP = ["#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"]
 TASK_RAMP = ["#86b6ef", "#5598e7", "#2a78d6", "#1c5cab", "#104281"]  # ordinal, light -> dark
 SURFACE, INK, INK_2, GRID, NEUTRAL = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df", "#f0efec"
 DIVERGING = LinearSegmentedColormap.from_list(
@@ -364,6 +369,69 @@ def fig_advantage(summary, out) -> None:
     save(fig, out, "fig3_retrieval_advantage")
 
 
+def paired_difference(results: pl.DataFrame) -> pl.DataFrame:
+    """retrieval - patient_only per (dim, n_train) on the main grid: mean and 95% t half-width over draws."""
+    dims = {encoder_n_params(d): d for d in (4, 8, 16, 32, 64, 128)}
+    main = results.filter(pl.col("num_tasks") == MAIN_NUM_TASKS).select(
+        "arm",
+        pl.col("model_size__n_params").alias("params"),
+        pl.col("model_size__n_params").replace_strict(dims).alias("dim"),
+        pl.col("dataset_size__n_train_patients").alias("n_train"),
+        "optimizer_seed",
+        pl.col(METRIC["col"]).alias("y"),
+    )
+    j = main.filter(pl.col("arm") == "retrieval").join(
+        main.filter(pl.col("arm") == REFERENCE_ARM), on=["params", "dim", "n_train", "optimizer_seed"]
+    )
+    rows = []
+    for (params, dim, n), g in j.group_by("params", "dim", "n_train"):
+        d = (g["y"] - g["y_right"]).to_numpy()
+        half = stats.t.ppf(0.975, len(d) - 1) * d.std(ddof=1) / np.sqrt(len(d)) if len(d) > 1 else np.nan
+        rows.append({"params": params, "dim": dim, "n_train": n, "mean": d.mean(), "half": half})
+    return pl.DataFrame(rows).sort("params", "n_train")
+
+
+def fig_difference(results, out) -> None:
+    d = paired_difference(results)
+    dims, ns = sorted(d["dim"].unique()), sorted(d["n_train"].unique())
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.8), sharey=True)
+    panels = (
+        (axes[0], "n_train", "dim", dims, "Training patients", lambda v: f"dim {v}"),
+        (axes[1], "params", "n_train", ns, "Patient-encoder parameters", lambda v: f"{compact(v)} patients"),
+    )
+    for ax, x, by, groups, xlabel, label in panels:
+        for g, color in zip(groups, ORDER_RAMP[-len(groups) :], strict=True):
+            s = d.filter(pl.col(by) == g).sort(x)
+            ax.fill_between(s[x], s["mean"] - s["half"], s["mean"] + s["half"], color=color, alpha=0.15, lw=0)
+            ax.plot(s[x], s["mean"], color=color, marker="o", ms=5, mec=SURFACE, mew=1.2, label=label(g), zorder=3)
+        ax.axhline(0, color=INK_2, lw=1, zorder=1)
+        log_x(ax, d[x].min(), d[x].max())
+        if METRIC["better"] == "lower":
+            ax.set_yscale("symlog", linthresh=1e-3)  # one small-model cell dwarfs the rest
+        ax.set_xlabel(xlabel)
+        ax.legend(loc="lower left", bbox_to_anchor=(0, 1.0), fontsize=8, ncol=3)
+    axes[0].set_ylabel(f"Retrieval − patient only ({METRIC['short']})")
+    better = "above" if METRIC["better"] == "higher" else "below"
+    fig.suptitle(
+        f"Retrieval − patient only, {METRIC['short']}, {MAIN_NUM_TASKS} tasks (retrieval better {better} 0)",
+        x=0.01,
+        ha="left",
+        fontsize=12,
+        color=INK,
+    )
+    fig.text(
+        0.01,
+        0.005,
+        "Lines: mean paired difference over 5 draws; bands: 95% CI. Darker = wider encoder / more data."
+        + (" Symmetric log y-axis (linear within ±0.001)." if METRIC["better"] == "lower" else ""),
+        color=INK_2,
+        fontsize=8,
+        va="bottom",
+    )
+    fig.tight_layout(rect=(0, 0.04, 1, 0.92))
+    save(fig, out, "fig3b_retrieval_difference")
+
+
 def ablation_table(summary: pl.DataFrame) -> pl.DataFrame:
     ab = summary.filter(pl.col("dim") == ABLATION_DIM)
     wide = ab.pivot(on="arm", index=["num_tasks", "n_train"], values="mean")
@@ -597,6 +665,7 @@ def main() -> None:
     fig_scaling(summary, curves, figs, axis="data")
     fig_scaling(summary, curves, figs, axis="capacity")
     fig_advantage(summary, figs)
+    fig_difference(results, figs)
     fig_ablation(summary, figs)
     fig_control(summary, figs)
     tables(summary, fits, tabs)
