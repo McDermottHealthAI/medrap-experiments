@@ -358,6 +358,8 @@ Values are Spearman ρ across cells. "Total value" is `arm − patient_only`; "d
   both headroom and total value at small widths. The v2 grid (bias fixed, 6 data sizes, 8
   capacities, every task count) is the real test.
 
+![Headroom vs retrieval value](plots/fig10_headroom.png)
+
 ## Bias check: the loss gap was an unlearned base rate
 
 Round 1's test-loss gap at small widths (−0.27 at width 4, 1K patients) looked too large to be
@@ -386,6 +388,8 @@ else frozen, and recomputes held-out BCE.
   log-odds of its training positive rate before the first step
   ([MedRAP#119](https://github.com/McDermottHealthAI/MedRAP/pull/119)). All v2 runs use it.
 
+![Bias check](plots/fig6_bias_check.png)
+
 ## Results: v2 pilot (bias init, 625 tasks)
 
 All arms with the head bias initialized from the base rate, on the control cells. First, what
@@ -406,6 +410,8 @@ predicting ~p = 0.5, most of the early gradient goes into lowering every predict
 learning to rank patients. Width 4 with 1K patients barely changes, probably because 1K
 patients with ~1% positives is too little signal either way.
 
+![Bias fix: patient only, round 1 vs v2](plots/fig7_bias_fix.png)
+
 Mean test AUROC, all arms with bias init:
 
 | Width | Arm | 1K | 10K | 100K |
@@ -418,6 +424,8 @@ Mean test AUROC, all arms with bias init:
 |  | `retrieval_null_docs` | 0.724 | 0.792 | 0.879 |
 |  | `retrieval` | 0.734 | 0.804 | 0.888 |
 |  | `retrieval_qwen3` | 0.737 | 0.807 | 0.888 |
+
+![v2 pilot arms](plots/fig8_v2_pilot.png)
 
 **Architecture alone** (`retrieval_null_docs` − `patient_only`):
 
@@ -448,6 +456,8 @@ Mean test AUROC, all arms with bias init:
   `retrieval_qwen3` and +0.009 to +0.012 with the learned query at 10K–100K patients, 5/5
   draws. This is the clean "retrieval value" the v2 grid measures. `retrieval_qwen3` is the v2
   retrieval arm because it is at least as good and its retriever can't collapse.
+
+![Value of the documents, round 1 vs v2](plots/fig9_document_value.png)
 
 ## v2 grid (running)
 
