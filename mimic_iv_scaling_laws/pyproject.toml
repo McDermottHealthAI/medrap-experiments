@@ -1,0 +1,9 @@
+[project]
+name = "mimic-iv-scaling-laws"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "matplotlib>=3.11.2",
+    "medrap @ git+https://github.com/McDermottHealthAI/MedRAP.git@3f554b472c720dbffd53742ac71f7061837a2385",
+    "simple-scaling-laws @ git+https://github.com/mmcdermott/simple-scaling-laws.git@e5f6bf236aac5ff659c796fcd60a43370b1da24c",
+]
