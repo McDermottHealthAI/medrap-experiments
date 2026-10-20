@@ -12,6 +12,8 @@
 
 **Code:** [`mimic_iv_scaling_laws/`](../../mimic_iv_scaling_laws/README.md). For the reasoning behind each choice, see its [`DESIGN.md`](../../mimic_iv_scaling_laws/DESIGN.md).
 
+**Model:** [`design.md`](design.md) draws the architecture layer by layer, with every dimension, and explains each arm.
+
 ## TL;DR
 
 - **Most of the small-model "retrieval gain" is the retrieval architecture, not the documents.**
