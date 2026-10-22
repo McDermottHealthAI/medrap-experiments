@@ -1,18 +1,19 @@
 flowchart LR
     IN["Patient codes<br/>B × S"]
-    PE["<b>Patient encoder</b><br/>width W<br/>→ B × S × W"]
-    POOL["Mean over codes<br/>→ B × W"]
-    HEAD1["Head<br/>W → T"]
-    OUT1(["patient only<br/>B × T"])
+    PE["<b>Patient encoder</b><br/>B × S × W"]
+    POOL["Mean over codes<br/>B × W"]
+    HEAD1["Head<br/>B × T"]
+    OUT1(["patient-only prediction"])
 
-    Q["Query<br/>W → 1024"]
-    DB[("<b>External document database</b><br/>medical textbooks<br/>1024-d keys")]
-    RE["<b>Retrieval encoder</b><br/>top K docs<br/>→ B × K × S_doc × 64"]
-    FUS["<b>Fusion</b><br/>patient ↔ each doc<br/>→ B × K × 256"]
-    HEAD2["Head<br/>256 → T"]
-    OUT2(["retrieval<br/>B × T"])
+    Q["Query<br/>B × 1024"]
+    DB[("<b>External document database</b><br/>B × K × S_doc")]
+    RE["<b>Retrieval encoder</b><br/>B × K × S_doc × 64"]
+    FUS["<b>Fusion</b><br/>B × K × 256"]
+    HEAD2["Head<br/>B × K × T"]
+    COMB["Combine documents<br/>B × T"]
+    OUT2(["retrieval prediction"])
 
     IN --> PE
     PE --> POOL --> HEAD1 --> OUT1
-    PE --> Q --> DB --> RE --> FUS --> HEAD2 --> OUT2
+    PE --> Q --> DB --> RE --> FUS --> HEAD2 --> COMB --> OUT2
     PE --> FUS

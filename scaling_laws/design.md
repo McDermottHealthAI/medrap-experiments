@@ -6,6 +6,8 @@ Keep things simple and clean: start small, add detail only when it's needed.
 
 ![Model architecture](architecture.png)
 
+Each box shows the shape of its output.
+
 Source: [`architecture.mmd`](architecture.mmd) (Mermaid). After editing it, re-render with
 `npx -y @mermaid-js/mermaid-cli -i architecture.mmd -o architecture.png -w 1800 -s 2 -b white`.
 
