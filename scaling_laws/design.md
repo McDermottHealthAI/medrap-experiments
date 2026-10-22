@@ -4,26 +4,10 @@ Keep things simple and clean: start small, add detail only when it's needed.
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    IN["Patient codes<br/>B × S"]
-    PE["<b>Patient encoder</b><br/>width W<br/>→ B × S × W"]
-    POOL["Mean over codes<br/>→ B × W"]
-    HEAD1["Head<br/>W → T"]
-    OUT1(["patient only<br/>B × T"])
+![Model architecture](architecture.png)
 
-    Q["Query<br/>W → 1024"]
-    DB[("<b>External document database</b><br/>medical textbooks<br/>1024-d keys")]
-    RE["<b>Retrieval encoder</b><br/>top K docs<br/>→ B × K × S_doc × 64"]
-    FUS["<b>Fusion</b><br/>patient ↔ each doc<br/>→ B × K × 256"]
-    HEAD2["Head<br/>256 → T"]
-    OUT2(["retrieval<br/>B × T"])
-
-    IN --> PE
-    PE --> POOL --> HEAD1 --> OUT1
-    PE --> Q --> DB --> RE --> FUS --> HEAD2 --> OUT2
-    PE --> FUS
-```
+Source: [`architecture.mmd`](architecture.mmd) (Mermaid). After editing it, re-render with
+`npx -y @mermaid-js/mermaid-cli -i architecture.mmd -o architecture.png -w 1800 -s 2 -b white`.
 
 The top path is the **patient-only** model. The bottom path adds **retrieval**: the patient
 encoder's output becomes a query, the query looks up K documents in an external database,
