@@ -23,7 +23,7 @@ and the fusion combines the patient with each document before the head predicts.
 | `S` | codes per patient | 256 |
 | `W` | patient-encoder width | 4 to 256 (**varies**) |
 | `T` | tasks | 5 to 2,500 (**varies**) |
-| `K` | documents retrieved per patient | 4 |
+| `K` | documents retrieved per patient | 4 in training, 1 at test |
 | `S_doc` | tokens per document | 256 |
 
 ## Sizes
@@ -67,19 +67,19 @@ separate null-docs configuration.
 
 | Test | Documents |
 |---|---|
-| Top documents (always) | the top 4 the query retrieves |
-| Random documents | 4 random documents from the database |
+| Top document (always) | the single top document the query retrieves (K = 1) |
+| Random document | 1 random document from the database |
 
 **Comparisons** (positive = the first one is better):
 
 | Comparison | Name |
 |---|---|
-| 2 or 3, top documents − 1 | Total value of retrieval |
-| Top documents − random documents, same model | Reliance on the retrieved documents |
+| 2 or 3, top document − 1 | Total value of retrieval |
+| Top document − random document, same model | Reliance on the retrieved document |
 
 **To decide:**
 
 - Which query is the default: learned (#2) or Qwen3 (#3)? The v2 grid uses #3.
-- The null document's key. An all-zero key always scores 0, so it is among the top 4 only when
-  fewer than 4 passages score above 0. A learned key would let training decide when "nothing" wins.
+- The null document's key. An all-zero key always scores 0, so at test it is the top document only
+  when every passage scores below 0. A learned key would let training decide when "nothing" wins.
 - Runs so far used a database without the null document, so #2 and #3 need rerunning with it.
