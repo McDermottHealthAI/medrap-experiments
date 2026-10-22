@@ -80,6 +80,6 @@ separate null-docs configuration.
 **To decide:**
 
 - Which query is the default: learned (#2) or Qwen3 (#3)? The v2 grid uses #3.
-- The null document's key. An all-zero key always scores 0, so it is retrieved only when every
-  passage scores below 0. A learned key would let training decide when "nothing" wins.
+- The null document's key. An all-zero key always scores 0, so it is among the top 4 only when
+  fewer than 4 passages score above 0. A learned key would let training decide when "nothing" wins.
 - Runs so far used a database without the null document, so #2 and #3 need rerunning with it.
