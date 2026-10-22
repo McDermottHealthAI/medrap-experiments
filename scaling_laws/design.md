@@ -1,6 +1,16 @@
 # Scaling laws: model design
 
-Keep things simple and clean: start small, add detail only when it's needed.
+## Variables
+
+| Symbol | Meaning | Value |
+|---|---|---|
+| `B` | patients per batch | 32 |
+| `S` | codes per patient | 256 |
+| `W` | patient-encoder width | 4 to 256 (**varies**) |
+| `T` | tasks | 5 to 2,500 (**varies**) |
+| `K` | documents retrieved per patient | 4 in training, 1 at test |
+| `S_doc` | tokens per document | 256 |
+
 
 ## Architecture
 
@@ -15,16 +25,31 @@ The top path is the **patient-only** model. The bottom path adds **retrieval**: 
 encoder's output becomes a query, the query looks up K documents in an external database,
 and the fusion combines the patient with each document before the head predicts.
 
-## Variables
+### Components
 
-| Symbol | Meaning | Value |
+| Component | What it is | Output |
 |---|---|---|
-| `B` | patients per batch | 32 |
-| `S` | codes per patient | 256 |
-| `W` | patient-encoder width | 4 to 256 (**varies**) |
-| `T` | tasks | 5 to 2,500 (**varies**) |
-| `K` | documents retrieved per patient | 4 in training, 1 at test |
-| `S_doc` | tokens per document | 256 |
+| Patient Encoder | code embedding table + transformer (L layers, H heads, time-gap position encoding) | B × S × W |
+| Mean Over Codes | average over the patient's codes | B × W |
+| Head | one linear layer: one logit per task | B × T, or B × K × T per document |
+| Query | mean over codes, then linear W → 1024 (#2), or a frozen Qwen3 text embedding (#3) | B × 1024 |
+| External Document Database | textbook passages + one null document, each with a fixed 1024-d key; returns the top K by query · key | B × K × S_doc |
+| Retrieval Encoder | token embedding of each retrieved document | B × K × S_doc × 64 |
+| Fusion | patient codes attend to one document at a time (cross-attention), then mean over codes | B × K × 256 |
+| Combine Documents | weighted average of the per-document predictions; weights from query · key | B × T |
+
+## Model Architectures Configurations
+
+| # | Configuration | Query | Status |
+|---|---|---|---|
+| 1 | Patient only | none (top path) | Run (round 1, v2) |
+| 2 | Retrieval, learned query | learned from the patient encoder | Round 1 and v2 pilot, without the null document |
+| 3 | Retrieval, Qwen3 query | patient's last 32 codes as text, embedded by a frozen Qwen3 model | v2 grid running, without the null document |
+
+**Database.** The external database always holds the medical-textbook passages **plus a null
+(empty) document**, so the model can retrieve "nothing" when no passage helps. There is no
+separate null-docs configuration.
+
 
 ## Sizes
 
@@ -49,37 +74,146 @@ and the fusion combines the patient with each document before the head predicts.
 | Fusion | 256-d, 2 layers, 8 heads | ~0.9M |
 | Query | W → 1024 | 5K–263K |
 
-## Configurations
+## Training runs (for approval)
 
-**Database.** The external database always holds the medical-textbook passages **plus a null
-(empty) document**, so the model can retrieve "nothing" when no passage helps. There is no
-separate null-docs configuration.
+Every axis below multiplies the run count. Nothing new is trained until this is approved.
 
-**Training.** Each configuration changes only the **Query** box:
+**Main grid**
 
-| # | Configuration | Query | Status |
-|---|---|---|---|
-| 1 | Patient only | none (top path) | Run (round 1, v2) |
-| 2 | Retrieval, learned query | learned from the patient encoder | Round 1 and v2 pilot, without the null document |
-| 3 | Retrieval, Qwen3 query | patient's last 32 codes as text, embedded by a frozen Qwen3 model | v2 grid running, without the null document |
+| Axis | Values | Count |
+|---|---|---|
+| Configuration | #1 Patient only, #2 Retrieval with learned query, #3 Retrieval with Qwen3 query | 3 |
+| Encoder size | the 8 sizes in [Sizes](#sizes) | 8 |
+| Training patients `D` | 1K, 3K, 10K, 30K, 100K, 153K (all) | 6 |
+| Tasks `T` | 625 | 1 |
+| Draws | 5 (each draw: new tasks, new patient subsample, new seed) | 5 |
+| **Runs** | 3 × 8 × 6 × 5 | **720** |
 
-**Testing.** Every retrieval model is tested twice, with no extra training:
+**Task-count grid**
 
-| Test | Documents |
-|---|---|
-| Top document (always) | the single top document the query retrieves (K = 1) |
-| Random document | 1 random document from the database |
+| Axis | Values | Count |
+|---|---|---|
+| Configuration | #1, #2, #3 | 3 |
+| Encoder size | W = 4, 16, 64, 128 (2 layers × 4 heads), 256 (4 × 8) | 5 |
+| Training patients `D` | as above | 6 |
+| Tasks `T` | 5, 25, 125, 2,500 | 4 |
+| Draws | 5 | 5 |
+| **Runs** | 3 × 5 × 6 × 4 × 5 | **1,800** |
 
-**Comparisons** (positive = the first one is better):
+**Total: 2,520 runs.** The 840 Patient-only runs already exist (v2, with the head bias fix) and
+don't depend on the database, so they can be reused. **New: 1,680 retrieval runs** (840 per
+query). For scale: a Qwen3-query run takes roughly 2–3 GPU-hours (rough estimate from the v2
+grid).
+
+**Fixed training settings** (all runs): batch 32, learning rate 1e-3 with warmup, gradient
+clipping 1.0, head bias initialized to each task's training base rate, K = 4 documents in
+training. Epochs shrink as data grows: 10 / 7 / 5 / 4 / 3 / 3 for 1K / 3K / 10K / 30K / 100K /
+153K patients.
+
+**To approve:**
+
+- [ ] Configurations: #2, #3, or both?
+- [ ] Encoder sizes: all 8?
+- [ ] Training patients: all 6?
+- [ ] Task counts: 625 for the main grid, plus 5 / 25 / 125 / 2,500 on 5 sizes?
+- [ ] 5 draws per cell?
+- [ ] Database: textbook passages + one null document. Key for the null document: all zeros, or learned?
+- [ ] Stop the running v2 Qwen3 grid (it has no null document)?
+
+## Testing
+
+Each trained model is evaluated once on the held-out test patients. Retrieval models get one
+extra evaluation with a random document, using the same model (no extra training):
+
+| Evaluation | Documents | Used for |
+|---|---|---|
+| Top document | the single top document its query retrieves (K = 1) | the reported result |
+| Random document | 1 random document from the database | reliance on the retrieved document |
+
+The reported number is the **test loss** (below), averaged over all (patient, task) pairs;
+AUROC is logged too.
+
+**Comparisons** (on loss, so negative = the first one is better):
 
 | Comparison | Name |
 |---|---|
-| 2 or 3, top document − 1 | Total value of retrieval |
+| #2 or #3 (top document) − #1 | Value of retrieval |
 | Top document − random document, same model | Reliance on the retrieved document |
 
-**To decide:**
+## Loss
 
-- Which query is the default: learned (#2) or Qwen3 (#3)? The v2 grid uses #3.
-- The null document's key. An all-zero key always scores 0, so at test it is the top document only
-  when every passage scores below 0. A learned key would let training decide when "nothing" wins.
-- Runs so far used a database without the null document, so #2 and #3 need rerunning with it.
+Notation: patient $i$, task $t$, label $y_{it} \in \{0, 1\}$, $\sigma$ = sigmoid. $V$ is the
+set of (patient, task) pairs with a label; missing labels are skipped.
+
+**#1 Patient only** (`MultiTaskBCELoss`): binary cross-entropy on the head's logit $z_{it}$.
+
+$$
+\mathcal{L} = \frac{1}{|V|} \sum_{(i,t) \in V} -\Big[\, y_{it} \log \sigma(z_{it}) + (1 - y_{it}) \log\big(1 - \sigma(z_{it})\big) \Big]
+$$
+
+**#2, #3 Retrieval** (`MultiTaskBCEMarginalizedLoss`): each of the K documents gets its own
+logit $z_{ikt}$ and a weight $w_{ik}$ from its query · key score; the prediction is the weighted
+average probability.
+
+$$
+w_{ik} = \operatorname{softmax}_k\!\left( \frac{q_i \cdot \kappa_{ik}}{\sqrt{1024}} \right),
+\qquad
+p_{it} = \sum_{k=1}^{K} w_{ik}\, \sigma(z_{ikt})
+$$
+
+$$
+\mathcal{L} = \frac{1}{|V|} \sum_{(i,t) \in V} -\Big[\, y_{it} \log p_{it} + (1 - y_{it}) \log(1 - p_{it}) \Big]
+$$
+
+$q_i$ is the query, $\kappa_{ik}$ the document's key in the database. The code computes both
+logs in log space (`logsumexp`) for stability. The weights get gradients, so the learned query
+(#2) is trained through this loss; the Qwen3 query (#3) is frozen.
+
+**At test** K = 1, so $w_{i1} = 1$ and the retrieval loss is the Patient-only formula applied
+to the top document's logit. The test loss is the same formula on the test patients.
+
+## Plots
+
+Scaling laws on **test loss** for now.
+
+| # | Plot | Shows |
+|---|---|---|
+| P1 | Loss vs training patients `D`, one line per encoder size, one panel per configuration | data scaling |
+| P2 | Loss vs encoder parameters `N`, one line per `D`, one panel per configuration | model scaling |
+| P3 | Fitted law per configuration, drawn through P1 and P2, with its parameters in a table | the law itself |
+| P4 | Retrieval − Patient-only loss vs `D` and vs `N` | where retrieval helps |
+| P5 | IsoFLOP curves: loss vs `N` at fixed training compute, one curve per budget | compute-optimal model size |
+| P6 | Best loss vs training compute (the frontier of P5), Patient only and retrieval on one plot | whether retrieval is worth its compute |
+
+**Fitted law** (Chinchilla form), one fit per configuration and task count:
+
+$$
+L(N, D) = E + \frac{A}{N^{\alpha}} + \frac{B}{D^{\beta}}
+$$
+
+$E$ is the loss floor; $A, \alpha$ and $B, \beta$ describe how fast loss falls with model size
+and data.
+
+**IsoFLOP curves.** Training compute per run is about
+
+$$
+C \approx 6 \cdot N_{\text{compute}} \cdot D \cdot \text{epochs} \cdot S
+$$
+
+(6 FLOPs per parameter per token, forward + backward). For each compute budget $C$, plot loss
+against model size among runs (or fitted-law points) with that budget. Each curve is U-shaped:
+too small a model underfits, too large a model sees too little data. Its minimum is the best
+model size for that budget, and the minima across budgets give how the optimal size grows with
+compute.
+
+**To decide for the plots:**
+
+- `N`: all encoder parameters, or without the code embedding table? The table is a lookup, not
+  compute, and is most of the parameters (65,536 × W). Compute ($N_{\text{compute}}$) should
+  exclude it either way.
+- Retrieval compute: count the fusion and retrieval encoder in $C$. They are fixed in size but
+  can cost more than a small patient encoder, which is exactly what P6 should show.
+- IsoFLOP points: our grid isn't laid out on equal-compute lines (epochs change with `D`), so
+  either read them off the fitted law, or train a small extra grid where each size gets the
+  same compute (needs approval).
+
