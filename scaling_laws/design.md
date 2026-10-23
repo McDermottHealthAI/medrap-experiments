@@ -51,95 +51,6 @@ and the fusion combines the patient with each document before the head predicts.
 separate null-docs configuration.
 
 
-## Sizes
-
-**Patient encoder** (the part that scales):
-
-| Width `W` | Layers | Heads | Parameters |
-|---|---|---|---|
-| 4 | 1 | 1 | 262K |
-| 8 | 1 | 1 | 525K |
-| 16 | 1 | 1 | 1.05M |
-| 32 | 1 | 1 | 2.11M |
-| 64 | 1 | 1 | 4.23M |
-| 128 | 1 | 1 | 8.52M |
-| 128 | 2 | 4 | 8.65M |
-| 256 | 4 | 8 | 18.9M |
-
-**Retrieval side** (the same size in every run):
-
-| Part | Size | Parameters |
-|---|---|---|
-| Retrieval encoder | token embedding, 151,936 × 64 | 9.72M |
-| Fusion | 256-d, 2 layers, 8 heads | ~0.9M |
-| Query | W → 1024 | 5K–263K |
-
-## Training runs (for approval)
-
-Every axis below multiplies the run count. Nothing new is trained until this is approved.
-
-**Main grid**
-
-| Axis | Values | Count |
-|---|---|---|
-| Configuration | #1 Patient only, #2 Retrieval with learned query, #3 Retrieval with Qwen3 query | 3 |
-| Encoder size | the 8 sizes in [Sizes](#sizes) | 8 |
-| Training patients `D` | 1K, 3K, 10K, 30K, 100K, 153K (all) | 6 |
-| Tasks `T` | 625 | 1 |
-| Draws | 5 (each draw: new tasks, new patient subsample, new seed) | 5 |
-| **Runs** | 3 × 8 × 6 × 5 | **720** |
-
-**Task-count grid**
-
-| Axis | Values | Count |
-|---|---|---|
-| Configuration | #1, #2, #3 | 3 |
-| Encoder size | W = 4, 16, 64, 128 (2 layers × 4 heads), 256 (4 × 8) | 5 |
-| Training patients `D` | as above | 6 |
-| Tasks `T` | 5, 25, 125, 2,500 | 4 |
-| Draws | 5 | 5 |
-| **Runs** | 3 × 5 × 6 × 4 × 5 | **1,800** |
-
-**Total: 2,520 runs.** The 840 Patient-only runs already exist (v2, with the head bias fix) and
-don't depend on the database, so they can be reused. **New: 1,680 retrieval runs** (840 per
-query). For scale: a Qwen3-query run takes roughly 2–3 GPU-hours (rough estimate from the v2
-grid).
-
-**Fixed training settings** (all runs): batch 32, learning rate 1e-3 with warmup, gradient
-clipping 1.0, head bias initialized to each task's training base rate, K = 4 documents in
-training. Epochs shrink as data grows: 10 / 7 / 5 / 4 / 3 / 3 for 1K / 3K / 10K / 30K / 100K /
-153K patients.
-
-**To approve:**
-
-- [ ] Configurations: #2, #3, or both?
-- [ ] Encoder sizes: all 8?
-- [ ] Training patients: all 6?
-- [ ] Task counts: 625 for the main grid, plus 5 / 25 / 125 / 2,500 on 5 sizes?
-- [ ] 5 draws per cell?
-- [ ] Database: textbook passages + one null document. Key for the null document: all zeros, or learned?
-- [ ] Stop the running v2 Qwen3 grid (it has no null document)?
-
-## Testing
-
-Each trained model is evaluated once on the held-out test patients. Retrieval models get one
-extra evaluation with a random document, using the same model (no extra training):
-
-| Evaluation | Documents | Used for |
-|---|---|---|
-| Top document | the single top document its query retrieves (K = 1) | the reported result |
-| Random document | 1 random document from the database | reliance on the retrieved document |
-
-The reported number is the **test loss** (below), averaged over all (patient, task) pairs;
-AUROC is logged too.
-
-**Comparisons** (on loss, so negative = the first one is better):
-
-| Comparison | Name |
-|---|---|
-| #2 or #3 (top document) − #1 | Value of retrieval |
-| Top document − random document, same model | Reliance on the retrieved document |
-
 ## Loss
 
 Notation: patient $i$, task $t$, label $y_{it} \in \{0, 1\}$, $\sigma$ = sigmoid. $V$ is the
@@ -171,6 +82,59 @@ logs in log space (`logsumexp`) for stability. The weights get gradients, so the
 
 **At test** K = 1, so $w_{i1} = 1$ and the retrieval loss is the Patient-only formula applied
 to the top document's logit. The test loss is the same formula on the test patients.
+
+## Training runs (for approval)
+
+Every axis below multiplies the run count. Nothing new is trained until this is approved.
+
+| Axis | Values | Count |
+|---|---|---|
+| Configuration | #1 Patient only, #2 Retrieval with learned query, #3 Retrieval with Qwen3 query | 3 |
+| Encoder size `W` | 4, 8, 16, 32, 64, 128 (1 layer, 1 head); 128 (2 layers, 4 heads); 256 (4 layers, 8 heads) | 8 |
+| Training patients `D` | 1K, 3K, 10K, 30K, 100K, 153K (all) | 6 |
+| Tasks `T` | 5, 25, 125, 625, 2,500 | 5 |
+| Draws | 5 (each draw: new tasks, new patient subsample, new seed) | 5 |
+| **Runs** | 3 × 8 × 6 × 5 × 5 | **3,600** |
+
+**Already done:** 840 of the 1,200 Patient-only runs (v2, with the head bias fix; Patient only
+doesn't use the database, so they can be reused). **New: 2,760 runs:** 360 Patient-only and
+1,200 per retrieval query. For scale: a Qwen3-query run takes roughly 2–3 GPU-hours (rough
+estimate from the v2 grid).
+
+**Fixed training settings** (all runs): batch 32, learning rate 1e-3 with warmup, gradient
+clipping 1.0, head bias initialized to each task's training base rate, K = 4 documents in
+training. Epochs shrink as data grows: 10 / 7 / 5 / 4 / 3 / 3 for 1K / 3K / 10K / 30K / 100K /
+153K patients.
+
+**To approve:**
+
+- [ ] Configurations: #2, #3, or both?
+- [ ] Encoder sizes: all 8?
+- [ ] Training patients: all 6?
+- [ ] Task counts: all 5?
+- [ ] 5 draws per cell?
+- [ ] Database: textbook passages + one null document. Key for the null document: all zeros, or learned?
+- [ ] Stop the running v2 Qwen3 grid (it has no null document)?
+
+## Testing
+
+Each trained model is evaluated once on the held-out test patients. Retrieval models get one
+extra evaluation with a random document, using the same model (no extra training):
+
+| Evaluation | Documents | Used for |
+|---|---|---|
+| Top document | the single top document its query retrieves (K = 1) | the reported result |
+| Random document | 1 random document from the database | reliance on the retrieved document |
+
+The reported number is the **test loss** (below), averaged over all (patient, task) pairs;
+AUROC is logged too.
+
+**Comparisons** (on loss, so negative = the first one is better):
+
+| Comparison | Name |
+|---|---|
+| #2 or #3 (top document) − #1 | Value of retrieval |
+| Top document − random document, same model | Reliance on the retrieved document |
 
 ## Plots
 
