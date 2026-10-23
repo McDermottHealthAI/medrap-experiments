@@ -101,16 +101,6 @@ clipping 1.0, head bias initialized to each task's training base rate, K = 4 doc
 training. Epochs shrink as data grows: 10 / 7 / 5 / 4 / 3 / 3 for 1K / 3K / 10K / 30K / 100K /
 153K patients.
 
-**To approve:**
-
-- [ ] Configurations: #2, #3, or both?
-- [ ] Encoder sizes: all 8?
-- [ ] Training patients: all 6?
-- [ ] Task counts: all 5?
-- [ ] 5 draws per cell?
-- [ ] Database: textbook passages + one null document. Key for the null document: all zeros, or learned?
-- [ ] Stop the running v2 Qwen3 grid (it has no null document)?
-
 ## Testing
 
 Each trained model is evaluated once on the held-out test patients. Retrieval models get one
@@ -123,13 +113,6 @@ extra evaluation with a random document, using the same model (no extra training
 
 The reported number is the **test loss** (below), averaged over all (patient, task) pairs;
 AUROC is logged too.
-
-**Comparisons** (on loss, so negative = the first one is better):
-
-| Comparison | Name |
-|---|---|
-| #2 or #3 (top document) − #1 | Value of retrieval |
-| Top document − random document, same model | Reliance on the retrieved document |
 
 ## Plots
 
