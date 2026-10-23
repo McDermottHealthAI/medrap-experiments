@@ -96,10 +96,36 @@ Every axis below multiplies the run count. Nothing new is trained until this is 
 | Draws | 5 (each draw: new tasks, new patient subsample, new seed) | 5 |
 | **Runs** | 3 × 8 × 6 × 5 × 5 | **3,600** |
 
-**Fixed training settings** (all runs): batch 32, learning rate 1e-3 with warmup, gradient
-clipping 1.0, head bias initialized to each task's training base rate, K = 4 documents in
-training. Epochs shrink as data grows: 10 / 7 / 5 / 4 / 3 / 3 for 1K / 3K / 10K / 30K / 100K /
-153K patients.
+## Training settings
+
+The values used so far (round 1 and v2), the same for every configuration and size.
+
+| Setting | Value |
+|---|---|
+| Optimizer | AdamW |
+| Learning rate | 1e-3 (peak) |
+| Schedule | linear warmup, then cosine decay to 0 over the whole run |
+| Weight decay | 0.01 (not on biases or LayerNorm weights) |
+| Batch size | 32 patients |
+| Gradient clipping | 1.0 (global norm) |
+| Dropout | 0 in the patient encoder, 0.1 in the fusion |
+| Documents in training | K = 4 |
+| Head bias at start | each task's training base rate (log-odds) |
+| Validation | every 0.2 epoch, on up to 200 batches |
+| Checkpoint tested | the last one |
+| Seed | the draw number (1–5) |
+
+**Epochs and warmup per training-set size.** Smaller sets get more epochs so they still get
+enough optimizer steps.
+
+| Training patients `D` | Epochs | Warmup steps | Optimizer steps (≈ D / 32 × epochs) |
+|---|---|---|---|
+| 1K | 10 | 60 | 310 |
+| 3K | 7 | 100 | 660 |
+| 10K | 5 | 200 | 1,560 |
+| 30K | 4 | 200 | 3,750 |
+| 100K | 3 | 200 | 9,380 |
+| 153K | 3 | 200 | 14,360 |
 
 ## Testing
 
