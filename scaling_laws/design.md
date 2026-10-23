@@ -40,11 +40,11 @@ and the fusion combines the patient with each document before the head predicts.
 
 ## Model Architectures Configurations
 
-| # | Configuration | Query | Status |
-|---|---|---|---|
-| 1 | Patient only | none (top path) | Run (round 1, v2) |
-| 2 | Retrieval, learned query | learned from the patient encoder | Round 1 and v2 pilot, without the null document |
-| 3 | Retrieval, Qwen3 query | patient's last 32 codes as text, embedded by a frozen Qwen3 model | v2 grid running, without the null document |
+| # | Configuration | Query |
+|---|---|---|
+| 1 | Patient only | none (top path) |
+| 2 | Retrieval, learned query | learned from the patient encoder |
+| 3 | Retrieval, Qwen3 query | patient's last 32 codes as text, embedded by a frozen Qwen3 model |
 
 **Database.** The external database always holds the medical-textbook passages **plus a null
 (empty) document**, so the model can retrieve "nothing" when no passage helps. There is no
