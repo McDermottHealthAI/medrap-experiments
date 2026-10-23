@@ -96,11 +96,6 @@ Every axis below multiplies the run count. Nothing new is trained until this is 
 | Draws | 5 (each draw: new tasks, new patient subsample, new seed) | 5 |
 | **Runs** | 3 × 8 × 6 × 5 × 5 | **3,600** |
 
-**Already done:** 840 of the 1,200 Patient-only runs (v2, with the head bias fix; Patient only
-doesn't use the database, so they can be reused). **New: 2,760 runs:** 360 Patient-only and
-1,200 per retrieval query. For scale: a Qwen3-query run takes roughly 2–3 GPU-hours (rough
-estimate from the v2 grid).
-
 **Fixed training settings** (all runs): batch 32, learning rate 1e-3 with warmup, gradient
 clipping 1.0, head bias initialized to each task's training base rate, K = 4 documents in
 training. Epochs shrink as data grows: 10 / 7 / 5 / 4 / 3 / 3 for 1K / 3K / 10K / 30K / 100K /
