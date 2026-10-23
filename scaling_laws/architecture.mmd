@@ -1,0 +1,19 @@
+flowchart LR
+    IN["Patient Codes<br/>B × S"]
+    PE["<b>Patient Encoder</b><br/>B × S × W"]
+    POOL["Mean Over Codes<br/>B × W"]
+    HEAD1["Head<br/>B × T"]
+    OUT1(["Patient-Only Prediction"])
+
+    Q["Query<br/>B × 1024"]
+    DB[("<b>External Document Database</b><br/>B × K × S_doc")]
+    RE["<b>Retrieval Encoder</b><br/>B × K × S_doc × 64"]
+    FUS["<b>Fusion</b><br/>B × K × 256"]
+    HEAD2["Head<br/>B × K × T"]
+    COMB["Combine Documents<br/>B × T"]
+    OUT2(["Retrieval Prediction"])
+
+    IN --> PE
+    PE --> POOL --> HEAD1 --> OUT1
+    PE --> Q --> DB --> RE --> FUS --> HEAD2 --> COMB --> OUT2
+    PE --> FUS
