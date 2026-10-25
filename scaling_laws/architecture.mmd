@@ -7,7 +7,7 @@ flowchart LR
 
     Q["Query<br/>B × 1024"]
     DB[("<b>External Document Database</b><br/>B × K × S_doc")]
-    RE["<b>Retrieval Encoder</b><br/>B × K × S_doc × 64"]
+    RE["<b>Retrieval Encoder</b><br/>B × K × S_doc × 1024"]
     FUS["<b>Fusion</b><br/>B × K × 256"]
     HEAD2["Head<br/>B × K × T"]
     COMB["Combine Documents<br/>B × T"]
