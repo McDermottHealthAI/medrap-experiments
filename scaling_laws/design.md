@@ -34,7 +34,7 @@ and the fusion combines the patient with each document before the head predicts.
 | Head | one linear layer: one logit per task | B × T, or B × K × T per document |
 | Query | mean over codes, then linear W → 1024 (#2), or a frozen Qwen3 text embedding (#3) | B × 1024 |
 | External Document Database | textbook passages + one null document, each with a fixed 1024-d key; returns the top K by query · key | B × K × S_doc |
-| Retrieval Encoder | frozen Qwen3 token embeddings (`embed_tokens`, 151,936 × 1,024) of each retrieved document | B × K × S_doc × 1024 |
+| Retrieval Encoder | frozen Qwen3 token embeddings (`embed_tokens`, 151,669 × 1,024) of each retrieved document | B × K × S_doc × 1024 |
 | Fusion | patient codes attend to one document at a time (cross-attention; keys and values projected 1024 → 256), then mean over codes | B × K × 256 |
 | Combine Documents | weighted average of the per-document predictions; weights from query · key | B × T |
 
@@ -51,7 +51,7 @@ and the fusion combines the patient with each document before the head predicts.
 separate null-docs configuration.
 
 **Retrieval encoder.** Both retrieval configurations (#2, #3) represent documents with Qwen3's
-frozen token embeddings, the same tokenizer the database was built with. Nothing on the document
+frozen token embeddings (`retrieval_encoder=qwen3_token_embeddings`, [MedRAP#121](https://github.com/McDermottHealthAI/MedRAP/pull/121)), the same tokenizer the database was built with. Nothing on the document
 side is trained except the fusion's key and value projections (~1M parameters). This replaces
 the randomly initialized 151,936 × 64 token table used so far, which was trained from scratch
 and was larger than the patient encoder at every width up to 128.
