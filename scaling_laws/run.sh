@@ -17,7 +17,7 @@
 #   COHORT_DIR=data/cohort          medrap-preprocess output (intermediate/ + tensorized/)
 #   RETRIEVAL_DB=data/retrieval_db  hf_dataset retrieval DB, including the null document
 #   OUTPUT_DIR=outputs
-# Needs MedRAP at or after c8279d7 (qwen3_token_embeddings). On SLURM, wrap a call, e.g.
+# Needs MedRAP at or after 4a6f4ff (qwen3_token_embeddings, head-bias init). On SLURM, wrap a call, e.g.
 #   sbatch --gres=gpu:1 --wrap "scaling_laws/run.sh train patient_only 16 10000 625 1"
 
 set -euo pipefail
@@ -128,6 +128,7 @@ medrap-train "${ARGS[@]}" ${TRAIN_K[@]+"${TRAIN_K[@]}"} \
     "training.trainer.max_epochs=${EPOCHS}" \
     "training.module.warmup_steps=${WARMUP}" \
     training.module.lr=1e-3 \
+    training.module.init_bias_from_base_rate=true \
     "seed=${DRAW}" \
     "output_dir=${RUN}" \
     do_overwrite=true
