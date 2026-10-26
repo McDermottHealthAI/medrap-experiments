@@ -95,6 +95,7 @@ to the top document's logit. The test loss is the same formula on the test patie
 ## Training runs (for approval)
 
 Every axis below multiplies the run count. Nothing new is trained until this is approved.
+Each run is one call of [`run.sh`](run.sh) (`tasks` once per T and draw, then `train`).
 
 | Axis | Values | Count |
 |---|---|---|
