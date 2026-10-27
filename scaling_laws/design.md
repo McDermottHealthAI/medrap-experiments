@@ -45,6 +45,14 @@ and the fusion combines the patient with each document before the head predicts.
 | 1 | Patient only | none (top path) |
 | 2 | Retrieval, learned query | learned from the patient encoder |
 | 3 | Retrieval, Qwen3 query | patient's last 32 codes as text, embedded by a frozen Qwen3 model |
+| 4 | Retrieval, random documents (control) | as #2, but the documents are random passages |
+
+**Random-documents control (#4).** The same model as #2, trained and tested on fresh random
+passages each batch (`retriever.ablation_mode=random_docs`), plus the null document. It has the
+same parameters and compute as #2 but no patient-specific document content, so
+#2 − #4 is the value of the knowledge and #4 − #1 the value of the extra architecture. The
+documents are not weighted equally: the weights still come from the learned query and each
+random passage's key, but no passage is chosen for the patient.
 
 **Database.** The external database always holds the medical-textbook passages **plus a null
 (empty) document**, and the null document is always added to every patient's retrieved documents
@@ -108,6 +116,9 @@ Each run is one call of [`run.sh`](run.sh) (`tasks` once per T and draw, then `t
 | Draws | 5 (each draw: new tasks, new patient subsample, new seed) | 5 |
 | **Runs** | 3 × 8 × 6 × 5 × 5 | **3,600** |
 
+Plus the random-documents control (#4) on a slice: `W` 4, 16, 64 × `D` 1K, 10K, 100K × `T` 625
+× 5 draws = **45 runs**. **Total: 3,645.**
+
 ## Training settings
 
 The values used so far (round 1 and v2), the same for every configuration and size.
@@ -122,6 +133,7 @@ The values used so far (round 1 and v2), the same for every configuration and si
 | Gradient clipping | 1.0 (global norm) |
 | Dropout | 0 in the patient encoder, 0.1 in the fusion |
 | Documents in training | K = 4, plus the null document |
+| Retrieval speed | FAISS search on the GPU (`retriever.device=0`, needs `faiss-gpu`); documents cached on the GPU (`retriever.cache_payloads=true`, `retriever.payload_cache_device=cuda`, ~1 GB); results unchanged |
 | Head bias at start | each task's training base rate (log-odds) |
 | Validation | every 0.2 epoch, on up to 200 batches |
 | Checkpoint tested | the last one |
@@ -141,8 +153,9 @@ enough optimizer steps.
 
 ## Testing
 
-Each trained model is evaluated once on the held-out test patients. Retrieval models get one
-extra evaluation with a random document, using the same model (no extra training):
+Each trained model is evaluated once on the held-out test patients. #2 and #3 get one extra
+evaluation with a random document, using the same model (no extra training). #4 is tested on
+random documents only, as it was trained:
 
 | Evaluation | Documents | Used for |
 |---|---|---|
@@ -161,7 +174,7 @@ Scaling laws on **test loss** for now.
 | P1 | Loss vs training patients `D`, one line per encoder size, one panel per configuration | data scaling |
 | P2 | Loss vs encoder parameters `N`, one line per `D`, one panel per configuration | model scaling |
 | P3 | Fitted law per configuration, drawn through P1 and P2, with its parameters in a table | the law itself |
-| P4 | Retrieval − Patient-only loss vs `D` and vs `N` | where retrieval helps |
+| P4 | Retrieval − Patient-only loss vs `D` and vs `N`, split into #2 − #4 (knowledge) and #4 − #1 (architecture) on the control slice | where retrieval helps, and why |
 | P5 | IsoFLOP curves: loss vs `N` at fixed training compute, one curve per budget | compute-optimal model size |
 | P6 | Best loss vs training compute (the frontier of P5), Patient only and retrieval on one plot | whether retrieval is worth its compute |
 

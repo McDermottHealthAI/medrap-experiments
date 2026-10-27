@@ -4,10 +4,11 @@
 #   scaling_laws/run.sh tasks T DRAW
 #       T random 30-day tasks for one draw, then train.parquet subsampled to every D.
 #   scaling_laws/run.sh train CONFIG W D T DRAW
-#       Train one run, then test it on the top document (K = 1, plus the null document) and, for retrieval,
-#       on a random document.
+#       Train one run, then test it on the top document (K = 1, plus the null document) and, for
+#       #2 and #3, on a random document.
 #
 #   CONFIG  patient_only | retrieval_learned_query | retrieval_qwen3_query   (#1, #2, #3)
+#           | retrieval_random_docs   (#4: #2 trained and tested on random documents)
 #   W       encoder width, or WIDTHxLAYERSxHEADS (e.g. 128x2x4); default 1 layer, 1 head
 #   D       training patients: 1000 3000 10000 30000 100000 153220
 #   T       tasks: 5 25 125 625 2500
@@ -17,7 +18,8 @@
 #   COHORT_DIR=data/cohort          medrap-preprocess output (intermediate/ + tensorized/)
 #   RETRIEVAL_DB=data/retrieval_db  hf_dataset retrieval DB ending in the null document (add_null_doc.py)
 #   OUTPUT_DIR=outputs
-# Needs MedRAP at or after c3700ab (qwen3_token_embeddings, head-bias init, append_null_doc). On SLURM, wrap a call, e.g.
+# Needs MedRAP at or after c3700ab (qwen3_token_embeddings, head-bias init, append_null_doc), and
+# faiss-gpu for the GPU search (retriever.device=0). On SLURM, wrap a call, e.g.
 #   sbatch --gres=gpu:1 --wrap "scaling_laws/run.sh train patient_only 16 10000 625 1"
 
 set -euo pipefail
@@ -90,8 +92,12 @@ case "${CONFIG}" in
         ARGS+=(fusion=passthrough "query_projector.in_dim=${WIDTH}" "head.in_dim=${WIDTH}"
             training/loss=multitask_binary_bce)
         ;;
-    retrieval_learned_query | retrieval_qwen3_query)
-        if [ "${CONFIG}" = retrieval_learned_query ]; then
+    retrieval_learned_query | retrieval_qwen3_query | retrieval_random_docs)
+        if [ "${CONFIG}" = retrieval_random_docs ]; then
+            # Fresh random passages every batch, in training and at test (the null document stays).
+            ARGS+=(retriever.ablation_mode=random_docs)
+        fi
+        if [ "${CONFIG}" != retrieval_qwen3_query ]; then
             ARGS+=(query_projector=sequence_mean_1024 "query_projector.in_dim=${WIDTH}")
         else
             ARGS+=(query_projector=qwen3_text query_projector.device=cuda
@@ -102,6 +108,9 @@ case "${CONFIG}" in
             "retriever.dataset_path=${RETRIEVAL_DB}"
             retriever.doc_ids_column=null
             retriever.append_null_doc=true
+            retriever.device=0
+            retriever.cache_payloads=true
+            retriever.payload_cache_device=cuda
             retrieval_encoder=qwen3_token_embeddings
             fusion=cross_attention_perdoc_medium
             marginalized_retrieval=true
@@ -138,7 +147,7 @@ TEST_K=()
 [ "${CONFIG}" = patient_only ] || TEST_K=(retriever.k=1)
 medrap-eval "${ARGS[@]}" ${TEST_K[@]+"${TEST_K[@]}"} eval_mode=test \
     "checkpoint_path=${RUN}/checkpoints/last.ckpt" "output_dir=${RUN}_test" do_overwrite=true
-if [ "${CONFIG}" != patient_only ]; then
+if [ "${CONFIG}" = retrieval_learned_query ] || [ "${CONFIG}" = retrieval_qwen3_query ]; then
     medrap-eval "${ARGS[@]}" ${TEST_K[@]+"${TEST_K[@]}"} retriever.ablation_mode=random_docs eval_mode=test \
         "checkpoint_path=${RUN}/checkpoints/last.ckpt" "output_dir=${RUN}_test_random_doc" do_overwrite=true
 fi
