@@ -6,6 +6,7 @@ The design, configurations and run list are in [`design.md`](design.md).
 |---|---|
 | [`run.sh`](run.sh) | one task-generation job (`tasks T DRAW`) or one training run plus its tests (`train CONFIG W D T DRAW`) |
 | [`submit.sh`](submit.sh) | submits `tasks`, the `pilot` (one small run per configuration) or the full `grid` to SLURM; skips work already done |
+| [`slices.sh`](slices.sh) | sets up a fresh clone on another SLURM account and submits the `slices` (#3 Qwen3-query slice + #4 control) |
 | [`add_null_doc.py`](add_null_doc.py) | copies the textbook retrieval database with the null document appended |
 | [`pyproject.toml`](pyproject.toml) | environment: MedRAP pinned to `c3700ab`, `faiss-gpu-cu12` on Linux (L40S only; no H100 kernels) |
 
@@ -31,6 +32,7 @@ ln -s ../../mimic_iv_scaling_laws/data/cohort data/cohort
 ./submit.sh tasks    # CPU, ~25 array tasks
 ./submit.sh pilot    # after tasks: 4 small runs; check outputs/ and their run times
 ./submit.sh grid     # after the pilot looks right: 537 array jobs, 2,685 runs
+                     # (= ./submit.sh main [#1, #2] + ./submit.sh slices [#3, #4])
 ```
 
 Each run writes `outputs/<CONFIG>_W<W>_D<D>_T<T>/draw<d>` (training logs) and `..._test`
