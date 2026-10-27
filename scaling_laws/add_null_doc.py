@@ -25,7 +25,7 @@ def main(src: Path, dst: Path) -> None:
     null["doc_attention_mask"] = [1] + [0] * (len(first["doc_attention_mask"]) - 1)
     null["doc_key_embeddings"] = [0.0] * len(first["doc_key_embeddings"])
     if "doc_ids" in null:
-        null["doc_ids"] = max(ds["doc_ids"]) + 1
+        null["doc_ids"] = "null" if isinstance(first["doc_ids"], str) else max(ds["doc_ids"]) + 1
     out = concatenate_datasets([ds, Dataset.from_list([null], features=ds.features)])
     out.save_to_disk(str(dst))
 
