@@ -7,7 +7,7 @@ The design, configurations and run list are in [`design.md`](design.md).
 | [`run.sh`](run.sh) | one task-generation job (`tasks T DRAW`) or one training run plus its tests (`train CONFIG W D T DRAW`) |
 | [`submit.sh`](submit.sh) | submits `tasks`, the `pilot` (one small run per configuration) or the full `grid` to SLURM; skips work already done |
 | [`add_null_doc.py`](add_null_doc.py) | copies the textbook retrieval database with the null document appended |
-| [`pyproject.toml`](pyproject.toml) | environment: MedRAP pinned to `c3700ab`, `faiss-gpu-cu12` on Linux |
+| [`pyproject.toml`](pyproject.toml) | environment: MedRAP pinned to `c3700ab`, `faiss-gpu-cu12` on Linux (L40S only; no H100 kernels) |
 
 ## Running on the cluster
 

@@ -5,11 +5,15 @@
 #   scaling_laws/submit.sh pilot   # one small run of each configuration (W 4, D 1K, T 25, draw 1)
 #   scaling_laws/submit.sh grid    # main grid (3,600 runs) + random-documents control (45 runs)
 #
-# Cells whose outputs already exist are skipped, so it is safe to resubmit after failures.
+# Cells whose outputs already exist or that are already queued are skipped, so it is safe to
+# resubmit after failures. Retrieval runs use only the L40S `gpu` partition: the faiss-gpu wheels
+# have no kernels for the H100 node (CUDA error 209 in the GPU index).
 
 set -euo pipefail
 cd "$(dirname "$0")"
 mkdir -p logs
+# Stop rather than resubmit everything when the SLURM controller is unreachable.
+QUEUED=$(squeue -u "${USER}" -h -o "%j") || { echo "squeue failed; try again" >&2; exit 1; }
 
 SLURM=(--account=mm6677_gp --cpus-per-task=8 --output=logs/%x_%A_%a.out --error=logs/%x_%A_%a.err)
 CONFIGS=(patient_only retrieval_learned_query retrieval_qwen3_query)
@@ -18,19 +22,21 @@ DS=(1000 3000 10000 30000 100000 153220)
 TS=(5 25 125 625 2500)
 
 submit_train() {  # CONFIG W D T DRAW...
-    local config=$1 w=$2 d=$3 t=$4 missing=() resources=(--time=06:00:00 --mem=32G)
+    local config=$1 w=$2 d=$3 t=$4 missing=() resources=(--time=06:00:00 --mem=32G --partition=gpu,h100)
+    local name="sl-${config}-W${w}-D${d}-T${t}"
     shift 4
+    ! grep -qx "${name}" <<<"${QUEUED}" || return 0
     for draw in "$@"; do
         compgen -G "outputs/${config}_W${w}_D${d}_T${t}/draw${draw}_test/loggers/csv/*/metrics.csv" \
             >/dev/null || missing+=("${draw}")
     done
     [ "${#missing[@]}" -gt 0 ] || return 0
     case "${config}" in
-        retrieval_qwen3_query) resources=(--time=24:00:00 --mem=64G) ;;  # frozen Qwen3 forward per patient
-        retrieval_*) resources=(--time=12:00:00 --mem=32G) ;;
+        retrieval_qwen3_query) resources=(--time=24:00:00 --mem=64G --partition=gpu) ;;  # frozen Qwen3 forward per patient
+        retrieval_*) resources=(--time=12:00:00 --mem=32G --partition=gpu) ;;
     esac
-    sbatch "${SLURM[@]}" "${resources[@]}" --partition=gpu,h100 --gres=gpu:1 \
-        --array="$(IFS=,; echo "${missing[*]}")" --job-name="sl-${config}-W${w}-D${d}-T${t}" \
+    sbatch "${SLURM[@]}" "${resources[@]}" --gres=gpu:1 \
+        --array="$(IFS=,; echo "${missing[*]}")" --job-name="${name}" \
         --wrap="./run.sh train ${config} ${w} ${d} ${t} \${SLURM_ARRAY_TASK_ID}"
 }
 
@@ -42,6 +48,7 @@ case "${1:-}" in
                 [ -f "data/tasks${t}_D153220/draw${draw}/tasks/train.parquet" ] || missing+=("${draw}")
             done
             [ "${#missing[@]}" -gt 0 ] || continue
+            ! grep -qx "sl-tasks-T${t}" <<<"${QUEUED}" || continue
             sbatch "${SLURM[@]}" --partition=cpu --mem=64G --time=04:00:00 \
                 --array="$(IFS=,; echo "${missing[*]}")" --job-name="sl-tasks-T${t}" \
                 --wrap="./run.sh tasks ${t} \${SLURM_ARRAY_TASK_ID}"
