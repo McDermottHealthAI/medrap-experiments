@@ -8,7 +8,7 @@
 | `S` | codes per patient | 256 |
 | `W` | patient-encoder width | 4 to 256 (**varies**) |
 | `T` | tasks | 5 to 2,500 (**varies**) |
-| `K` | documents retrieved per patient | 4 in training, 1 at test |
+| `K` | documents retrieved per patient, plus the null document | 4 + 1 in training, 1 + 1 at test |
 | `S_doc` | tokens per document | 256 |
 
 
@@ -47,8 +47,10 @@ and the fusion combines the patient with each document before the head predicts.
 | 3 | Retrieval, Qwen3 query | patient's last 32 codes as text, embedded by a frozen Qwen3 model |
 
 **Database.** The external database always holds the medical-textbook passages **plus a null
-(empty) document**, so the model can retrieve "nothing" when no passage helps. There is no
-separate null-docs configuration.
+(empty) document**, and the null document is always added to every patient's retrieved documents
+(`retriever.append_null_doc=true`, [MedRAP#122](https://github.com/McDermottHealthAI/MedRAP/pull/122)),
+so the model can always choose "nothing" when no passage helps. Its key is all zeros. Build the
+database with [`add_null_doc.py`](add_null_doc.py). There is no separate null-docs configuration.
 
 **Retrieval encoder.** Both retrieval configurations (#2, #3) represent documents with Qwen3's
 frozen token embeddings (`retrieval_encoder=qwen3_token_embeddings`, [MedRAP#121](https://github.com/McDermottHealthAI/MedRAP/pull/121)), the same tokenizer the database was built with. Nothing on the document
@@ -89,13 +91,13 @@ $q_i$ is the query, $\kappa_{ik}$ the document's key in the database. The code c
 logs in log space (`logsumexp`) for stability. The weights get gradients, so the learned query
 (#2) is trained through this loss; the Qwen3 query (#3) is frozen.
 
-**At test** K = 1, so $w_{i1} = 1$ and the retrieval loss is the Patient-only formula applied
-to the top document's logit. The test loss is the same formula on the test patients.
+**At test** the model sees the top document and the null document, so the same formula applies
+with two documents. The test loss is this formula on the test patients.
 
 ## Training runs (for approval)
 
 Every axis below multiplies the run count. Nothing new is trained until this is approved.
-Each run is one call of [`run.sh`](run.sh) (`tasks` once per T and draw, then `train`).
+Each run is one call of [`run.sh`](run.sh) (`tasks` once per T and draw, then `train`), after building the database once with [`add_null_doc.py`](add_null_doc.py).
 
 | Axis | Values | Count |
 |---|---|---|
@@ -119,7 +121,7 @@ The values used so far (round 1 and v2), the same for every configuration and si
 | Batch size | 32 patients |
 | Gradient clipping | 1.0 (global norm) |
 | Dropout | 0 in the patient encoder, 0.1 in the fusion |
-| Documents in training | K = 4 |
+| Documents in training | K = 4, plus the null document |
 | Head bias at start | each task's training base rate (log-odds) |
 | Validation | every 0.2 epoch, on up to 200 batches |
 | Checkpoint tested | the last one |
@@ -144,8 +146,8 @@ extra evaluation with a random document, using the same model (no extra training
 
 | Evaluation | Documents | Used for |
 |---|---|---|
-| Top document | the single top document its query retrieves (K = 1) | the reported result |
-| Random document | 1 random document from the database | reliance on the retrieved document |
+| Top document | the single top document its query retrieves (K = 1), plus the null document | the reported result |
+| Random document | 1 random passage, plus the null document | reliance on the retrieved document |
 
 The reported number is the **test loss** (below), averaged over all (patient, task) pairs;
 AUROC is logged too.

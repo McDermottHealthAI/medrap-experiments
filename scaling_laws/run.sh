@@ -4,7 +4,7 @@
 #   scaling_laws/run.sh tasks T DRAW
 #       T random 30-day tasks for one draw, then train.parquet subsampled to every D.
 #   scaling_laws/run.sh train CONFIG W D T DRAW
-#       Train one run, then test it on the top document (K = 1) and, for retrieval,
+#       Train one run, then test it on the top document (K = 1, plus the null document) and, for retrieval,
 #       on a random document.
 #
 #   CONFIG  patient_only | retrieval_learned_query | retrieval_qwen3_query   (#1, #2, #3)
@@ -15,9 +15,9 @@
 #
 # Paths (environment, defaults shown):
 #   COHORT_DIR=data/cohort          medrap-preprocess output (intermediate/ + tensorized/)
-#   RETRIEVAL_DB=data/retrieval_db  hf_dataset retrieval DB, including the null document
+#   RETRIEVAL_DB=data/retrieval_db  hf_dataset retrieval DB ending in the null document (add_null_doc.py)
 #   OUTPUT_DIR=outputs
-# Needs MedRAP at or after 4a6f4ff (qwen3_token_embeddings, head-bias init). On SLURM, wrap a call, e.g.
+# Needs MedRAP at or after c3700ab (qwen3_token_embeddings, head-bias init, append_null_doc). On SLURM, wrap a call, e.g.
 #   sbatch --gres=gpu:1 --wrap "scaling_laws/run.sh train patient_only 16 10000 625 1"
 
 set -euo pipefail
@@ -101,6 +101,7 @@ case "${CONFIG}" in
             retriever=hf_dataset
             "retriever.dataset_path=${RETRIEVAL_DB}"
             retriever.doc_ids_column=null
+            retriever.append_null_doc=true
             retrieval_encoder=qwen3_token_embeddings
             fusion=cross_attention_perdoc_medium
             marginalized_retrieval=true
