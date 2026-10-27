@@ -1,0 +1,14 @@
+[project]
+name = "scaling-laws"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "medrap @ git+https://github.com/McDermottHealthAI/MedRAP.git@c3700abbdd0125a2c3b49ca10f2a34e4bd87961a",
+    # FAISS search on the GPU (retriever.device=0); same version as MedRAP's faiss-cpu.
+    "faiss-gpu-cu12==1.13.2; sys_platform == 'linux'",
+]
+
+[tool.uv]
+package = false
+# faiss-cpu and faiss-gpu-cu12 install the same `faiss` module, so use only the GPU build on Linux.
+override-dependencies = ["faiss-cpu==1.13.2; sys_platform != 'linux'"]

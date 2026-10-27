@@ -19,10 +19,13 @@
 #   RETRIEVAL_DB=data/retrieval_db  hf_dataset retrieval DB ending in the null document (add_null_doc.py)
 #   OUTPUT_DIR=outputs
 # Needs MedRAP at or after c3700ab (qwen3_token_embeddings, head-bias init, append_null_doc), and
-# faiss-gpu for the GPU search (retriever.device=0). On SLURM, wrap a call, e.g.
-#   sbatch --gres=gpu:1 --wrap "scaling_laws/run.sh train patient_only 16 10000 625 1"
+# faiss-gpu for the GPU search (retriever.device=0): see README.md. Paths are relative to
+# scaling_laws/, and scaling_laws/.venv is used when it exists. submit.sh submits the grid to SLURM.
 
 set -euo pipefail
+cd "$(dirname "$0")"
+# shellcheck source=/dev/null
+[ ! -f .venv/bin/activate ] || source .venv/bin/activate
 
 COHORT_DIR="${COHORT_DIR:-data/cohort}"
 RETRIEVAL_DB="${RETRIEVAL_DB:-data/retrieval_db}"
@@ -86,6 +89,12 @@ ARGS=(
     training.datamodule.config.max_seq_len=256
     training.datamodule.config.seq_sampling_strategy=to_end
     training.datamodule.batch_size=32
+    # Validation every 0.2 epoch on up to 200 batches, CSV + W&B logs, on the GPU (train and test).
+    training/trainer=lightning_wandb
+    training.trainer.accelerator=gpu
+    # Keep only last.ckpt (the one tested): no best-val or progress snapshots.
+    +training.trainer.callbacks.0.save_top_k=0
+    "training.trainer.callbacks.1.fractions=[]"
 )
 case "${CONFIG}" in
     patient_only)
@@ -131,8 +140,15 @@ case "${D}" in
     100000 | 153220) EPOCHS=3 WARMUP=200 ;;
     *) echo "no epoch schedule for D=${D}" >&2; exit 1 ;;
 esac
-TRAIN_K=()
-[ "${CONFIG}" = patient_only ] || TRAIN_K=(retriever.k=4)
+TRAIN_K=() TEST_K=()
+[ "${CONFIG}" = patient_only ] || TRAIN_K=(retriever.k=4) TEST_K=(retriever.k=1)
+NAME="${CONFIG}_W${W}_D${D}_T${T}_draw${DRAW}"
+
+# Checkpoints go to node-local disk (deleted at exit); only configs and CSV logs are copied to RUN.
+WORK="/localscratch/${USER}/${SLURM_JOB_ID:-}"
+[ -n "${SLURM_JOB_ID:-}" ] && [ -w "${WORK}" ] || WORK=$(mktemp -d)
+WORK="${WORK}/${NAME}"
+trap 'rm -rf "${WORK}"' EXIT
 
 medrap-train "${ARGS[@]}" ${TRAIN_K[@]+"${TRAIN_K[@]}"} \
     "training.trainer.max_epochs=${EPOCHS}" \
@@ -140,14 +156,27 @@ medrap-train "${ARGS[@]}" ${TRAIN_K[@]+"${TRAIN_K[@]}"} \
     training.module.lr=1e-3 \
     training.module.init_bias_from_base_rate=true \
     "seed=${DRAW}" \
-    "output_dir=${RUN}" \
+    "output_dir=${WORK}/train" \
+    "wandb_run_name=sl-${NAME}" \
     do_overwrite=true
 
-TEST_K=()
-[ "${CONFIG}" = patient_only ] || TEST_K=(retriever.k=1)
-medrap-eval "${ARGS[@]}" ${TEST_K[@]+"${TEST_K[@]}"} eval_mode=test \
-    "checkpoint_path=${RUN}/checkpoints/last.ckpt" "output_dir=${RUN}_test" do_overwrite=true
-if [ "${CONFIG}" = retrieval_learned_query ] || [ "${CONFIG}" = retrieval_qwen3_query ]; then
-    medrap-eval "${ARGS[@]}" ${TEST_K[@]+"${TEST_K[@]}"} retriever.ablation_mode=random_docs eval_mode=test \
-        "checkpoint_path=${RUN}/checkpoints/last.ckpt" "output_dir=${RUN}_test_random_doc" do_overwrite=true
-fi
+TESTS=(test)
+[ "${CONFIG}" = retrieval_learned_query ] || [ "${CONFIG}" = retrieval_qwen3_query ] && TESTS+=(test_random_doc)
+for TEST in "${TESTS[@]}"; do
+    EXTRA=()
+    [ "${TEST}" = test ] || EXTRA=(retriever.ablation_mode=random_docs)
+    medrap-eval "${ARGS[@]}" ${TEST_K[@]+"${TEST_K[@]}"} ${EXTRA[@]+"${EXTRA[@]}"} eval_mode=test \
+        "checkpoint_path=${WORK}/train/checkpoints/last.ckpt" \
+        "output_dir=${WORK}/${TEST}" \
+        "wandb_run_name=sl-${NAME}-${TEST}" \
+        do_overwrite=true
+done
+
+for DIR in train "${TESTS[@]}"; do
+    DST="${RUN}_${DIR}"
+    [ "${DIR}" != train ] || DST="${RUN}"
+    rm -rf "${DST}"
+    mkdir -p "${DST}/loggers"
+    cp "${WORK}/${DIR}"/*.yaml "${DST}/" 2>/dev/null || true
+    cp -r "${WORK}/${DIR}/loggers/csv" "${DST}/loggers/"
+done

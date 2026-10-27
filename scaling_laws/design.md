@@ -105,7 +105,7 @@ with two documents. The test loss is this formula on the test patients.
 ## Training runs (for approval)
 
 Every axis below multiplies the run count. Nothing new is trained until this is approved.
-Each run is one call of [`run.sh`](run.sh) (`tasks` once per T and draw, then `train`), after building the database once with [`add_null_doc.py`](add_null_doc.py).
+Each run is one call of [`run.sh`](run.sh) (`tasks` once per T and draw, then `train`), after building the database once with [`add_null_doc.py`](add_null_doc.py). Setup and launch steps are in [`README.md`](README.md).
 
 | Axis | Values | Count |
 |---|---|---|
