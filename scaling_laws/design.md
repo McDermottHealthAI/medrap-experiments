@@ -109,15 +109,18 @@ Each run is one call of [`run.sh`](run.sh) (`tasks` once per T and draw, then `t
 
 | Axis | Values | Count |
 |---|---|---|
-| Configuration | #1 Patient only, #2 Retrieval with learned query, #3 Retrieval with Qwen3 query | 3 |
+| Configuration | #1 Patient only, #2 Retrieval with learned query (#3 Qwen3 query: slice below) | 2 |
 | Encoder size `W` | 4, 8, 16, 32, 64, 128 (1 layer, 1 head); 128 (2 layers, 4 heads); 256 (4 layers, 8 heads) | 8 |
 | Training patients `D` | 1K, 3K, 10K, 30K, 100K, 153K (all) | 6 |
 | Tasks `T` | 5, 25, 125, 625, 2,500 | 5 |
 | Draws | 5 (each draw: new tasks, new patient subsample, new seed) | 5 |
-| **Runs** | 3 × 8 × 6 × 5 × 5 | **3,600** |
+| **Runs** | #1 and #2: 2 × 8 × 6 × 5 × 5 | **2,400** |
 
-Plus the random-documents control (#4) on a slice: `W` 4, 16, 64 × `D` 1K, 10K, 100K × `T` 625
-× 5 draws = **45 runs**. **Total: 3,645.**
+The Qwen3 query (#3) runs on a slice, because its frozen Qwen3 forward over each patient makes a
+run about 10× slower (pilot: 91 min vs 6 min at `W` 4, `D` 1K): `W` 4, 16, 64, 256 (4 layers,
+8 heads) × all 6 `D` × `T` 25, 625 × 5 draws = **240 runs**. The random-documents control (#4)
+runs on `W` 4, 16, 64 × `D` 1K, 10K, 100K × `T` 625 × 5 draws = **45 runs**.
+**Total: 2,685**, about 700 GPU-hours (#3 is ~440 of them).
 
 ## Training settings
 

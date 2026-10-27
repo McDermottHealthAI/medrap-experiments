@@ -30,7 +30,7 @@ ln -s ../../mimic_iv_scaling_laws/data/cohort data/cohort
 
 ./submit.sh tasks    # CPU, ~25 array tasks
 ./submit.sh pilot    # after tasks: 4 small runs; check outputs/ and their run times
-./submit.sh grid     # after the pilot looks right: 729 array jobs, 3,645 runs
+./submit.sh grid     # after the pilot looks right: 537 array jobs, 2,685 runs
 ```
 
 Each run writes `outputs/<CONFIG>_W<W>_D<D>_T<T>/draw<d>` (training logs) and `..._test`
