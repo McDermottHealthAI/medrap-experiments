@@ -26,6 +26,9 @@ set -euo pipefail
 cd "$(dirname "$0")"
 # shellcheck source=/dev/null
 [ ! -f .venv/bin/activate ] || source .venv/bin/activate
+# W&B offline: compute nodes intermittently lose DNS and a failed wandb.init kills the run. The CSV
+# logs copied to OUTPUT_DIR are the record.
+export WANDB_MODE="${WANDB_MODE:-offline}"
 
 COHORT_DIR="${COHORT_DIR:-data/cohort}"
 RETRIEVAL_DB="${RETRIEVAL_DB:-data/retrieval_db}"
