@@ -8,14 +8,14 @@
 #                  resubmit failed or unsubmitted runs (finished and queued runs are skipped)
 #   DATA           scaling_laws/data of the main run, or a copy of it (cohort/tensorized,
 #                  retrieval_db, tasks25_D*, tasks625_D*); default: the C2B2 copy
-#   GPU_PARTITION  L40S/A100-class GPUs; the faiss-gpu wheels fail on H100 (CUDA error 209)
+#   GPU_PARTITION  GPU partition(s); on H100 the FAISS search runs on the CPU (slower)
 #
 # Needs git, uv, and network access for the first run (Python packages, Qwen3-Embedding-0.6B).
 # Results land in DIR/scaling_laws/outputs/; send that folder back (it is small: CSV logs + configs).
 
 set -euo pipefail
 : "${ACCOUNT:?set ACCOUNT to your SLURM account}"
-: "${GPU_PARTITION:?set GPU_PARTITION to an L40S or A100 partition}"
+: "${GPU_PARTITION:?set GPU_PARTITION to your GPU partition(s)}"
 DATA="${DATA:-/groups/mm6677_gp/hs3627/medrap-experiments-scaling-laws-design/scaling_laws/data}"
 DIR="${1:-medrap-experiments-slices}"
 

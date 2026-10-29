@@ -9,7 +9,7 @@ The design, configurations and run list are in [`design.md`](design.md).
 | [`slices.sh`](slices.sh) | sets up a fresh clone on another SLURM account and submits the `slices` (#3 Qwen3-query slice + #4 control) |
 | [`polars_patch/`](polars_patch/sitecustomize.py) | polars 1.30 workaround used by `run.sh cohort` |
 | [`add_null_doc.py`](add_null_doc.py) | copies the textbook retrieval database with the null document appended |
-| [`pyproject.toml`](pyproject.toml) | environment: MedRAP pinned to `c3700ab`, `faiss-gpu-cu12` on Linux (L40S only; no H100 kernels) |
+| [`pyproject.toml`](pyproject.toml) | environment: MedRAP pinned to `c3700ab`, `faiss-gpu-cu12` on Linux (no H100 kernels: run.sh searches on the CPU there) |
 
 ## Running on the cluster
 

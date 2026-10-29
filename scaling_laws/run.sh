@@ -23,7 +23,7 @@
 #   RETRIEVAL_DB=data/retrieval_db  hf_dataset retrieval DB ending in the null document (add_null_doc.py)
 #   OUTPUT_DIR=outputs
 # Needs MedRAP at or after c3700ab (qwen3_token_embeddings, head-bias init, append_null_doc), and
-# faiss-gpu for the GPU search (retriever.device=0): see README.md. Paths are relative to
+# faiss-gpu for the GPU search (retriever.device=0; CPU search on H100): see README.md. Paths are relative to
 # scaling_laws/, and scaling_laws/.venv is used when it exists. submit.sh submits the grid to SLURM.
 
 set -euo pipefail
@@ -163,6 +163,10 @@ esac
 TRAIN_K=() TEST_K=()
 [ "${CONFIG}" = patient_only ] || TRAIN_K=(retriever.k=4) TEST_K=(retriever.k=1)
 NAME="${CONFIG}_W${W}_D${D}_T${T}_draw${DRAW}"
+# The faiss-gpu wheels have no H100 kernels (CUDA error 209): search on the CPU there.
+if nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | grep -q H100; then
+    ARGS=("${ARGS[@]/#retriever.device=0/retriever.device=null}")
+fi
 
 # Checkpoints go to node-local disk (deleted at exit); only configs and CSV logs are copied to RUN.
 WORK="/localscratch/${USER}/${SLURM_JOB_ID:-}"

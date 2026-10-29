@@ -12,8 +12,8 @@
 # runs go; slices.sh uses them to run the slices on another account.
 #
 # Cells whose outputs already exist or that are already queued are skipped, so it is safe to
-# resubmit after failures. Retrieval runs use only the L40S `gpu` partition: the faiss-gpu wheels
-# have no kernels for the H100 node (CUDA error 209 in the GPU index).
+# resubmit after failures. Retrieval runs on the H100 node search on the CPU (run.sh): the
+# faiss-gpu wheels have no H100 kernels (CUDA error 209 in the GPU index).
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -46,8 +46,8 @@ submit_train() {  # CONFIG W D T DRAW...
     done
     [ "${#missing[@]}" -gt 0 ] || return 0
     case "${config}" in
-        retrieval_qwen3_query) resources=(--time=24:00:00 --mem=64G --partition=${GPU_PARTITION:-gpu}) ;;  # frozen Qwen3 forward per patient
-        retrieval_*) resources=(--time=12:00:00 --mem=32G --partition=${GPU_PARTITION:-gpu}) ;;
+        retrieval_qwen3_query) resources=(--time=24:00:00 --mem=64G --partition=${GPU_PARTITION:-gpu,h100}) ;;  # frozen Qwen3 forward per patient
+        retrieval_*) resources=(--time=12:00:00 --mem=32G --partition=${GPU_PARTITION:-gpu,h100}) ;;
     esac
     sbatch "${SLURM[@]}" "${resources[@]}" --gres=gpu:1 \
         --array="$(IFS=,; echo "${missing[*]}")" --job-name="${name}" \
