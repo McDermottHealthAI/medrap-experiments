@@ -218,7 +218,7 @@ def main(outputs: Path, results: Path) -> None:
                            fits.get((config, t)) if with_fit else None)
                 ax.set_title(CONFIGS[config], fontsize=10)
             axes[0][0].set_ylabel("test loss")
-            axes[0][-1].legend(fontsize=7, loc="upper right")
+            axes[0][0].legend(fontsize=7, loc="upper right")
             fig.suptitle(f"T = {t} tasks", fontsize=10)
             fig.tight_layout()
             fig.savefig(out / f"{name}.png", dpi=150)
@@ -289,21 +289,29 @@ def main(outputs: Path, results: Path) -> None:
                 budgets = np.geomspace(cs.min(), cs.max(), 6)
                 frontier_c = np.geomspace(cs.min(), cs.max(), 40)
                 for col, c in zip(colors(len(budgets)), budgets):
-                    ls = [law(p, n, d_for_budget(c, nc)) for n, nc in sizes.select("N", "N_compute").iter_rows()]
-                    ax.plot(sizes["N"], ls, color=col, marker="o", ms=3, label=f"C={c:.1e}")
+                    # Only sizes whose D for this budget lies in the trained range (no extrapolation).
+                    pts = [(n, law(p, n, d)) for n, nc in sizes.select("N", "N_compute").iter_rows()
+                           if min(EPOCHS) <= (d := d_for_budget(c, nc)) <= max(EPOCHS)]
+                    if len(pts) < 2:
+                        continue
+                    ns, ls = zip(*pts)
+                    ax.plot(ns, ls, color=col, marker="o", ms=3, label=f"C={c:.1e}")
                     i = int(np.argmin(ls))
-                    ax.plot(sizes["N"][i], ls[i], "k*", ms=8)
+                    ax.plot(ns[i], ls[i], "k*", ms=8)
                 ax.set_xscale("log")
                 ax.set_xlabel("encoder parameters N")
                 ax.set_title(CONFIGS[config], fontsize=10)
                 ax.grid(alpha=0.3)
-                best = [min(law(p, n, d_for_budget(c, nc)) for n, nc in sizes.select("N", "N_compute").iter_rows())
-                        for c in frontier_c]
+                best = []
+                for c in frontier_c:
+                    ls = [law(p, n, d) for n, nc in sizes.select("N", "N_compute").iter_rows()
+                          if min(EPOCHS) <= (d := d_for_budget(c, nc)) <= max(EPOCHS)]
+                    best.append(min(ls) if ls else np.nan)
                 ax6.plot(frontier_c, best, color=col6, label=f"{CONFIGS[config]} (law)")
                 runs_c = ct.filter(pl.col("config") == config)
                 ax6.scatter(runs_c["C"], runs_c["loss"], color=col6, s=6, alpha=0.4)
-            axes5[0][0].set_ylabel("test loss (fitted law)")
-            axes5[0][-1].legend(fontsize=7)
+            axes5[0][0].set_ylabel("test loss (fitted law, trained D range only)")
+            axes5[0][0].legend(fontsize=7)
             fig5.suptitle(f"IsoFLOP curves, T = {t} (★ best size per budget)", fontsize=10)
             fig5.tight_layout()
             fig5.savefig(out / "P5.png", dpi=150)
