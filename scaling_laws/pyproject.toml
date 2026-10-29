@@ -6,6 +6,7 @@ dependencies = [
     "medrap @ git+https://github.com/McDermottHealthAI/MedRAP.git@c3700abbdd0125a2c3b49ca10f2a34e4bd87961a",
     # FAISS search on the GPU (retriever.device=0); same version as MedRAP's faiss-cpu.
     "faiss-gpu-cu12==1.13.2; sys_platform == 'linux'",
+    "matplotlib>=3.9",
 ]
 
 [tool.uv]
