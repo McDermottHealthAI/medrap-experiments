@@ -302,14 +302,14 @@ def main(outputs: Path, results: Path) -> None:
                 ax.set_xlabel("encoder parameters N")
                 ax.set_title(CONFIGS[config], fontsize=10)
                 ax.grid(alpha=0.3)
-                best = []
-                for c in frontier_c:
-                    ls = [law(p, n, d) for n, nc in sizes.select("N", "N_compute").iter_rows()
-                          if min(EPOCHS) <= (d := d_for_budget(c, nc)) <= max(EPOCHS)]
-                    best.append(min(ls) if ls else np.nan)
-                ax6.plot(frontier_c, best, color=col6, label=f"{CONFIGS[config]} (law)")
-                runs_c = ct.filter(pl.col("config") == config)
+                best = [min(law(p, n, d_for_budget(c, nc)) for n, nc in sizes.select("N", "N_compute").iter_rows())
+                        for c in frontier_c]
+                ax6.plot(frontier_c, best, color=col6, ls="--", lw=1)
+                # Measured frontier: lowest cell-mean loss reached at or below each compute.
+                runs_c = ct.filter(pl.col("config") == config).sort("C")
                 ax6.scatter(runs_c["C"], runs_c["loss"], color=col6, s=6, alpha=0.4)
+                ax6.step(runs_c["C"], np.minimum.accumulate(runs_c["loss"].to_numpy()), where="post",
+                         color=col6, label=CONFIGS[config])
             axes5[0][0].set_ylabel("test loss (fitted law, trained D range only)")
             axes5[0][0].legend(fontsize=7)
             fig5.suptitle(f"IsoFLOP curves, T = {t} (★ best size per budget)", fontsize=10)
@@ -318,7 +318,8 @@ def main(outputs: Path, results: Path) -> None:
             ax6.set_xscale("log")
             ax6.set_xlabel("training compute C (FLOPs)")
             ax6.set_ylabel("test loss")
-            ax6.set_title(f"Best loss vs compute, T = {t} (dots: runs)", fontsize=10)
+            ax6.set_title(f"Best loss vs compute, T = {t}\n(solid: best run so far; dashed: fitted law; dots: cells)",
+                          fontsize=9)
             ax6.grid(alpha=0.3)
             ax6.legend(fontsize=7)
             fig6.tight_layout()
