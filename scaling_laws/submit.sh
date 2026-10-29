@@ -1,7 +1,8 @@
 #!/bin/bash
 # Submit the scaling-law runs in design.md to SLURM: one array job (one task per draw) per cell.
 #
-#   scaling_laws/submit.sh tasks   # task labels for every T and draw (CPU); run first
+#   scaling_laws/submit.sh cohort  # build data/cohort from the raw MEDS data (CPU); run first
+#   scaling_laws/submit.sh tasks   # task labels for every T and draw (CPU); after the cohort
 #   scaling_laws/submit.sh pilot   # one small run of each configuration (W 4, D 1K, T 25, draw 1)
 #   scaling_laws/submit.sh grid    # main + slices
 #   scaling_laws/submit.sh main    # #1 and #2 on the full grid (2,400 runs)
@@ -19,6 +20,14 @@ cd "$(dirname "$0")"
 mkdir -p logs
 # Stop rather than resubmit everything when the SLURM controller is unreachable.
 QUEUED=$(squeue -u "${USER}" -h -o "%j") || { echo "squeue failed; try again" >&2; exit 1; }
+# Training needs the cohort and retrieval DB; without them every job fails at data loading.
+case "${1:-}" in
+    pilot | grid | main | slices)
+        for need in data/cohort/tensorized/data data/retrieval_db; do
+            [ -d "${need}" ] || { echo "missing ${need}; nothing submitted" >&2; exit 1; }
+        done
+        ;;
+esac
 
 SLURM=(--account=${ACCOUNT:-mm6677_gp} --cpus-per-task=8 --output=logs/%x_%A_%a.out --error=logs/%x_%A_%a.err)
 CONFIGS=(patient_only retrieval_learned_query)
@@ -46,6 +55,10 @@ submit_train() {  # CONFIG W D T DRAW...
 }
 
 case "${1:-}" in
+    cohort)
+        grep -qx sl-cohort <<<"${QUEUED}" || sbatch "${SLURM[@]}" --cpus-per-task=16 --partition=cpu \
+            --mem=128G --time=24:00:00 --job-name=sl-cohort --wrap="./run.sh cohort"
+        ;;
     tasks)
         for t in "${TS[@]}"; do
             missing=()
@@ -94,7 +107,7 @@ case "${1:-}" in
         done
         ;;
     *)
-        echo "usage: $0 tasks | pilot | grid | main | slices" >&2
+        echo "usage: $0 cohort | tasks | pilot | grid | main | slices" >&2
         exit 1
         ;;
 esac

@@ -1,6 +1,9 @@
 #!/bin/bash
-# Task generation and training for the scaling-law grid in design.md.
+# Cohort, task generation and training for the scaling-law grid in design.md.
 #
+#   scaling_laws/run.sh cohort
+#       Build COHORT_DIR from the raw MIMIC-IV MEDS data (MEDS_DIR): intermediate/ (codes in
+#       >= 100 subjects, subjects with >= 10 events) and tensorized/. Run once, before tasks.
 #   scaling_laws/run.sh tasks T DRAW
 #       T random 30-day tasks for one draw, then train.parquet subsampled to every D.
 #   scaling_laws/run.sh train CONFIG W D T DRAW
@@ -15,6 +18,7 @@
 #   DRAW    1-5 (task seed 101 * DRAW, training seed DRAW)
 #
 # Paths (environment, defaults shown):
+#   MEDS_DIR=/groups/mm6677_gp/data/MIMIC_MEDS/MEDS_cohort   raw MEDS data (cohort only)
 #   COHORT_DIR=data/cohort          medrap-preprocess output (intermediate/ + tensorized/)
 #   RETRIEVAL_DB=data/retrieval_db  hf_dataset retrieval DB ending in the null document (add_null_doc.py)
 #   OUTPUT_DIR=outputs
@@ -34,6 +38,19 @@ COHORT_DIR="${COHORT_DIR:-data/cohort}"
 RETRIEVAL_DB="${RETRIEVAL_DB:-data/retrieval_db}"
 OUTPUT_DIR="${OUTPUT_DIR:-outputs}"
 D_VALUES=(1000 3000 10000 30000 100000 153220)
+
+if [ "$1" = cohort ]; then
+    # polars 1.30 panics in tokenization on these shards; see polars_patch/sitecustomize.py.
+    PYTHONPATH="${PWD}/polars_patch${PYTHONPATH:+:${PYTHONPATH}}" medrap-preprocess \
+        "meds_data_dir=${MEDS_DIR:-/groups/mm6677_gp/data/MIMIC_MEDS/MEDS_cohort}" \
+        "output_dir=${COHORT_DIR}" \
+        min_subjects_per_code=100 \
+        min_events_per_subject=10 \
+        do_overwrite=true
+    # Readable by the group (other accounts run the slices), not by everyone (MIMIC data).
+    chmod -R g+rX,o-rwx "${COHORT_DIR}"
+    exit 0
+fi
 
 if [ "$1" = tasks ]; then
     T=$2 DRAW=$3
@@ -67,7 +84,7 @@ EOF
     exit 0
 fi
 
-[ "$1" = train ] || { echo "usage: $0 tasks T DRAW | train CONFIG W D T DRAW" >&2; exit 1; }
+[ "$1" = train ] || { echo "usage: $0 cohort | tasks T DRAW | train CONFIG W D T DRAW" >&2; exit 1; }
 CONFIG=$2 W=$3 D=$4 T=$5 DRAW=$6
 IFS=x read -r WIDTH LAYERS HEADS <<<"${W}"
 LABELS="data/tasks${T}_D${D}/draw${DRAW}/tasks"
