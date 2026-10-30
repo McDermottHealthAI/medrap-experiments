@@ -43,35 +43,156 @@ $L(N, D) = E + A / N^{\alpha} + B / D^{\beta}$, fitted on all runs of each confi
 | #2 | 625 | 0.0248 | 0.035 | 0.66 | 0.0424 | 0.34 |
 | #2 | 2500 | 0.0235 | 0.0879 | 0.82 | 0.0288 | 0.28 |
 
-## Plots (T = 625)
+## Plots
 
-Other task counts: [T 5](T5/), [T 25](T25/), [T 125](T125/), [T 2500](T2500/).
+### P1
 
-**P1.** Loss vs training patients D, one line per encoder size.
+Loss vs training patients D, one line per encoder size.
 
-![P1](T625/P1.png)
+**T = 5**
 
-**P2.** Loss vs encoder parameters N, one line per D.
+![P1 T5](T5/P1.png)
 
-![P2](T625/P2.png)
+**T = 25**
 
-**P3.** Fitted law (dashed) through P1 and P2.
+![P1 T25](T25/P1.png)
 
-![P3 vs D](T625/P3_D.png)
-![P3 vs N](T625/P3_N.png)
+**T = 125**
 
-**P4.** Retrieval − Patient only loss, matched on (W, D, draw). Below 0: retrieval better.
-The knowledge/architecture split needs #4.
+![P1 T125](T125/P1.png)
 
-![P4](T625/P4.png)
+**T = 625**
 
-**P5.** IsoFLOP curves from the fitted law; ★ is the best encoder size per budget.
+![P1 T625](T625/P1.png)
 
-![P5](T625/P5.png)
+**T = 2500**
 
-**P6.** Best loss vs training compute.
+![P1 T2500](T2500/P1.png)
 
-![P6](T625/P6.png)
+### P2
+
+Loss vs encoder parameters N, one line per D.
+
+**T = 5**
+
+![P2 T5](T5/P2.png)
+
+**T = 25**
+
+![P2 T25](T25/P2.png)
+
+**T = 125**
+
+![P2 T125](T125/P2.png)
+
+**T = 625**
+
+![P2 T625](T625/P2.png)
+
+**T = 2500**
+
+![P2 T2500](T2500/P2.png)
+
+### P3
+
+Fitted law (dashed) through P1 and P2.
+
+**T = 5**
+
+![P3_D T5](T5/P3_D.png)
+![P3_N T5](T5/P3_N.png)
+
+**T = 25**
+
+![P3_D T25](T25/P3_D.png)
+![P3_N T25](T25/P3_N.png)
+
+**T = 125**
+
+![P3_D T125](T125/P3_D.png)
+![P3_N T125](T125/P3_N.png)
+
+**T = 625**
+
+![P3_D T625](T625/P3_D.png)
+![P3_N T625](T625/P3_N.png)
+
+**T = 2500**
+
+![P3_D T2500](T2500/P3_D.png)
+![P3_N T2500](T2500/P3_N.png)
+
+### P4
+
+Retrieval − Patient only loss, matched on (W, D, draw). Below 0: retrieval better. The knowledge/architecture split needs #4.
+
+**T = 5**
+
+![P4 T5](T5/P4.png)
+
+**T = 25**
+
+![P4 T25](T25/P4.png)
+
+**T = 125**
+
+![P4 T125](T125/P4.png)
+
+**T = 625**
+
+![P4 T625](T625/P4.png)
+
+**T = 2500**
+
+![P4 T2500](T2500/P4.png)
+
+### P5
+
+IsoFLOP curves from the fitted law; ★ is the best encoder size per budget.
+
+**T = 5**
+
+![P5 T5](T5/P5.png)
+
+**T = 25**
+
+![P5 T25](T25/P5.png)
+
+**T = 125**
+
+![P5 T125](T125/P5.png)
+
+**T = 625**
+
+![P5 T625](T625/P5.png)
+
+**T = 2500**
+
+![P5 T2500](T2500/P5.png)
+
+### P6
+
+Best loss vs training compute.
+
+**T = 5**
+
+![P6 T5](T5/P6.png)
+
+**T = 25**
+
+![P6 T25](T25/P6.png)
+
+**T = 125**
+
+![P6 T125](T125/P6.png)
+
+**T = 625**
+
+![P6 T625](T625/P6.png)
+
+**T = 2500**
+
+![P6 T2500](T2500/P6.png)
 
 ## Definitions
 
