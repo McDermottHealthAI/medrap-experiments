@@ -102,10 +102,10 @@ logs in log space (`logsumexp`) for stability. The weights get gradients, so the
 **At test** the model sees the top document and the null document, so the same formula applies
 with two documents. The test loss is this formula on the test patients.
 
-## Training runs (for approval)
+## Training runs
 
-Every axis below multiplies the run count. Nothing new is trained until this is approved.
-Each run is one call of [`run.sh`](run.sh) (`tasks` once per T and draw, then `train`), after building the database once with [`add_null_doc.py`](add_null_doc.py). Setup and launch steps are in [`README.md`](README.md).
+Every axis below multiplies the run count. Results: [`results/scaling_laws`](../results/scaling_laws/README.md).
+Each run is one call of [`run.sh`](run.sh) (`cohort` once, `tasks` once per T and draw, then `train`), after building the database once with [`add_null_doc.py`](add_null_doc.py). Setup and launch steps are in [`README.md`](README.md).
 
 | Axis | Values | Count |
 |---|---|---|
@@ -202,14 +202,12 @@ too small a model underfits, too large a model sees too little data. Its minimum
 model size for that budget, and the minima across budgets give how the optimal size grows with
 compute.
 
-**To decide for the plots:**
+**Choices for the plots** ([`analyze.py`](analyze.py)):
 
-- `N`: all encoder parameters, or without the code embedding table? The table is a lookup, not
-  compute, and is most of the parameters (65,536 × W). Compute ($N_{\text{compute}}$) should
-  exclude it either way.
-- Retrieval compute: count the fusion and retrieval encoder in $C$. They are fixed in size but
-  can cost more than a small patient encoder, which is exactly what P6 should show.
-- IsoFLOP points: our grid isn't laid out on equal-compute lines (epochs change with `D`), so
-  either read them off the fitted law, or train a small extra grid where each size gets the
-  same compute (needs approval).
+- `N`: patient-encoder parameters without the code embedding table, which is a lookup, not
+  compute, and most of the parameters (65,536 × W).
+- $N_{\text{compute}}$: all trainable parameters except embedding tables (encoder, query
+  projector, fusion, head). Frozen parts (Qwen3 token table, Qwen3 query model) are not counted.
+- IsoFLOP points: read off the fitted law, using only `D` within the trained range, since our
+  grid isn't laid out on equal-compute lines (epochs change with `D`).
 
