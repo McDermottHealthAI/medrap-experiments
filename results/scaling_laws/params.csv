@@ -79,3 +79,14 @@ retrieval_learned_query,64,2500,33600,2604548
 retrieval_learned_query,128,2500,132736,2785604
 retrieval_learned_query,128x2x4,2500,265216,2918084
 retrieval_learned_query,256x4x8,2500,2108928,4925636
+retrieval_qwen3_query,4,25,180,1853133
+retrieval_qwen3_query,16,25,2256,1858281
+retrieval_qwen3_query,64,25,33600,1901913
+retrieval_qwen3_query,256x4x8,25,2108928,4026393
+retrieval_qwen3_query,4,625,180,2007333
+retrieval_qwen3_query,16,625,2256,2012481
+retrieval_qwen3_query,64,625,33600,2056113
+retrieval_qwen3_query,256x4x8,625,2108928,4180593
+retrieval_random_docs,4,625,180,2012453
+retrieval_random_docs,16,625,2256,2029889
+retrieval_random_docs,64,625,33600,2122673
