@@ -5,7 +5,8 @@
 Writes to RESULTS_DIR (one folder per task count T):
     runs.csv           one row per test evaluation (config, W, D, T, draw, eval, loss, auroc)
     params.csv         N (encoder without its embedding table) and N_compute per config, W, T
-    fits.csv           E, A, alpha, B, beta of L(N, D) = E + A / N^alpha + B / D^beta per config, T
+    fits.csv           E, A, alpha, B, beta of L(N, D) = E + A / N^alpha + B / D^beta per config, T, with
+                       R^2 over runs and over cell means, and RMSE over runs
     T<T>/P1.png ...    the plots
 
 Choices for the open points in design.md:
@@ -107,7 +108,7 @@ def law(p: np.ndarray, n: np.ndarray, d: np.ndarray) -> np.ndarray:
 
 
 def fit_law(n: np.ndarray, d: np.ndarray, loss: np.ndarray) -> np.ndarray | None:
-    """Least squares on log loss over a few starting points; parameters (E, A, alpha, B, beta)."""
+    """Least squares on loss over a few starting points; parameters (E, A, alpha, B, beta)."""
     if len(np.unique(n)) < 3 or len(np.unique(d)) < 3:
         return None
     best = None
@@ -117,13 +118,18 @@ def fit_law(n: np.ndarray, d: np.ndarray, loss: np.ndarray) -> np.ndarray | None
 
             def resid(x):
                 p = [np.exp(x[0]), np.exp(x[1]), x[2], np.exp(x[3]), x[4]]
-                return np.log(law(p, n, d)) - np.log(loss)
+                return law(p, n, d) - loss
 
             r = least_squares(resid, x0, bounds=([-20, -30, 0, -30, 0], [5, 30, 3, 30, 3]))
             if best is None or r.cost < best.cost:
                 best = r
     x = best.x
     return np.array([np.exp(x[0]), np.exp(x[1]), x[2], np.exp(x[3]), x[4]])
+
+
+def r_squared(y: np.ndarray, fitted: np.ndarray) -> float:
+    """1 - SS_residual / SS_total."""
+    return float(1 - ((y - fitted) ** 2).sum() / ((y - y.mean()) ** 2).sum())
 
 
 def epochs_at(d: np.ndarray) -> np.ndarray:
@@ -223,11 +229,18 @@ def main(outputs: Path, results: Path) -> None:
     fits = {}
     fit_rows = []
     for (config, t), sub in test.group_by("config", "T"):
-        p = fit_law(sub["N"].to_numpy().astype(float), sub["D"].to_numpy().astype(float), sub["loss"].to_numpy())
+        n, d, y = sub["N"].to_numpy().astype(float), sub["D"].to_numpy().astype(float), sub["loss"].to_numpy()
+        p = fit_law(n, d, y)
         if p is not None:
             fits[config, t] = p
+            means = sub.group_by("N", "D").agg(pl.col("loss").mean())
             fit_rows.append({"config": config, "T": t, "runs": sub.height,
-                             **dict(zip(["E", "A", "alpha", "B", "beta"], p.tolist()))})
+                             **dict(zip(["E", "A", "alpha", "B", "beta"], p.tolist())),
+                             "r2_runs": r_squared(y, law(p, n, d)),
+                             "r2_cells": r_squared(means["loss"].to_numpy(),
+                                                   law(p, means["N"].to_numpy().astype(float),
+                                                       means["D"].to_numpy().astype(float))),
+                             "rmse": float(np.sqrt(((y - law(p, n, d)) ** 2).mean()))})
     if fit_rows:
         pl.DataFrame(fit_rows).sort("config", "T").write_csv(results / "fits.csv")
 
