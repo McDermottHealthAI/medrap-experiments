@@ -170,16 +170,16 @@ AUROC is logged too.
 
 ## Plots
 
-Scaling laws on **test loss** for now.
+Fitted with [simple-scaling-laws](https://github.com/mmcdermott/simple-scaling-laws) ([`analyze.py`](analyze.py)): intervals by wild cluster bootstrap, paired comparisons (`compare`), compute-optimal allocation (`optimal_allocation`).
 
 | # | Plot | Shows |
 |---|---|---|
 | P1 | Loss vs training patients `D`, one line per encoder size, one panel per configuration | data scaling |
 | P2 | Loss vs encoder parameters `N`, one line per `D`, one panel per configuration | model scaling |
-| P3 | Fitted law per configuration, drawn through P1 and P2, with its parameters in a table | the law itself |
-| P4 | Retrieval − Patient-only loss vs `D` and vs `N`, split into #2 − #4 (knowledge) and #4 − #1 (architecture) on the control slice | where retrieval helps, and why |
-| P5 | IsoFLOP curves: loss vs `N` at fixed training compute, one curve per budget | compute-optimal model size |
-| P6 | Best loss vs training compute (the frontier of P5), Patient only and retrieval on one plot | whether retrieval is worth its compute |
+| P3 | Fitted law per configuration with its 95% interval, drawn through P1 and P2; parameters with intervals in a table | the law itself |
+| P4 | Paired law difference, retrieval − Patient only, vs `D` and vs `N`, split into #2 − #4 (knowledge) and #4 − #1 (architecture) on the control slice | where retrieval helps, and why |
+| P5 | Compute-optimal encoder size `N*` vs training compute | compute-optimal model size |
+| P6 | Test loss at `N*` vs training compute, all configurations on one plot | whether retrieval is worth its compute |
 | P7 | Random-document − top-document test loss vs `D` and vs `N`, for #2 and #3 | reliance on the retrieved document |
 
 **Fitted law** (Chinchilla form), one fit per configuration and task count:
@@ -191,17 +191,14 @@ $$
 $E$ is the loss floor; $A, \alpha$ and $B, \beta$ describe how fast loss falls with model size
 and data.
 
-**IsoFLOP curves.** Training compute per run is about
+**Compute.** Training compute per run is about
 
 $$
 C \approx 6 \cdot N_{\text{compute}} \cdot D \cdot \text{epochs} \cdot S
 $$
 
-(6 FLOPs per parameter per token, forward + backward). For each compute budget $C$, plot loss
-against model size among runs (or fitted-law points) with that budget. Each curve is U-shaped:
-too small a model underfits, too large a model sees too little data. Its minimum is the best
-model size for that budget, and the minima across budgets give how the optimal size grows with
-compute.
+(6 FLOPs per parameter per token, forward + backward). A `power` cost model fitted to these
+values gives, per budget, the compute-optimal `N*` and its loss (`optimal_allocation`).
 
 **Choices for the plots** ([`analyze.py`](analyze.py)):
 
@@ -209,6 +206,5 @@ compute.
   compute, and most of the parameters (65,536 × W).
 - $N_{\text{compute}}$: all trainable parameters except embedding tables (encoder, query
   projector, fusion, head). Frozen parts (Qwen3 token table, Qwen3 query model) are not counted.
-- IsoFLOP points: read off the fitted law, using only `D` within the trained range, since our
-  grid isn't laid out on equal-compute lines (epochs change with `D`).
-
+- Law-free isoFLOP profiles need runs along equal-compute curves; this grid has none, so P5 and
+  P6 come from the fitted law.

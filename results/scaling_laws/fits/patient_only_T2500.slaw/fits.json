@@ -1,0 +1,110 @@
+{
+  "test_loss__cross_entropy": {
+    "role": "test_loss",
+    "signed_amplitude": false,
+    "params": {
+      "E": 0.013676523740469536,
+      "A": 0.0008148091926917338,
+      "B": 0.009425495570193562,
+      "alpha": 0.33119233005862686,
+      "beta": 0.11455440267126137
+    },
+    "params_raw_scale": {
+      "E": 0.013676523740469536,
+      "A": 0.02029780431030004,
+      "B": 0.02846287079678161,
+      "alpha": 0.33119233005862686,
+      "beta": 0.11455440267126137
+    },
+    "variance_components": {
+      "eval_var": 0.0,
+      "eval_var_independent": 0.0,
+      "run_var": 4.3294831806308157e-07,
+      "run_var_replicate": 4.3294831806308157e-07,
+      "run_var_residual": 6.130819013455418e-07,
+      "replicate_dof": 192,
+      "residual_dof": 235,
+      "source": "replicates"
+    },
+    "optimizer": {
+      "success": true,
+      "cost": 7.203712340810112e-05,
+      "message": "`gtol` termination condition is satisfied.",
+      "n_function_evaluations": 30,
+      "n_starts": 3
+    },
+    "goodness_of_fit": {
+      "n_observations": 240,
+      "n_params": 5,
+      "residual_dof": 235,
+      "r_squared": 0.8991249801781475,
+      "rmse": 0.0007747963356483924,
+      "weighted_rmse": 0.0007747963356483923,
+      "max_abs_residual": 0.003074896419140244
+    },
+    "uncertainty": {
+      "method": "wild-cluster",
+      "n_failed_draws": 0,
+      "pairing": {
+        "method": "wild-cluster",
+        "n_clusters": 48,
+        "n_draws": 1000,
+        "seed": 3285842519
+      }
+    }
+  },
+  "test_metric__auroc": {
+    "role": "test_metric",
+    "signed_amplitude": true,
+    "params": {
+      "E": 115.0854376690791,
+      "A": -0.1545562468164052,
+      "B": -113.44194632578922,
+      "alpha": 0.3621526570906999,
+      "beta": 0.0020303577668568155
+    },
+    "params_raw_scale": {
+      "E": 115.0854376690791,
+      "A": -5.2001576274976475,
+      "B": -115.68597697196874,
+      "alpha": 0.3621526570906999,
+      "beta": 0.0020303577668568155
+    },
+    "variance_components": {
+      "eval_var": 0.0,
+      "eval_var_independent": 0.0,
+      "run_var": 0.0031588437184614485,
+      "run_var_replicate": 0.0031588437184614485,
+      "run_var_residual": 0.014158302971373398,
+      "replicate_dof": 192,
+      "residual_dof": 235,
+      "source": "replicates"
+    },
+    "optimizer": {
+      "success": true,
+      "cost": 1.6636005991363738,
+      "message": "`xtol` termination condition is satisfied.",
+      "n_function_evaluations": 178,
+      "n_starts": 3
+    },
+    "goodness_of_fit": {
+      "n_observations": 240,
+      "n_params": 5,
+      "residual_dof": 235,
+      "r_squared": 0.9445306951615591,
+      "rmse": 0.11774267843962295,
+      "weighted_rmse": 0.11774267843962295,
+      "max_abs_residual": 0.28471878371444104
+    },
+    "uncertainty": {
+      "method": "wild-cluster",
+      "n_failed_draws": 0,
+      "pairing": {
+        "method": "wild-cluster",
+        "n_clusters": 48,
+        "n_draws": 1000,
+        "seed": 1930519326
+      }
+    }
+  }
+}

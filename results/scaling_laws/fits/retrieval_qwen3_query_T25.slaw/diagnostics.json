@@ -1,0 +1,165 @@
+{
+  "metric_correlations": {
+    "test_metric__auroc": {
+      "n_runs": 120,
+      "pearson": 0.05321282520312998,
+      "spearman": -0.16110841030627124,
+      "pearson_ci": [
+        -0.06750033481742056,
+        0.219581960468209
+      ],
+      "evaluation_row_pearson": 0.05321282520312998,
+      "evaluation_row_spearman": -0.16110841030627124,
+      "n_evaluation_rows": 120
+    }
+  },
+  "scaling_similarity": {
+    "test_metric__auroc": {
+      "grid_pearson": -0.9187772218071255,
+      "grid_spearman": -0.9776923076923076,
+      "n_grid_points": 25
+    }
+  },
+  "fit_quality": {
+    "test_loss__cross_entropy": {
+      "n_observations": 120,
+      "n_params": 5,
+      "residual_dof": 115,
+      "r_squared": 0.09991547027426229,
+      "rmse": 0.015907473439693388,
+      "weighted_rmse": 0.015907473439693388,
+      "max_abs_residual": 0.042324180512057524
+    },
+    "test_metric__auroc": {
+      "n_observations": 120,
+      "n_params": 5,
+      "residual_dof": 115,
+      "r_squared": 0.6061753404320549,
+      "rmse": 0.22109508612103285,
+      "weighted_rmse": 0.22109508612103282,
+      "max_abs_residual": 0.75777781349852
+    }
+  },
+  "uncertainty": {
+    "test_loss__cross_entropy": {
+      "method": "wild-cluster",
+      "n_draws": 1000,
+      "n_failed_draws": 27,
+      "n_run_deviations": 120
+    },
+    "test_metric__auroc": {
+      "method": "wild-cluster",
+      "n_draws": 1000,
+      "n_failed_draws": 32,
+      "n_run_deviations": 120
+    }
+  },
+  "paired_evaluation": {
+    "test_loss__cross_entropy": {
+      "eval_sd": 0.0,
+      "eval_sd_independent": 0.0,
+      "eval_sd_shared": 0.0,
+      "eval_pair_correlation": null,
+      "n_shared_pairs": 0
+    },
+    "test_metric__auroc": {
+      "eval_sd": 0.0,
+      "eval_sd_independent": 0.0,
+      "eval_sd_shared": 0.0,
+      "eval_pair_correlation": null,
+      "n_shared_pairs": 0
+    }
+  },
+  "warnings": [
+    {
+      "code": "no_repeated_evaluations",
+      "severity": "warning",
+      "message": "No training run has more than one evaluation row, so finite-evaluation-set noise cannot be estimated separately and is absorbed into the run-level variance.",
+      "details": {}
+    },
+    {
+      "code": "bootstrap_nonconvergence",
+      "severity": "info",
+      "message": "27 of 1000 bootstrap refits did not report convergence; they are retained, which widens rather than narrows the intervals.",
+      "details": {
+        "n_failed": 27,
+        "n_draws": 1000
+      }
+    },
+    {
+      "code": "weakly_identified_exponent",
+      "severity": "warning",
+      "message": "Exponent 'alpha' for 'test_loss__cross_entropy' is 0.235 with a 95% interval of [2.93e-05, 3] -- wider than the estimate itself. The data do not pin down how fast this predictor improves performance, so predictions at new scales of it are little more than a guess.",
+      "details": {
+        "target": "test_loss__cross_entropy",
+        "parameter": "alpha",
+        "estimate": 0.23522553930135023,
+        "interval": [
+          2.926595479695551e-05,
+          2.999999999995371
+        ]
+      }
+    },
+    {
+      "code": "weakly_identified_exponent",
+      "severity": "warning",
+      "message": "Exponent 'beta' for 'test_loss__cross_entropy' is 0.659 with a 95% interval of [0.156, 1.75] -- wider than the estimate itself. The data do not pin down how fast this predictor improves performance, so predictions at new scales of it are little more than a guess.",
+      "details": {
+        "target": "test_loss__cross_entropy",
+        "parameter": "beta",
+        "estimate": 0.6585117582784462,
+        "interval": [
+          0.15580116226395901,
+          1.7480004041473394
+        ]
+      }
+    },
+    {
+      "code": "bootstrap_nonconvergence",
+      "severity": "info",
+      "message": "32 of 1000 bootstrap refits did not report convergence; they are retained, which widens rather than narrows the intervals.",
+      "details": {
+        "n_failed": 32,
+        "n_draws": 1000
+      }
+    },
+    {
+      "code": "parameter_at_bound",
+      "severity": "warning",
+      "message": "Parameter(s) ['B'] for 'test_metric__auroc' sit on a constraint boundary. Their point estimates and intervals should not be read as interior optima.",
+      "details": {
+        "target": "test_metric__auroc",
+        "parameters": [
+          "B"
+        ]
+      }
+    },
+    {
+      "code": "ill_conditioned_fit",
+      "severity": "warning",
+      "message": "The fitted parameters for 'test_metric__auroc' are not individually identified: ['E', 'B'] can trade off against each other with almost no change in the fitted curve. Their values -- including an asymptote read off the offset -- are an accident of the optimizer's path and should not be interpreted. Predictions inside the observed domain are still supported. This usually means the law is richer than these data can distinguish; a simpler law will describe them equally well.",
+      "details": {
+        "target": "test_metric__auroc",
+        "parameters": [
+          "E",
+          "B"
+        ],
+        "condition_number": 609456.8135490478
+      }
+    },
+    {
+      "code": "weakly_identified_exponent",
+      "severity": "warning",
+      "message": "Exponent 'alpha' for 'test_metric__auroc' is 0.414 with a 95% interval of [0.0822, 3] -- wider than the estimate itself. The data do not pin down how fast this predictor improves performance, so predictions at new scales of it are little more than a guess.",
+      "details": {
+        "target": "test_metric__auroc",
+        "parameter": "alpha",
+        "estimate": 0.41360432523860874,
+        "interval": [
+          0.08221526393647488,
+          2.9999914261958205
+        ]
+      }
+    }
+  ]
+}

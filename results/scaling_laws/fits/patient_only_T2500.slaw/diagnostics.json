@@ -1,0 +1,114 @@
+{
+  "metric_correlations": {
+    "test_metric__auroc": {
+      "n_runs": 240,
+      "pearson": -0.954889391357824,
+      "spearman": -0.948576364172989,
+      "pearson_ci": [
+        -0.9680509071739107,
+        -0.9301003575406531
+      ],
+      "evaluation_row_pearson": -0.954889391357824,
+      "evaluation_row_spearman": -0.948576364172989,
+      "n_evaluation_rows": 240
+    }
+  },
+  "scaling_similarity": {
+    "test_metric__auroc": {
+      "grid_pearson": -0.9967952951899834,
+      "grid_spearman": -0.9969230769230769,
+      "n_grid_points": 25
+    }
+  },
+  "fit_quality": {
+    "test_loss__cross_entropy": {
+      "n_observations": 240,
+      "n_params": 5,
+      "residual_dof": 235,
+      "r_squared": 0.8991249801781475,
+      "rmse": 0.0007747963356483924,
+      "weighted_rmse": 0.0007747963356483923,
+      "max_abs_residual": 0.003074896419140244
+    },
+    "test_metric__auroc": {
+      "n_observations": 240,
+      "n_params": 5,
+      "residual_dof": 235,
+      "r_squared": 0.9445306951615591,
+      "rmse": 0.11774267843962295,
+      "weighted_rmse": 0.11774267843962295,
+      "max_abs_residual": 0.28471878371444104
+    }
+  },
+  "uncertainty": {
+    "test_loss__cross_entropy": {
+      "method": "wild-cluster",
+      "n_draws": 1000,
+      "n_failed_draws": 0,
+      "n_run_deviations": 240
+    },
+    "test_metric__auroc": {
+      "method": "wild-cluster",
+      "n_draws": 1000,
+      "n_failed_draws": 0,
+      "n_run_deviations": 240
+    }
+  },
+  "paired_evaluation": {
+    "test_loss__cross_entropy": {
+      "eval_sd": 0.0,
+      "eval_sd_independent": 0.0,
+      "eval_sd_shared": 0.0,
+      "eval_pair_correlation": null,
+      "n_shared_pairs": 0
+    },
+    "test_metric__auroc": {
+      "eval_sd": 0.0,
+      "eval_sd_independent": 0.0,
+      "eval_sd_shared": 0.0,
+      "eval_pair_correlation": null,
+      "n_shared_pairs": 0
+    }
+  },
+  "warnings": [
+    {
+      "code": "no_repeated_evaluations",
+      "severity": "warning",
+      "message": "No training run has more than one evaluation row, so finite-evaluation-set noise cannot be estimated separately and is absorbed into the run-level variance.",
+      "details": {}
+    },
+    {
+      "code": "parameter_at_bound",
+      "severity": "warning",
+      "message": "Parameter(s) ['B'] for 'test_metric__auroc' sit on a constraint boundary. Their point estimates and intervals should not be read as interior optima.",
+      "details": {
+        "target": "test_metric__auroc",
+        "parameters": [
+          "B"
+        ]
+      }
+    },
+    {
+      "code": "ill_conditioned_fit",
+      "severity": "warning",
+      "message": "The fitted parameters for 'test_metric__auroc' are not individually identified: ['E', 'B'] can trade off against each other with almost no change in the fitted curve. Their values -- including an asymptote read off the offset -- are an accident of the optimizer's path and should not be interpreted. Predictions inside the observed domain are still supported. This usually means the law is richer than these data can distinguish; a simpler law will describe them equally well.",
+      "details": {
+        "target": "test_metric__auroc",
+        "parameters": [
+          "E",
+          "B"
+        ],
+        "condition_number": 488003.42502565717
+      }
+    },
+    {
+      "code": "lack_of_fit",
+      "severity": "warning",
+      "message": "For 'test_metric__auroc' the scatter around the fitted curve is 4.5x larger than the scatter between repeated training runs at the same scale. The law's functional form does not describe these data well.",
+      "details": {
+        "target": "test_metric__auroc",
+        "ratio": 4.482115683225178
+      }
+    }
+  ]
+}

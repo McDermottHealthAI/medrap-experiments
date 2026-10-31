@@ -1,0 +1,313 @@
+{
+  "format_version": "1",
+  "package_version": "0.2.0",
+  "created_at": "2026-10-31T19:00:44+00:00",
+  "law": {
+    "law": "separable-power",
+    "model_size": [
+      "model_size__n_params"
+    ],
+    "dataset_size": [
+      "dataset_size__n_subjects"
+    ],
+    "param_names": [
+      "E",
+      "A",
+      "B",
+      "alpha",
+      "beta"
+    ],
+    "param_kinds": [
+      "offset",
+      "amplitude",
+      "amplitude",
+      "exponent",
+      "exponent"
+    ],
+    "exponent_predictor": [
+      0,
+      1
+    ]
+  },
+  "schema": {
+    "training_run_id": "training_run_id",
+    "train_set_id": "train_set_id",
+    "test_set_id": "test_set_id",
+    "optimizer_seed": "optimizer_seed",
+    "model_size": [
+      "model_size__n_params"
+    ],
+    "dataset_size": [
+      "dataset_size__n_subjects"
+    ],
+    "targets": [
+      {
+        "name": "test_loss__cross_entropy",
+        "role": "test_loss",
+        "kind": {
+          "support": "real",
+          "direction": "lower",
+          "source": "registry"
+        }
+      },
+      {
+        "name": "test_metric__auroc",
+        "role": "test_metric",
+        "kind": {
+          "support": "unit",
+          "direction": "higher",
+          "source": "registry"
+        }
+      }
+    ],
+    "primary_target": "test_loss__cross_entropy"
+  },
+  "predictors": {
+    "model_size__n_params": {
+      "role": "model_size",
+      "in_law": true,
+      "min": 180.0,
+      "max": 2108928.0,
+      "reference": 16453.583744748517
+    },
+    "dataset_size__n_subjects": {
+      "role": "dataset_size",
+      "in_law": true,
+      "min": 1000.0,
+      "max": 153220.0,
+      "reference": 15485.539057330572
+    }
+  },
+  "targets": {
+    "test_loss__cross_entropy": {
+      "role": "test_loss",
+      "signed_amplitude": false,
+      "kind": {
+        "support": "real",
+        "direction": "lower",
+        "source": "registry"
+      }
+    },
+    "test_metric__auroc": {
+      "role": "test_metric",
+      "signed_amplitude": true,
+      "kind": {
+        "support": "unit",
+        "direction": "higher",
+        "source": "registry"
+      }
+    }
+  },
+  "primary_target": "test_loss__cross_entropy",
+  "configurations": [
+    {
+      "model_size__n_params": 180.0,
+      "dataset_size__n_subjects": 1000.0
+    },
+    {
+      "model_size__n_params": 180.0,
+      "dataset_size__n_subjects": 3000.0
+    },
+    {
+      "model_size__n_params": 180.0,
+      "dataset_size__n_subjects": 10000.0
+    },
+    {
+      "model_size__n_params": 180.0,
+      "dataset_size__n_subjects": 30000.0
+    },
+    {
+      "model_size__n_params": 180.0,
+      "dataset_size__n_subjects": 100000.0
+    },
+    {
+      "model_size__n_params": 180.0,
+      "dataset_size__n_subjects": 153220.0
+    },
+    {
+      "model_size__n_params": 616.0,
+      "dataset_size__n_subjects": 1000.0
+    },
+    {
+      "model_size__n_params": 616.0,
+      "dataset_size__n_subjects": 3000.0
+    },
+    {
+      "model_size__n_params": 616.0,
+      "dataset_size__n_subjects": 10000.0
+    },
+    {
+      "model_size__n_params": 616.0,
+      "dataset_size__n_subjects": 30000.0
+    },
+    {
+      "model_size__n_params": 616.0,
+      "dataset_size__n_subjects": 100000.0
+    },
+    {
+      "model_size__n_params": 616.0,
+      "dataset_size__n_subjects": 153220.0
+    },
+    {
+      "model_size__n_params": 2256.0,
+      "dataset_size__n_subjects": 1000.0
+    },
+    {
+      "model_size__n_params": 2256.0,
+      "dataset_size__n_subjects": 3000.0
+    },
+    {
+      "model_size__n_params": 2256.0,
+      "dataset_size__n_subjects": 10000.0
+    },
+    {
+      "model_size__n_params": 2256.0,
+      "dataset_size__n_subjects": 30000.0
+    },
+    {
+      "model_size__n_params": 2256.0,
+      "dataset_size__n_subjects": 100000.0
+    },
+    {
+      "model_size__n_params": 2256.0,
+      "dataset_size__n_subjects": 153220.0
+    },
+    {
+      "model_size__n_params": 8608.0,
+      "dataset_size__n_subjects": 1000.0
+    },
+    {
+      "model_size__n_params": 8608.0,
+      "dataset_size__n_subjects": 3000.0
+    },
+    {
+      "model_size__n_params": 8608.0,
+      "dataset_size__n_subjects": 10000.0
+    },
+    {
+      "model_size__n_params": 8608.0,
+      "dataset_size__n_subjects": 30000.0
+    },
+    {
+      "model_size__n_params": 8608.0,
+      "dataset_size__n_subjects": 100000.0
+    },
+    {
+      "model_size__n_params": 8608.0,
+      "dataset_size__n_subjects": 153220.0
+    },
+    {
+      "model_size__n_params": 33600.0,
+      "dataset_size__n_subjects": 1000.0
+    },
+    {
+      "model_size__n_params": 33600.0,
+      "dataset_size__n_subjects": 3000.0
+    },
+    {
+      "model_size__n_params": 33600.0,
+      "dataset_size__n_subjects": 10000.0
+    },
+    {
+      "model_size__n_params": 33600.0,
+      "dataset_size__n_subjects": 30000.0
+    },
+    {
+      "model_size__n_params": 33600.0,
+      "dataset_size__n_subjects": 100000.0
+    },
+    {
+      "model_size__n_params": 33600.0,
+      "dataset_size__n_subjects": 153220.0
+    },
+    {
+      "model_size__n_params": 132736.0,
+      "dataset_size__n_subjects": 1000.0
+    },
+    {
+      "model_size__n_params": 132736.0,
+      "dataset_size__n_subjects": 3000.0
+    },
+    {
+      "model_size__n_params": 132736.0,
+      "dataset_size__n_subjects": 10000.0
+    },
+    {
+      "model_size__n_params": 132736.0,
+      "dataset_size__n_subjects": 30000.0
+    },
+    {
+      "model_size__n_params": 132736.0,
+      "dataset_size__n_subjects": 100000.0
+    },
+    {
+      "model_size__n_params": 132736.0,
+      "dataset_size__n_subjects": 153220.0
+    },
+    {
+      "model_size__n_params": 265216.0,
+      "dataset_size__n_subjects": 1000.0
+    },
+    {
+      "model_size__n_params": 265216.0,
+      "dataset_size__n_subjects": 3000.0
+    },
+    {
+      "model_size__n_params": 265216.0,
+      "dataset_size__n_subjects": 10000.0
+    },
+    {
+      "model_size__n_params": 265216.0,
+      "dataset_size__n_subjects": 30000.0
+    },
+    {
+      "model_size__n_params": 265216.0,
+      "dataset_size__n_subjects": 100000.0
+    },
+    {
+      "model_size__n_params": 265216.0,
+      "dataset_size__n_subjects": 153220.0
+    },
+    {
+      "model_size__n_params": 2108928.0,
+      "dataset_size__n_subjects": 1000.0
+    },
+    {
+      "model_size__n_params": 2108928.0,
+      "dataset_size__n_subjects": 3000.0
+    },
+    {
+      "model_size__n_params": 2108928.0,
+      "dataset_size__n_subjects": 10000.0
+    },
+    {
+      "model_size__n_params": 2108928.0,
+      "dataset_size__n_subjects": 30000.0
+    },
+    {
+      "model_size__n_params": 2108928.0,
+      "dataset_size__n_subjects": 100000.0
+    },
+    {
+      "model_size__n_params": 2108928.0,
+      "dataset_size__n_subjects": 153220.0
+    }
+  ],
+  "n_configurations": 48,
+  "n_training_runs": 240,
+  "n_evaluation_rows": 240,
+  "n_test_sets": 5,
+  "runs_per_configuration": {
+    "min": 5,
+    "max": 5
+  },
+  "evaluations_per_run": {
+    "min": 1,
+    "max": 1
+  },
+  "source": {
+    "path": null
+  },
+  "seed": 0,
+  "n_draws": 1000
+}

@@ -1,24 +1,34 @@
-"""Collect the scaling-law runs, fit L(N, D) and draw plots P1-P7 of design.md.
+"""Collect the scaling-law runs, fit them with simple-scaling-laws and draw plots P1-P7 of design.md.
 
-    .venv/bin/python analyze.py [OUTPUT_DIR] [RESULTS_DIR]    # defaults: outputs, results
+    .venv/bin/python analyze.py OUTPUT_DIR RESULTS_DIR     # collect run outputs, then fit and plot
+    .venv/bin/python analyze.py RESULTS_DIR/runs.csv RESULTS_DIR   # fit and plot from collected runs
 
-Writes to RESULTS_DIR (one folder per task count T):
-    runs.csv           one row per test evaluation (config, W, D, T, draw, eval, loss, auroc)
+Fitting follows https://github.com/mmcdermott/simple-scaling-laws: the separable-power law
+E + A / N^alpha + B / D^beta per configuration and T, on test loss and AUROC, with wild cluster
+bootstrap intervals; paired comparisons between configurations; and compute-optimal allocation
+from a fitted cost model.
+
+Writes to RESULTS_DIR:
+    runs.csv           one row per test evaluation (config, W, D, T, draw, eval, loss, auroc, N, C)
     params.csv         N (encoder without its embedding table) and N_compute per config, W, T
-    fits.csv           E, A, alpha, B, beta of L(N, D) = E + A / N^alpha + B / D^beta per config, T, with
-                       R^2 over runs and over cell means, and RMSE over runs
+    cells.csv          mean over draws per config, W, D, T
+    fits.csv           parameters with 95% intervals, R^2 and RMSE per config, T and target
+    warnings.csv       every warning the package raised
+    comparisons.csv    paired differences between configurations at every trained (N, D)
+    allocation.csv     compute-optimal N, D and loss per budget
+    fits/*.slaw        the fitted models (simple_scaling_laws.load)
     T<T>/P1.png ...    the plots
 
-Choices for the open points in design.md:
     N          patient-encoder parameters without the code embedding table (a lookup).
     N_compute  all trainable parameters except embedding tables: encoder, query projector, fusion
                and head. Frozen parts (Qwen3 token table, Qwen3 query model) are not counted.
     C          6 * N_compute * D * epochs * S, with S = 256 (max_seq_len) and epochs from run.sh.
-    P5, P6     read off the fitted law: our grid is not laid out on equal-compute lines.
 """
 
+import json
 import re
 import sys
+import warnings
 from pathlib import Path
 
 import matplotlib
@@ -27,9 +37,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import polars as pl  # noqa: E402
-from hydra.utils import instantiate  # noqa: E402
-from omegaconf import OmegaConf  # noqa: E402
-from scipy.optimize import least_squares  # noqa: E402
+from simple_scaling_laws import compare, fit, fit_cost_model  # noqa: E402
 
 EPOCHS = {1000: 10, 3000: 7, 10000: 5, 30000: 4, 100000: 3, 153220: 3}
 S = 256
@@ -39,6 +47,12 @@ CONFIGS = {
     "retrieval_qwen3_query": "#3 Retrieval, Qwen3 query",
     "retrieval_random_docs": "#4 Random documents",
 }
+SHORT = {c: name.split(" ")[0] for c, name in CONFIGS.items()}
+LOSS, AUROC = "test_loss__cross_entropy", "test_metric__auroc"
+N_COL, D_COL = "model_size__n_params", "dataset_size__n_subjects"
+SEED, N_DRAWS = 0, 1000
+QWEN3_GRID = {"W": ["4", "16", "64", "256x4x8"]}
+CONTROL_GRID = {"W": ["4", "16", "64"], "D": [1000, 10000, 100000]}
 RUN_DIR = re.compile(r"^(?P<config>.+)_W(?P<W>[^_]+)_D(?P<D>\d+)_T(?P<T>\d+)$")
 EVAL_DIR = re.compile(r"^draw(?P<draw>\d+)_(?P<eval>test(?:_random_doc)?)$")
 
@@ -71,25 +85,26 @@ def collect(outputs: Path) -> pl.DataFrame:
 def count_params(train_dir: Path) -> tuple[int, int]:
     """(N, N_compute) for the model in one training run's resolved config."""
     import torch
+    from hydra.utils import instantiate
+    from omegaconf import OmegaConf
 
     cfg = OmegaConf.load(train_dir / "resolved_config.yaml")
     parts = ["encoder", "head"]
     if cfg.fusion._target_.split(".")[-1] != "PassthroughFusion":
         parts += ["query_projector", "fusion"]
 
-    def split(module: torch.nn.Module) -> tuple[int, int]:
+    def non_embedding(module: torch.nn.Module) -> int:
         emb = sum(p.numel() for m in module.modules() if isinstance(m, torch.nn.Embedding) for p in m.parameters())
-        trainable = sum(p.numel() for p in module.parameters() if p.requires_grad)
-        return trainable - emb, emb
+        return sum(p.numel() for p in module.parameters() if p.requires_grad) - emb
 
     n = n_compute = 0
     for part in parts:
         if part == "query_projector" and "Qwen3" in cfg.query_projector._target_:
             continue  # frozen Qwen3 text model: no trainable parameters
-        non_emb, _ = split(instantiate(cfg[part]))
-        n_compute += non_emb
+        count = non_embedding(instantiate(cfg[part]))
+        n_compute += count
         if part == "encoder":
-            n = non_emb
+            n = count
     return n, n_compute
 
 
@@ -102,50 +117,32 @@ def params_table(outputs: Path, runs: pl.DataFrame) -> pl.DataFrame:
     return pl.DataFrame(rows)
 
 
-def law(p: np.ndarray, n: np.ndarray, d: np.ndarray) -> np.ndarray:
-    e, a, alpha, b, beta = p
-    return e + a / n**alpha + b / d**beta
+def package_table(test: pl.DataFrame) -> pl.DataFrame:
+    """Runs in the simple-scaling-laws input format: one row per run (one test evaluation each)."""
+    return test.select(
+        training_run_id=pl.format("{}_W{}_D{}_T{}_draw{}", "config", "W", "D", "T", "draw"),
+        train_set_id=pl.format("T{}_D{}_draw{}", "T", "D", "draw"),
+        test_set_id=pl.format("T{}_draw{}", "T", "draw"),
+        optimizer_seed=pl.col("draw"),
+        **{N_COL: pl.col("N").cast(pl.Float64), D_COL: pl.col("D").cast(pl.Float64)},
+        compute__flops=pl.col("C").cast(pl.Float64),
+        **{LOSS: pl.col("loss"), AUROC: pl.col("auroc")},
+    )
 
 
-def fit_law(n: np.ndarray, d: np.ndarray, loss: np.ndarray) -> np.ndarray | None:
-    """Least squares on loss over a few starting points; parameters (E, A, alpha, B, beta)."""
-    if len(np.unique(n)) < 3 or len(np.unique(d)) < 3:
-        return None
-    best = None
-    for alpha0 in (0.2, 0.5, 1.0):
-        for beta0 in (0.2, 0.5, 1.0):
-            x0 = [np.log(loss.min() * 0.8), 0.0, alpha0, 0.0, beta0]
-
-            def resid(x):
-                p = [np.exp(x[0]), np.exp(x[1]), x[2], np.exp(x[3]), x[4]]
-                return law(p, n, d) - loss
-
-            r = least_squares(resid, x0, bounds=([-20, -30, 0, -30, 0], [5, 30, 3, 30, 3]))
-            if best is None or r.cost < best.cost:
-                best = r
-    x = best.x
-    return np.array([np.exp(x[0]), np.exp(x[1]), x[2], np.exp(x[3]), x[4]])
+def on_grid(frame: pl.DataFrame, grid: dict) -> pl.DataFrame:
+    for col, values in grid.items():
+        frame = frame.filter(pl.col(col).is_in(values))
+    return frame
 
 
-def r_squared(y: np.ndarray, fitted: np.ndarray) -> float:
-    """1 - SS_residual / SS_total."""
-    return float(1 - ((y - fitted) ** 2).sum() / ((y - y.mean()) ** 2).sum())
-
-
-def epochs_at(d: np.ndarray) -> np.ndarray:
-    """Epochs schedule of run.sh, log-linear between its D values."""
-    ds = np.array(sorted(EPOCHS))
-    return np.interp(np.log(d), np.log(ds), [EPOCHS[x] for x in ds])
-
-
-def d_for_budget(c: float, n_compute: float) -> float:
-    """Training patients D that spend compute c with a model of n_compute (bisection in log D)."""
-    lo, hi = np.log(10.0), np.log(1e9)
-    for _ in range(80):
-        mid = (lo + hi) / 2
-        d = np.exp(mid)
-        lo, hi = (mid, hi) if 6 * n_compute * d * epochs_at(d) * S < c else (lo, mid)
-    return float(np.exp(lo))
+def cell_points(frame: pl.DataFrame) -> pl.DataFrame:
+    """The trained (W, N, D) cells of a frame, as prediction points."""
+    cells = frame.select("W", "N", "D").unique().sort("N", "D")
+    return cells.with_columns(
+        point_id=pl.format("W{}_D{}", "W", "D"),
+        **{N_COL: pl.col("N").cast(pl.Float64), D_COL: pl.col("D").cast(pl.Float64)},
+    )
 
 
 def colors(k: int) -> list:
@@ -157,21 +154,40 @@ def width_key(w: str) -> tuple[int, int]:
     return parts[0], len(parts)
 
 
-def plot_lines(ax, cell, x, group, fits=None, params=None):
-    """Mean test loss (+/- s.e. over draws) vs x, one line per group value."""
-    groups = sorted(cell[group].unique(), key=width_key if group == "W" else None)
-    for col, g in zip(colors(len(groups)), groups):
+def groups_of(frame: pl.DataFrame, group: str) -> list:
+    return sorted(frame[group].unique(), key=width_key if group == "W" else None)
+
+
+def plot_lines(ax, cell, x, group, value="loss", sem="sem", label=True):
+    """Value (+/- s.e. over draws) vs x, one line per group value."""
+    for col, g in zip(colors(len(groups_of(cell, group))), groups_of(cell, group)):
         sub = cell.filter(pl.col(group) == g).sort(x)
-        ax.errorbar(sub[x], sub["loss"], yerr=sub["sem"], color=col, marker="o", ms=3, lw=1.2,
-                    capsize=2, label=f"{group}={g}")
-        if fits is not None:
-            xs = np.geomspace(sub[x].min(), sub[x].max(), 50)
-            other = sub["N" if x == "D" else "D"][0]
-            n, d = (np.full_like(xs, other), xs) if x == "D" else (xs, np.full_like(xs, other))
-            ax.plot(xs, law(fits, n, d), color=col, ls="--", lw=1)
+        ax.errorbar(sub[x], sub[value], yerr=sub[sem], color=col, marker="o", ms=3, lw=1.2, capsize=2,
+                    label=f"{group}={g}" if label else None)
     ax.set_xscale("log")
     ax.set_xlabel({"D": "training patients D", "N": "encoder parameters N"}[x])
     ax.grid(alpha=0.3)
+
+
+def plot_bands(ax, frame, x, group, median, lo, hi, dots=None, dot_value=None):
+    """Fitted median (line) with its 95% interval (band), one per group value; optional data dots."""
+    for col, g in zip(colors(len(groups_of(frame, group))), groups_of(frame, group)):
+        sub = frame.filter(pl.col(group) == g).sort(x)
+        ax.plot(sub[x], sub[median], color=col, lw=1.2, label=f"{group}={g}")
+        ax.fill_between(sub[x], sub[lo], sub[hi], color=col, alpha=0.2, lw=0)
+        if dots is not None:
+            d = dots.filter(pl.col(group) == g)
+            ax.scatter(d[x], d[dot_value], color=col, s=10)
+    ax.set_xscale("log")
+    ax.set_xlabel({"D": "training patients D", "N": "encoder parameters N"}[x])
+    ax.grid(alpha=0.3)
+
+
+def mean_sem(frame: pl.DataFrame, by: list[str], value: str) -> pl.DataFrame:
+    return frame.group_by(by).agg(
+        loss=pl.col(value).mean(),
+        sem=(pl.col(value).std() / pl.col(value).count().sqrt()).fill_null(0.0),
+    )
 
 
 def plot_random_doc(runs: pl.DataFrame, t: int, out: Path) -> None:
@@ -187,15 +203,12 @@ def plot_random_doc(runs: pl.DataFrame, t: int, out: Path) -> None:
     fig, axes = plt.subplots(len(configs), 2, figsize=(9, 3.4 * len(configs)), squeeze=False)
     for row, config in zip(axes, configs):
         d = rd.filter(pl.col("config") == config).with_columns(diff=pl.col("random") - pl.col("loss"))
-        agg = d.group_by("W", "N", "D").agg(
-            loss=pl.col("diff").mean(),
-            sem=(pl.col("diff").std() / pl.col("diff").count().sqrt()).fill_null(0.0),
-        )
+        agg = mean_sem(d, ["W", "N", "D"], "diff")
         plot_lines(row[0], agg, "D", "W")
         plot_lines(row[1], agg, "N", "D")
         for ax in row:
             ax.axhline(0, color="k", lw=0.8)
-            ax.set_ylabel(f"{CONFIGS[config].split(',')[0]}: random − top doc loss")
+            ax.set_ylabel(f"{SHORT[config]}: random − top doc loss")
             ax.legend(fontsize=7)
     fig.suptitle(f"Random document − top document test loss (above 0: the top document helps), T = {t}", fontsize=10)
     fig.tight_layout()
@@ -203,19 +216,77 @@ def plot_random_doc(runs: pl.DataFrame, t: int, out: Path) -> None:
     plt.close(fig)
 
 
-def main(outputs: Path, results: Path) -> None:
+def fit_arm(test: pl.DataFrame):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return fit(package_table(test), law="separable-power", n_draws=N_DRAWS, seed=SEED)
+
+
+def fit_rows(model, config: str, t: int, test: pl.DataFrame, slaw: Path) -> list[dict]:
+    """Parameters (raw scale) with 95% intervals, R^2 over runs and cell means, and RMSE per target."""
+    stored = json.loads((slaw / "fits.json").read_text())
+    stored = stored.get("targets", stored)
+    cells = cell_points(test).join(test.group_by("N", "D").agg(loss=pl.col("loss").mean(), auroc=pl.col("auroc").mean()),
+                                   on=["N", "D"])
+    rows = []
+    for target, column in ((LOSS, "loss"), (AUROC, "auroc")):
+        raw, gof, ci = stored[target]["params_raw_scale"], stored[target]["goodness_of_fit"], model.conf_int(target)
+        pred = model.predict(cells, targets=[target])[f"{target}__median"].to_numpy()
+        y = cells[column].to_numpy()
+        row = {"config": config, "T": t, "target": target.split("__")[-1], "runs": test.height}
+        for name in ("E", "A", "alpha", "B", "beta"):
+            row[name] = raw[name]
+        for name in ("E", "alpha", "beta"):
+            row[f"{name}_q025"], row[f"{name}_q975"] = ci[name]
+        row["r2_runs"] = gof["r_squared"]
+        row["r2_cells"] = float(1 - ((y - pred) ** 2).sum() / ((y - y.mean()) ** 2).sum())
+        row["rmse"] = gof["rmse"]
+        rows.append(row)
+    return rows
+
+
+def paired(models: dict, points: pl.DataFrame, reference: str) -> pl.DataFrame:
+    """compare() on test loss at points, against reference; one row per non-reference system."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        table = compare(models, points.select("point_id", N_COL, D_COL), target=LOSS, reference=reference)
+    return table.filter(pl.col("system") != reference).join(
+        points.select("point_id", "W", "N", "D"), on="point_id"
+    ).with_columns(reference=pl.lit(reference))
+
+
+def law_lines(model, frame: pl.DataFrame, x: str) -> pl.DataFrame:
+    """Fitted test loss along x for every trained value of the other axis."""
+    group = "W" if x == "D" else "D"
+    rows = []
+    for g in groups_of(frame, group):
+        sub = frame.filter(pl.col(group) == g)
+        xs = np.geomspace(sub[x].min(), sub[x].max(), 40)
+        other = float(sub["N" if x == "D" else "D"][0])
+        n, d = (np.full_like(xs, other), xs) if x == "D" else (xs, np.full_like(xs, other))
+        rows.append(pl.DataFrame({group: [g] * len(xs), "N": n, "D": d, N_COL: n, D_COL: d}))
+    points = pl.concat(rows, how="diagonal_relaxed")
+    pred = model.predict(points.drop(group, "N", "D"), targets=[LOSS])
+    keep = list(dict.fromkeys([group, "N", "D"]))
+    return pl.concat([points.select(keep), pred.select(pl.selectors.starts_with(LOSS))], how="horizontal")
+
+
+def main(source: Path, results: Path) -> None:
     results.mkdir(parents=True, exist_ok=True)
-    runs = collect(outputs)
-    if runs.is_empty():
-        print(f"no finished runs under {outputs}")
-        return
-    params = params_table(outputs, runs)
-    runs = runs.join(params, on=["config", "W", "T"])
-    runs = runs.with_columns(
-        C=6 * pl.col("N_compute") * pl.col("D") * pl.col("D").replace_strict(EPOCHS) * S
-    )
-    runs.sort("config", "T", "W", "D", "draw", "eval").write_csv(results / "runs.csv")
-    params.sort("config", "T", "N").write_csv(results / "params.csv")
+    if source.suffix == ".csv":
+        runs = pl.read_csv(source, schema_overrides={"W": pl.Utf8})
+        params = pl.read_csv(results / "params.csv", schema_overrides={"W": pl.Utf8})
+    else:
+        runs = collect(source)
+        if runs.is_empty():
+            print(f"no finished runs under {source}")
+            return
+        params = params_table(source, runs)
+        runs = runs.join(params, on=["config", "W", "T"]).with_columns(
+            C=6 * pl.col("N_compute") * pl.col("D") * pl.col("D").replace_strict(EPOCHS) * S
+        )
+        runs.sort("config", "T", "W", "D", "draw", "eval").write_csv(results / "runs.csv")
+        params.sort("config", "T", "N").write_csv(results / "params.csv")
 
     test = runs.filter(pl.col("eval") == "test")
     cells = test.group_by("config", "W", "N", "N_compute", "D", "T").agg(
@@ -225,24 +296,58 @@ def main(outputs: Path, results: Path) -> None:
         draws=pl.len(),
         C=pl.col("C").first(),
     )
+    cells.sort("config", "T", "W", "D").write_csv(results / "cells.csv")
 
-    fits = {}
-    fit_rows = []
-    for (config, t), sub in test.group_by("config", "T"):
-        n, d, y = sub["N"].to_numpy().astype(float), sub["D"].to_numpy().astype(float), sub["loss"].to_numpy()
-        p = fit_law(n, d, y)
-        if p is not None:
-            fits[config, t] = p
-            means = sub.group_by("N", "D").agg(pl.col("loss").mean())
-            fit_rows.append({"config": config, "T": t, "runs": sub.height,
-                             **dict(zip(["E", "A", "alpha", "B", "beta"], p.tolist())),
-                             "r2_runs": r_squared(y, law(p, n, d)),
-                             "r2_cells": r_squared(means["loss"].to_numpy(),
-                                                   law(p, means["N"].to_numpy().astype(float),
-                                                       means["D"].to_numpy().astype(float))),
-                             "rmse": float(np.sqrt(((y - law(p, n, d)) ** 2).mean()))})
-    if fit_rows:
-        pl.DataFrame(fit_rows).sort("config", "T").write_csv(results / "fits.csv")
+    # Fits on each configuration's full grid.
+    (results / "fits").mkdir(exist_ok=True)
+    models, rows, notes = {}, [], []
+    for (config, t), sub in sorted(test.group_by("config", "T"), key=lambda kv: (list(CONFIGS).index(kv[0][0]), kv[0][1])):
+        model = models[config, t] = fit_arm(sub)
+        slaw = model.save(results / "fits" / f"{config}_T{t}.slaw")
+        rows += fit_rows(model, config, t, sub, slaw)
+        notes += [{"config": config, "T": t, "code": n.code, "severity": n.severity, "message": n.message}
+                  for n in model.warnings]
+    pl.DataFrame(rows).write_csv(results / "fits.csv")
+    pl.DataFrame(notes).write_csv(results / "warnings.csv")
+
+    # Paired comparisons (same grid, same seed) at every trained cell.
+    comparisons = []
+    for t in sorted(test["T"].unique()):
+        tt = test.filter(pl.col("T") == t)
+        found = []
+        if ("retrieval_learned_query", t) in models:
+            arms = {c: models[c, t] for c in ("patient_only", "retrieval_learned_query")}
+            found.append(paired(arms, cell_points(tt.filter(pl.col("config") == "patient_only")), "patient_only"))
+        if ("retrieval_qwen3_query", t) in models:
+            grid = on_grid(tt, QWEN3_GRID)
+            arms = {c: fit_arm(grid.filter(pl.col("config") == c))
+                    for c in ("patient_only", "retrieval_learned_query", "retrieval_qwen3_query")}
+            points = cell_points(grid.filter(pl.col("config") == "retrieval_qwen3_query"))
+            for reference in ("patient_only", "retrieval_learned_query"):
+                found.append(paired(arms, points, reference).filter(pl.col("system") == "retrieval_qwen3_query"))
+        if ("retrieval_random_docs", t) in models:
+            grid = on_grid(tt, CONTROL_GRID)
+            arms = {c: fit_arm(grid.filter(pl.col("config") == c))
+                    for c in ("patient_only", "retrieval_learned_query", "retrieval_random_docs")}
+            points = cell_points(grid.filter(pl.col("config") == "retrieval_random_docs"))
+            found.append(paired(arms, points, "retrieval_random_docs").filter(
+                pl.col("system") == "retrieval_learned_query"))
+            found.append(paired(arms, points, "patient_only").filter(pl.col("system") == "retrieval_random_docs"))
+        comparisons += [f.with_columns(T=pl.lit(t)) for f in found]
+    comparisons = pl.concat(comparisons, how="diagonal_relaxed")
+    comparisons.drop("target", "direction").write_csv(results / "comparisons.csv")
+
+    # Compute-optimal allocation from a cost model fitted to each configuration's runs.
+    allocation = []
+    for (config, t), model in models.items():
+        sub = test.filter((pl.col("config") == config) & (pl.col("T") == t))
+        cost = fit_cost_model(package_table(sub), form="power")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            a = model.optimal_allocation(np.geomspace(sub["C"].min(), sub["C"].max(), 12).tolist(), cost, targets=[LOSS])
+        allocation.append(a.with_columns(config=pl.lit(config), T=pl.lit(t), cost=pl.lit(cost.description)))
+    allocation = pl.concat(allocation, how="diagonal_relaxed")
+    allocation.write_csv(results / "allocation.csv")
 
     for t in sorted(cells["T"].unique()):
         out = results / f"T{t}"
@@ -250,14 +355,16 @@ def main(outputs: Path, results: Path) -> None:
         ct = cells.filter(pl.col("T") == t)
         configs = [c for c in CONFIGS if c in ct["config"].unique().to_list()]
 
-        # P1, P2 (data), P3 (same with the fitted law, dashed)
-        for name, x, group, with_fit in (("P1", "D", "W", False), ("P2", "N", "D", False),
-                                         ("P3_D", "D", "W", True), ("P3_N", "N", "D", True)):
-            fig, axes = plt.subplots(1, len(configs), figsize=(4.2 * len(configs), 3.6), sharey=True,
-                                     squeeze=False)
+        # P1, P2: data. P3: fitted law (line) with its 95% interval (band), data as dots.
+        for name, x, group in (("P1", "D", "W"), ("P2", "N", "D"), ("P3_D", "D", "W"), ("P3_N", "N", "D")):
+            fig, axes = plt.subplots(1, len(configs), figsize=(4.2 * len(configs), 3.6), sharey=True, squeeze=False)
             for ax, config in zip(axes[0], configs):
-                plot_lines(ax, ct.filter(pl.col("config") == config), x, group,
-                           fits.get((config, t)) if with_fit else None)
+                cc = ct.filter(pl.col("config") == config)
+                if name.startswith("P3"):
+                    plot_bands(ax, law_lines(models[config, t], cc, x), x, group,
+                               f"{LOSS}__median", f"{LOSS}__q025", f"{LOSS}__q975", dots=cc, dot_value="loss")
+                else:
+                    plot_lines(ax, cc, x, group)
                 ax.set_title(CONFIGS[config], fontsize=10)
             axes[0][0].set_ylabel("test loss")
             axes[0][0].legend(fontsize=7, loc="upper right")
@@ -266,115 +373,85 @@ def main(outputs: Path, results: Path) -> None:
             fig.savefig(out / f"{name}.png", dpi=150)
             plt.close(fig)
 
-        # P4: retrieval - patient only, matched on (W, D, draw); control split on its slice
+        # P4: paired law difference (line, 95% band) and matched cell differences (dots).
         tt = test.filter(pl.col("T") == t)
+        ctab = comparisons.filter(pl.col("T") == t)
         base = tt.filter(pl.col("config") == "patient_only").select("W", "D", "draw", base="loss")
-        diffs = []
-        for config in ("retrieval_learned_query", "retrieval_qwen3_query"):
-            d = tt.filter(pl.col("config") == config).join(base, on=["W", "D", "draw"])
-            if not d.is_empty():
-                diffs.append(d.with_columns(diff=pl.col("loss") - pl.col("base")))
-        if diffs:
-            fig, axes = plt.subplots(len(diffs), 2, figsize=(9, 3.4 * len(diffs)), squeeze=False)
-            for row, d in zip(axes, diffs):
-                agg = d.group_by("W", "N", "D").agg(
-                    loss=pl.col("diff").mean(),
-                    sem=(pl.col("diff").std() / pl.col("diff").count().sqrt()).fill_null(0.0),
-                )
-                plot_lines(row[0], agg, "D", "W")
-                plot_lines(row[1], agg, "N", "D")
-                for ax in row:
+        rows4 = [c for c in ("retrieval_learned_query", "retrieval_qwen3_query")
+                 if not ctab.filter((pl.col("system") == c) & (pl.col("reference") == "patient_only")).is_empty()]
+        if rows4:
+            fig, axes = plt.subplots(len(rows4), 2, figsize=(9, 3.4 * len(rows4)), squeeze=False)
+            for row, config in zip(axes, rows4):
+                law_d = ctab.filter((pl.col("system") == config) & (pl.col("reference") == "patient_only"))
+                raw = mean_sem(tt.filter(pl.col("config") == config).join(base, on=["W", "D", "draw"])
+                               .with_columns(diff=pl.col("loss") - pl.col("base")), ["W", "N", "D"], "diff")
+                for ax, x, group in ((row[0], "D", "W"), (row[1], "N", "D")):
+                    plot_bands(ax, law_d, x, group, "difference__median", "difference__q025", "difference__q975",
+                               dots=raw, dot_value="loss")
                     ax.axhline(0, color="k", lw=0.8)
-                    ax.set_ylabel(f"{CONFIGS[d['config'][0]].split(',')[0]} − #1 loss")
-                row[1].legend(fontsize=7)
-            fig.suptitle(f"Retrieval − Patient only test loss (below 0: retrieval better), T = {t}", fontsize=10)
+                    ax.set_ylabel(f"{SHORT[config]} − #1 test loss")
+                    ax.legend(fontsize=7)
+            fig.suptitle(f"Retrieval − Patient only (below 0: retrieval better), T = {t}", fontsize=10)
             fig.tight_layout()
             fig.savefig(out / "P4.png", dpi=150)
             plt.close(fig)
 
-        ctrl = tt.filter(pl.col("config") == "retrieval_random_docs")
+        ctrl = ctab.filter(pl.col("reference") == "retrieval_random_docs")
         if not ctrl.is_empty():
-            keys = ["W", "D", "draw"]
-            m = (
-                ctrl.select(*keys, r4="loss")
-                .join(tt.filter(pl.col("config") == "retrieval_learned_query").select(*keys, r2="loss"), on=keys)
-                .join(base.rename({"base": "r1"}), on=keys)
-                .with_columns(knowledge=pl.col("r2") - pl.col("r4"), architecture=pl.col("r4") - pl.col("r1"))
-            )
-            if not m.is_empty():
-                fig, axes = plt.subplots(1, 2, figsize=(9, 3.4), sharey=True)
-                for ax, what, label in zip(axes, ("knowledge", "architecture"),
-                                           ("#2 − #4 (knowledge)", "#4 − #1 (architecture)")):
-                    agg = m.group_by("W", "D").agg(
-                        loss=pl.col(what).mean(),
-                        sem=(pl.col(what).std() / pl.col(what).count().sqrt()).fill_null(0.0),
-                    )
-                    plot_lines(ax, agg, "D", "W")
-                    ax.axhline(0, color="k", lw=0.8)
-                    ax.set_title(label, fontsize=10)
-                axes[0].set_ylabel("test loss difference")
-                axes[1].legend(fontsize=7)
-                fig.suptitle(f"Control slice, T = {t} (below 0: the first config is better)", fontsize=10)
-                fig.tight_layout()
-                fig.savefig(out / "P4_control.png", dpi=150)
-                plt.close(fig)
+            keys = ["W", "N", "D", "draw"]
+            r = {c: tt.filter(pl.col("config") == c).select(*keys, loss=pl.col("loss"))
+                 for c in ("patient_only", "retrieval_learned_query", "retrieval_random_docs")}
+            pairs = (("retrieval_learned_query", "retrieval_random_docs", "#2 − #4 (knowledge)"),
+                     ("retrieval_random_docs", "patient_only", "#4 − #1 (architecture)"))
+            fig, axes = plt.subplots(1, 2, figsize=(9, 3.4), sharey=True)
+            for ax, (a, b, label) in zip(axes, pairs):
+                law_d = ctab.filter((pl.col("system") == a) & (pl.col("reference") == b))
+                raw = mean_sem(r[a].join(r[b].drop("N"), on=["W", "D", "draw"], suffix="_b")
+                               .with_columns(diff=pl.col("loss") - pl.col("loss_b")), ["W", "N", "D"], "diff")
+                plot_bands(ax, law_d, "D", "W", "difference__median", "difference__q025", "difference__q975",
+                           dots=raw, dot_value="loss")
+                ax.axhline(0, color="k", lw=0.8)
+                ax.set_title(label, fontsize=10)
+            axes[0].set_ylabel("test loss difference")
+            axes[1].legend(fontsize=7)
+            fig.suptitle(f"Control slice, T = {t} (below 0: the first config is better)", fontsize=10)
+            fig.tight_layout()
+            fig.savefig(out / "P4_control.png", dpi=150)
+            plt.close(fig)
+
+        # P5: compute-optimal model size per budget. P6: loss at that optimum, with the runs as dots.
+        at = allocation.filter(pl.col("T") == t)
+        fig5, ax5 = plt.subplots(figsize=(5.5, 4))
+        fig6, ax6 = plt.subplots(figsize=(5.5, 4))
+        for col, config in zip(colors(len(configs)), configs):
+            a = at.filter(pl.col("config") == config).sort("budget")
+            inside = (a["domain"] == "interpolation").to_numpy()
+            for ax, stem in ((ax5, N_COL), (ax6, LOSS)):
+                y = a[f"{stem}__median"].to_numpy()
+                ax.plot(a["budget"], y, color=col, lw=1.2, ls="--")
+                ax.plot(a["budget"], np.where(inside, y, np.nan), color=col, lw=1.8, label=CONFIGS[config])
+                ax.fill_between(a["budget"], a[f"{stem}__q025"], a[f"{stem}__q975"], color=col, alpha=0.2, lw=0)
+            cc = ct.filter(pl.col("config") == config)
+            ax6.scatter(cc["C"], cc["loss"], color=col, s=6, alpha=0.4)
+        for ax, ylabel, title in ((ax5, "compute-optimal encoder parameters N*", "Compute-optimal model size"),
+                                  (ax6, "test loss at N*", "Best loss vs compute (dots: cells)")):
+            ax.set_xscale("log")
+            ax.set_xlabel("training compute C (FLOPs)")
+            ax.set_ylabel(ylabel)
+            ax.set_title(f"{title}, T = {t} (dashed: extrapolated)", fontsize=9)
+            ax.grid(alpha=0.3)
+            ax.legend(fontsize=7)
+        ax5.set_yscale("log")
+        ax6.set_ylim(ct["loss"].min() * 0.9, ct["loss"].max() * 1.1)
+        for fig, name in ((fig5, "P5"), (fig6, "P6")):
+            fig.tight_layout()
+            fig.savefig(out / f"{name}.png", dpi=150)
+            plt.close(fig)
 
         plot_random_doc(runs, t, out)
 
-        # P5: IsoFLOP curves from the fitted law, over the trained encoder sizes
-        fitted = [c for c in configs if (c, t) in fits]
-        if fitted:
-            fig5, axes5 = plt.subplots(1, len(fitted), figsize=(4.2 * len(fitted), 3.6), squeeze=False)
-            fig6, ax6 = plt.subplots(figsize=(5.5, 4))
-            for ax, col6, config in zip(axes5[0], colors(len(fitted)), fitted):
-                p = fits[config, t]
-                sizes = params.filter((pl.col("config") == config) & (pl.col("T") == t)).sort("N")
-                cs = ct.filter(pl.col("config") == config)["C"]
-                budgets = np.geomspace(cs.min(), cs.max(), 6)
-                frontier_c = np.geomspace(cs.min(), cs.max(), 40)
-                for col, c in zip(colors(len(budgets)), budgets):
-                    # Only sizes whose D for this budget lies in the trained range (no extrapolation).
-                    pts = [(n, law(p, n, d)) for n, nc in sizes.select("N", "N_compute").iter_rows()
-                           if min(EPOCHS) <= (d := d_for_budget(c, nc)) <= max(EPOCHS)]
-                    if len(pts) < 2:
-                        continue
-                    ns, ls = zip(*pts)
-                    ax.plot(ns, ls, color=col, marker="o", ms=3, label=f"C={c:.1e}")
-                    i = int(np.argmin(ls))
-                    ax.plot(ns[i], ls[i], "k*", ms=8)
-                ax.set_xscale("log")
-                ax.set_xlabel("encoder parameters N")
-                ax.set_title(CONFIGS[config], fontsize=10)
-                ax.grid(alpha=0.3)
-                best = [min(law(p, n, d_for_budget(c, nc)) for n, nc in sizes.select("N", "N_compute").iter_rows())
-                        for c in frontier_c]
-                ax6.plot(frontier_c, best, color=col6, ls="--", lw=1)
-                # Measured frontier: lowest cell-mean loss reached at or below each compute.
-                runs_c = ct.filter(pl.col("config") == config).sort("C")
-                ax6.scatter(runs_c["C"], runs_c["loss"], color=col6, s=6, alpha=0.4)
-                ax6.step(runs_c["C"], np.minimum.accumulate(runs_c["loss"].to_numpy()), where="post",
-                         color=col6, label=CONFIGS[config])
-            axes5[0][0].set_ylabel("test loss (fitted law, trained D range only)")
-            axes5[0][0].legend(fontsize=7)
-            fig5.suptitle(f"IsoFLOP curves, T = {t} (★ best size per budget)", fontsize=10)
-            fig5.tight_layout()
-            fig5.savefig(out / "P5.png", dpi=150)
-            ax6.set_xscale("log")
-            ax6.set_xlabel("training compute C (FLOPs)")
-            ax6.set_ylabel("test loss")
-            ax6.set_title(f"Best loss vs compute, T = {t}\n(solid: best run so far; dashed: fitted law; dots: cells)",
-                          fontsize=9)
-            ax6.grid(alpha=0.3)
-            ax6.legend(fontsize=7)
-            fig6.tight_layout()
-            fig6.savefig(out / "P6.png", dpi=150)
-            plt.close(fig5)
-            plt.close(fig6)
-
-    cells.sort("config", "T", "W", "D").write_csv(results / "cells.csv")
-    print(f"{runs.height} evaluations, {cells.height} cells, {len(fits)} fits -> {results}")
+    print(f"{runs.height} evaluations, {cells.height} cells, {len(models)} fits -> {results}")
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:]
-    main(Path(args[0] if args else "outputs"), Path(args[1] if len(args) > 1 else "results"))
+    main(Path(sys.argv[1]), Path(sys.argv[2]))
