@@ -101,25 +101,41 @@ Metric: test loss, mean over (patient, task) pairs. AUROC also reported.
 |---|---|
 | P1 | Loss vs `D`, one line per `W`, one panel per configuration |
 | P2 | Loss vs `N`, one line per `D`, one panel per configuration |
-| P3 | P1 and P2 with the fitted law (dashed) |
-| P4 | Retrieval − Patient-only loss vs `D` and `N`; control: #2 − #4 and #4 − #1 |
-| P5 | IsoFLOP curves: loss vs `N` at fixed compute (fitted law) |
-| P6 | Best loss vs training compute |
+| P3 | Fitted law (line) with its 95% interval (band) vs `D` and `N`; cell means as dots |
+| P4 | Paired law difference, retrieval − Patient only, with 95% interval; matched cell differences as dots. Control: #2 − #4 and #4 − #1 |
+| P5 | Compute-optimal encoder size `N*` vs training compute, with 95% interval |
+| P6 | Test loss at `N*` vs training compute, with 95% interval; cells as dots |
 | P7 | Random-document − top-document test loss vs `D` and `N`, for #2 and #3 |
 
-Fitted law, per configuration and `T`:
+### Fitting
+
+Fits, intervals, comparisons and allocation use
+[simple-scaling-laws](https://github.com/mmcdermott/simple-scaling-laws) 0.2.0.
+
+| Step | Method |
+|---|---|
+| Law | `separable-power`, per configuration and `T`, on test loss and on AUROC (logit scale) |
+| Input | one row per run; `test_set_id` = (T, draw), shared by all configurations |
+| Intervals | wild cluster bootstrap over (`N`, `D`) cells, 1,000 draws, seed 0 |
+| Comparisons | paired draws: arms fitted on the same cells with the same seed (`compare`) |
+| Allocation | `optimal_allocation` with a `power` cost model fitted to each configuration's `C` |
 
 $$
 L(N, D) = E + \frac{A}{N^{\alpha}} + \frac{B}{D^{\beta}}
 $$
 
-Compute: $C = 6 \cdot N_{\text{compute}} \cdot D \cdot \text{epochs} \cdot S$.
+$$
+C = 6 \cdot N_{\text{compute}} \cdot D \cdot \text{epochs} \cdot S
+$$
 
 - `N`: patient-encoder parameters without the code embedding table.
 - $N_{\text{compute}}$: trainable parameters without embedding tables (encoder, query projector,
   fusion, head).
-- Fit: least squares on test loss over all runs of a configuration and `T`.
-- R²: $1 - SS_{\text{res}} / SS_{\text{tot}}$, over runs and over cell means (mean over draws).
+- `C` is computed, not measured.
+- Each run has one test evaluation, so test-set noise is part of the run-to-run noise
+  (`no_repeated_evaluations`).
+- Law-free isoFLOP profiles need runs along equal-compute curves; this grid has none.
+- R²: $1 - SS_{\text{res}} / SS_{\text{tot}}$, over runs and over cell means.
 
 ## 2. Runs
 
@@ -153,23 +169,69 @@ Compute: $C = 6 \cdot N_{\text{compute}} \cdot D \cdot \text{epochs} \cdot S$.
 | 2500 | #1 | 0.0206 | 0.907 | W 128x2x4, D 153,220 |
 | 2500 | #2 | 0.0241 | 0.840 | W 16, D 153,220 |
 
-### Fitted law
+### Fitted law: test loss
 
-| Config | T | E | A | α | B | β | R² (runs) | R² (cell means) | RMSE |
+| Config | T | E [95% CI] | α [95% CI] | β [95% CI] | A | B | R² (runs) | R² (cell means) | RMSE |
 |---|---|---|---|---|---|---|---|---|---|
-| #1 | 5 | 0.0283 | 60.5 | 1.88 | 0.581 | 0.45 | 0.10 | 0.76 | 0.0246 |
-| #1 | 25 | 0.0215 | 0.107 | 0.58 | 0.106 | 0.27 | 0.10 | 0.91 | 0.0141 |
-| #1 | 125 | 0.0146 | 0.0207 | 0.36 | 0.0458 | 0.25 | 0.26 | 0.95 | 0.0039 |
-| #1 | 625 | 0.0141 | 0.0161 | 0.23 | 0.0327 | 0.13 | 0.58 | 0.96 | 0.0023 |
-| #1 | 2500 | 0.0137 | 0.0203 | 0.33 | 0.0285 | 0.11 | 0.90 | 0.95 | 0.0008 |
-| #2 | 5 | 0.0382 | 0.0558 | 0.65 | 5.87 | 0.89 | 0.03 | 0.88 | 0.0254 |
-| #2 | 25 | 0.0307 | 0.0139 | 0.27 | 0.274 | 0.53 | 0.03 | 0.92 | 0.0156 |
-| #2 | 125 | 0.0200 | 0.0244 | 0.58 | 0.0947 | 0.48 | 0.08 | 0.90 | 0.0041 |
-| #2 | 625 | 0.0249 | 0.0277 | 0.61 | 0.0405 | 0.33 | 0.21 | 0.89 | 0.0025 |
-| #2 | 2500 | 0.0236 | 0.0706 | 0.78 | 0.0296 | 0.28 | 0.69 | 0.90 | 0.0008 |
-| #3 | 25 | 0.0289 | 0.0162 | 0.24 | 1.4 | 0.66 | 0.10 | 0.98 | 0.0159 |
-| #3 | 625 | 0.0248 | 0.0123 | 0.40 | 0.126 | 0.45 | 0.36 | 0.95 | 0.0025 |
-| #4 | 625 | 0.0226 | 0.0055 | 0.24 | 0.0208 | 0.18 | 0.26 | 1.00 | 0.0024 |
+| #1 | 5 | 0.0283 [-7.8597, 0.0323] | 1.88 [0.00, 3.00] | 0.45 [0.09, 0.87] | 60.9 | 0.581 | 0.10 | 0.74 | 0.0246 |
+| #1 | 25 | 0.0215 [-3.3332, 0.0259] | 0.58 [0.02, 3.00] | 0.27 [0.00, 0.54] | 0.107 | 0.106 | 0.10 | 0.91 | 0.0141 |
+| #1 | 125 | 0.0146 [0.0064, 0.0163] | 0.36 [0.17, 0.68] | 0.25 [0.09, 0.40] | 0.0207 | 0.0458 | 0.26 | 0.95 | 0.0039 |
+| #1 | 625 | 0.0141 [-0.0439, 0.0182] | 0.23 [0.13, 0.37] | 0.13 [0.02, 0.25] | 0.0161 | 0.0327 | 0.58 | 0.96 | 0.0023 |
+| #1 | 2500 | 0.0137 [-0.5951, 0.0182] | 0.33 [0.19, 0.52] | 0.11 [0.00, 0.23] | 0.0203 | 0.0285 | 0.90 | 0.95 | 0.0008 |
+| #2 | 5 | 0.0382 [-4.8439, 0.0398] | 0.65 [0.00, 3.00] | 0.89 [0.38, 2.23] | 0.0558 | 5.87 | 0.03 | 0.88 | 0.0254 |
+| #2 | 25 | 0.0307 [-2.7458, 0.0328] | 0.27 [0.00, 3.00] | 0.53 [0.00, 1.44] | 0.0139 | 0.274 | 0.03 | 0.91 | 0.0156 |
+| #2 | 125 | 0.0200 [-0.7759, 0.0205] | 0.58 [0.00, 3.00] | 0.48 [0.19, 0.79] | 0.0244 | 0.0947 | 0.08 | 0.90 | 0.0041 |
+| #2 | 625 | 0.0249 [0.0198, 0.0257] | 0.61 [0.06, 1.99] | 0.33 [0.12, 0.52] | 0.0277 | 0.0405 | 0.21 | 0.88 | 0.0025 |
+| #2 | 2500 | 0.0236 [0.0206, 0.0245] | 0.78 [0.31, 2.01] | 0.28 [0.13, 0.45] | 0.0706 | 0.0296 | 0.69 | 0.89 | 0.0008 |
+| #3 | 25 | 0.0289 [-3.4335, 0.0325] | 0.24 [0.00, 3.00] | 0.66 [0.16, 1.75] | 0.0162 | 1.4 | 0.10 | 0.98 | 0.0159 |
+| #3 | 625 | 0.0248 [-0.6236, 0.0257] | 0.40 [0.00, 3.00] | 0.45 [0.20, 0.74] | 0.0123 | 0.126 | 0.36 | 0.95 | 0.0025 |
+| #4 | 625 | 0.0226 [-0.5621, 0.0267] | 0.24 [0.00, 3.00] | 0.18 [0.00, 3.00] | 0.0055 | 0.0208 | 0.26 | 0.99 | 0.0024 |
+
+### Fitted law: AUROC (fitted on the logit scale)
+
+| Config | T | α [95% CI] | β [95% CI] | R² (runs) | R² (cell means) |
+|---|---|---|---|---|---|
+| #1 | 5 | 0.49 [0.18, 0.89] | 0.00 [0.00, 0.20] | 0.34 | 0.83 |
+| #1 | 25 | 0.38 [0.21, 0.56] | 0.04 [0.00, 0.19] | 0.81 | 0.92 |
+| #1 | 125 | 0.33 [0.21, 0.48] | 0.00 [0.00, 0.14] | 0.92 | 0.94 |
+| #1 | 625 | 0.27 [0.18, 0.39] | 0.00 [0.00, 0.11] | 0.96 | 0.95 |
+| #1 | 2500 | 0.36 [0.23, 0.54] | 0.00 [0.00, 0.12] | 0.94 | 0.95 |
+| #2 | 5 | 0.43 [0.00, 3.00] | 0.04 [0.00, 0.24] | 0.19 | 0.74 |
+| #2 | 25 | 0.23 [0.04, 0.44] | 0.07 [0.00, 0.19] | 0.51 | 0.94 |
+| #2 | 125 | 0.55 [0.19, 1.12] | 0.00 [0.00, 0.12] | 0.77 | 0.93 |
+| #2 | 625 | 0.69 [0.00, 2.28] | 0.00 [0.00, 0.12] | 0.85 | 0.93 |
+| #2 | 2500 | 0.87 [0.00, 3.00] | 0.00 [0.00, 0.11] | 0.86 | 0.92 |
+| #3 | 25 | 0.41 [0.08, 3.00] | 0.00 [0.00, 0.18] | 0.61 | 0.94 |
+| #3 | 625 | 3.00 [0.16, 3.00] | 0.00 [0.00, 0.12] | 0.91 | 0.97 |
+| #4 | 625 | 0.45 [0.00, 3.00] | 0.00 [0.00, 0.72] | 0.90 | 0.92 |
+
+### Paired comparisons (test loss)
+
+| Comparison | T | Cells | Better (95% CI < 0) | Worse (95% CI > 0) | Difference at largest cell [95% CI] | P(better) at largest cell |
+|---|---|---|---|---|---|---|
+| #2 − #1 | 5 | 48 | 0 | 25 | +0.0077 [+0.0046, +0.0116] (W 256x4x8, D 153,220) | 0.00 |
+| #2 − #1 | 25 | 48 | 0 | 28 | +0.0056 [+0.0037, +0.0077] (W 256x4x8, D 153,220) | 0.00 |
+| #2 − #1 | 125 | 48 | 1 | 34 | +0.0032 [+0.0026, +0.0038] (W 256x4x8, D 153,220) | 0.00 |
+| #2 − #1 | 625 | 48 | 3 | 37 | +0.0045 [+0.0038, +0.0051] (W 256x4x8, D 153,220) | 0.00 |
+| #2 − #1 | 2500 | 48 | 3 | 38 | +0.0035 [+0.0030, +0.0039] (W 256x4x8, D 153,220) | 0.00 |
+| #3 − #1 | 25 | 24 | 0 | 10 | +0.0039 [-0.0004, +0.0084] (W 256x4x8, D 153,220) | 0.04 |
+| #3 − #1 | 625 | 24 | 0 | 19 | +0.0039 [+0.0030, +0.0048] (W 256x4x8, D 153,220) | 0.00 |
+| #3 − #2 | 25 | 24 | 0 | 2 | -0.0017 [-0.0058, +0.0022] (W 256x4x8, D 153,220) | 0.77 |
+| #3 − #2 | 625 | 24 | 0 | 5 | -0.0004 [-0.0009, +0.0001] (W 256x4x8, D 153,220) | 0.91 |
+| #2 − #4 | 625 | 9 | 0 | 0 | -0.0001 [-0.0024, +0.0023] (W 64, D 100,000) | 0.54 |
+| #4 − #1 | 625 | 9 | 0 | 4 | +0.0029 [+0.0010, +0.0051] (W 64, D 100,000) | 0.00 |
+
+### Fit warnings
+
+| Warning | Count |
+|---|---|
+| `weakly_identified_exponent` | 27 |
+| `bootstrap_nonconvergence` | 17 |
+| `no_repeated_evaluations` | 13 |
+| `ill_conditioned_fit` | 11 |
+| `parameter_at_bound` | 8 |
+| `lack_of_fit` | 2 |
+| `optimizer_nonconvergence` | 1 |
 
 ## 4. Plots
 
@@ -335,4 +397,15 @@ Compute: $C = 6 \cdot N_{\text{compute}} \cdot D \cdot \text{epochs} \cdot S$.
 
 ## Files
 
-`runs.csv` (one row per test evaluation), `cells.csv` (means per cell), `fits.csv`, `params.csv`.
+| File | Contents |
+|---|---|
+| `runs.csv` | one row per test evaluation |
+| `cells.csv` | means per cell |
+| `params.csv` | `N` and `N_compute` per configuration, `W`, `T` |
+| `fits.csv` | fitted parameters with 95% intervals, R², RMSE |
+| `comparisons.csv` | paired differences at every trained cell |
+| `allocation.csv` | `N*`, `D*` and loss per budget |
+| `warnings.csv` | every fit warning |
+| `fits/*.slaw` | fitted models (`simple_scaling_laws.load`) |
+
+Made by [`scaling_laws/analyze.py`](../../scaling_laws/analyze.py).

@@ -1,0 +1,127 @@
+{
+  "metric_correlations": {
+    "test_metric__auroc": {
+      "n_runs": 240,
+      "pearson": -0.19228218804648148,
+      "spearman": -0.38292157849962666,
+      "pearson_ci": [
+        -0.2666794239217423,
+        -0.0869387045069107
+      ],
+      "evaluation_row_pearson": -0.19228218804648148,
+      "evaluation_row_spearman": -0.38292157849962666,
+      "n_evaluation_rows": 240
+    }
+  },
+  "scaling_similarity": {
+    "test_metric__auroc": {
+      "grid_pearson": -0.958500308448492,
+      "grid_spearman": -0.9776923076923076,
+      "n_grid_points": 25
+    }
+  },
+  "fit_quality": {
+    "test_loss__cross_entropy": {
+      "n_observations": 240,
+      "n_params": 5,
+      "residual_dof": 235,
+      "r_squared": 0.09972649059501593,
+      "rmse": 0.014119872160695839,
+      "weighted_rmse": 0.014119872160695835,
+      "max_abs_residual": 0.0426844142827133
+    },
+    "test_metric__auroc": {
+      "n_observations": 240,
+      "n_params": 5,
+      "residual_dof": 235,
+      "r_squared": 0.8092555761458545,
+      "rmse": 0.21817187748973044,
+      "weighted_rmse": 0.21817187748973044,
+      "max_abs_residual": 0.5915333908941057
+    }
+  },
+  "uncertainty": {
+    "test_loss__cross_entropy": {
+      "method": "wild-cluster",
+      "n_draws": 1000,
+      "n_failed_draws": 11,
+      "n_run_deviations": 240
+    },
+    "test_metric__auroc": {
+      "method": "wild-cluster",
+      "n_draws": 1000,
+      "n_failed_draws": 2,
+      "n_run_deviations": 240
+    }
+  },
+  "paired_evaluation": {
+    "test_loss__cross_entropy": {
+      "eval_sd": 0.0,
+      "eval_sd_independent": 0.0,
+      "eval_sd_shared": 0.0,
+      "eval_pair_correlation": null,
+      "n_shared_pairs": 0
+    },
+    "test_metric__auroc": {
+      "eval_sd": 0.0,
+      "eval_sd_independent": 0.0,
+      "eval_sd_shared": 0.0,
+      "eval_pair_correlation": null,
+      "n_shared_pairs": 0
+    }
+  },
+  "warnings": [
+    {
+      "code": "no_repeated_evaluations",
+      "severity": "warning",
+      "message": "No training run has more than one evaluation row, so finite-evaluation-set noise cannot be estimated separately and is absorbed into the run-level variance.",
+      "details": {}
+    },
+    {
+      "code": "bootstrap_nonconvergence",
+      "severity": "info",
+      "message": "11 of 1000 bootstrap refits did not report convergence; they are retained, which widens rather than narrows the intervals.",
+      "details": {
+        "n_failed": 11,
+        "n_draws": 1000
+      }
+    },
+    {
+      "code": "weakly_identified_exponent",
+      "severity": "warning",
+      "message": "Exponent 'alpha' for 'test_loss__cross_entropy' is 0.581 with a 95% interval of [0.022, 3] -- wider than the estimate itself. The data do not pin down how fast this predictor improves performance, so predictions at new scales of it are little more than a guess.",
+      "details": {
+        "target": "test_loss__cross_entropy",
+        "parameter": "alpha",
+        "estimate": 0.5806160966474263,
+        "interval": [
+          0.02195883007935158,
+          2.999999963155056
+        ]
+      }
+    },
+    {
+      "code": "weakly_identified_exponent",
+      "severity": "warning",
+      "message": "Exponent 'beta' for 'test_loss__cross_entropy' is 0.267 with a 95% interval of [0.000861, 0.543] -- wider than the estimate itself. The data do not pin down how fast this predictor improves performance, so predictions at new scales of it are little more than a guess.",
+      "details": {
+        "target": "test_loss__cross_entropy",
+        "parameter": "beta",
+        "estimate": 0.2667862563995815,
+        "interval": [
+          0.0008609174023422057,
+          0.542644211231386
+        ]
+      }
+    },
+    {
+      "code": "bootstrap_nonconvergence",
+      "severity": "info",
+      "message": "2 of 1000 bootstrap refits did not report convergence; they are retained, which widens rather than narrows the intervals.",
+      "details": {
+        "n_failed": 2,
+        "n_draws": 1000
+      }
+    }
+  ]
+}

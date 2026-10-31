@@ -1,0 +1,110 @@
+{
+  "test_loss__cross_entropy": {
+    "role": "test_loss",
+    "signed_amplitude": false,
+    "params": {
+      "E": 0.030714539268212805,
+      "A": 0.0009985895232472199,
+      "B": 0.001681085944497983,
+      "alpha": 0.27137839654367835,
+      "beta": 0.5277943453680152
+    },
+    "params_raw_scale": {
+      "E": 0.030714539268212805,
+      "A": 0.01391839062103526,
+      "B": 0.2735327554711722,
+      "alpha": 0.27137839654367835,
+      "beta": 0.5277943453680152
+    },
+    "variance_components": {
+      "eval_var": 0.0,
+      "eval_var_independent": 0.0,
+      "run_var": 0.0003029586707965616,
+      "run_var_replicate": 0.0003029586707965616,
+      "run_var_residual": 0.00024813572442457086,
+      "replicate_dof": 192,
+      "residual_dof": 235,
+      "source": "replicates"
+    },
+    "optimizer": {
+      "success": true,
+      "cost": 0.029155947619887074,
+      "message": "`ftol` termination condition is satisfied.",
+      "n_function_evaluations": 32,
+      "n_starts": 3
+    },
+    "goodness_of_fit": {
+      "n_observations": 240,
+      "n_params": 5,
+      "residual_dof": 235,
+      "r_squared": 0.026291296990796242,
+      "rmse": 0.015587374062545801,
+      "weighted_rmse": 0.015587374062545801,
+      "max_abs_residual": 0.037883148861929936
+    },
+    "uncertainty": {
+      "method": "wild-cluster",
+      "n_failed_draws": 2,
+      "pairing": {
+        "method": "wild-cluster",
+        "n_clusters": 48,
+        "n_draws": 1000,
+        "seed": 3285842519
+      }
+    }
+  },
+  "test_metric__auroc": {
+    "role": "test_metric",
+    "signed_amplitude": true,
+    "params": {
+      "E": 3.0155882904387803,
+      "A": -0.09751984979084949,
+      "B": -1.4931900496715957,
+      "alpha": 0.22576257736300734,
+      "beta": 0.065125119476922
+    },
+    "params_raw_scale": {
+      "E": 3.0155882904387803,
+      "A": -0.8729047612176839,
+      "B": -2.7988816828149905,
+      "alpha": 0.22576257736300734,
+      "beta": 0.065125119476922
+    },
+    "variance_components": {
+      "eval_var": 0.0,
+      "eval_var_independent": 0.0,
+      "run_var": 0.04344194100362695,
+      "run_var_replicate": 0.04344194100362695,
+      "run_var_residual": 0.03767562022334692,
+      "replicate_dof": 192,
+      "residual_dof": 235,
+      "source": "replicates"
+    },
+    "optimizer": {
+      "success": true,
+      "cost": 4.426885376243263,
+      "message": "`ftol` termination condition is satisfied.",
+      "n_function_evaluations": 30,
+      "n_starts": 3
+    },
+    "goodness_of_fit": {
+      "n_observations": 240,
+      "n_params": 5,
+      "residual_dof": 235,
+      "r_squared": 0.5059391428525035,
+      "rmse": 0.19206954852004482,
+      "weighted_rmse": 0.19206954852004487,
+      "max_abs_residual": 0.5235716055772082
+    },
+    "uncertainty": {
+      "method": "wild-cluster",
+      "n_failed_draws": 4,
+      "pairing": {
+        "method": "wild-cluster",
+        "n_clusters": 48,
+        "n_draws": 1000,
+        "seed": 1930519326
+      }
+    }
+  }
+}
