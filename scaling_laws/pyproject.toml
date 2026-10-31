@@ -7,6 +7,7 @@ dependencies = [
     # FAISS search on the GPU (retriever.device=0); same version as MedRAP's faiss-cpu.
     "faiss-gpu-cu12==1.13.2; sys_platform == 'linux'",
     "matplotlib>=3.9",
+    "simple-scaling-laws==0.2.0",
 ]
 
 [tool.uv]
