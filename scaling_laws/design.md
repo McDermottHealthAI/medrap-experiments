@@ -180,6 +180,7 @@ Scaling laws on **test loss** for now.
 | P4 | Retrieval − Patient-only loss vs `D` and vs `N`, split into #2 − #4 (knowledge) and #4 − #1 (architecture) on the control slice | where retrieval helps, and why |
 | P5 | IsoFLOP curves: loss vs `N` at fixed training compute, one curve per budget | compute-optimal model size |
 | P6 | Best loss vs training compute (the frontier of P5), Patient only and retrieval on one plot | whether retrieval is worth its compute |
+| P7 | Random-document − top-document test loss vs `D` and vs `N`, for #2 and #3 | reliance on the retrieved document |
 
 **Fitted law** (Chinchilla form), one fit per configuration and task count:
 

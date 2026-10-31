@@ -1,4 +1,4 @@
-"""Collect the scaling-law runs, fit L(N, D) and draw plots P1-P6 of design.md.
+"""Collect the scaling-law runs, fit L(N, D) and draw plots P1-P7 of design.md.
 
     .venv/bin/python analyze.py [OUTPUT_DIR] [RESULTS_DIR]    # defaults: outputs, results
 
@@ -168,6 +168,35 @@ def plot_lines(ax, cell, x, group, fits=None, params=None):
     ax.grid(alpha=0.3)
 
 
+def plot_random_doc(runs: pl.DataFrame, t: int, out: Path) -> None:
+    """P7: random document - top document test loss, matched on (W, D, draw), for #2 and #3."""
+    keys = ["config", "W", "N", "D", "draw"]
+    sub = runs.filter((pl.col("T") == t) & pl.col("config").is_in(["retrieval_learned_query", "retrieval_qwen3_query"]))
+    rd = sub.filter(pl.col("eval") == "test").select(*keys, "loss").join(
+        sub.filter(pl.col("eval") == "test_random_doc").select(*keys, random="loss"), on=keys
+    )
+    configs = [c for c in CONFIGS if c in rd["config"].unique().to_list()]
+    if not configs:
+        return
+    fig, axes = plt.subplots(len(configs), 2, figsize=(9, 3.4 * len(configs)), squeeze=False)
+    for row, config in zip(axes, configs):
+        d = rd.filter(pl.col("config") == config).with_columns(diff=pl.col("random") - pl.col("loss"))
+        agg = d.group_by("W", "N", "D").agg(
+            loss=pl.col("diff").mean(),
+            sem=(pl.col("diff").std() / pl.col("diff").count().sqrt()).fill_null(0.0),
+        )
+        plot_lines(row[0], agg, "D", "W")
+        plot_lines(row[1], agg, "N", "D")
+        for ax in row:
+            ax.axhline(0, color="k", lw=0.8)
+            ax.set_ylabel(f"{CONFIGS[config].split(',')[0]}: random − top doc loss")
+            ax.legend(fontsize=7)
+    fig.suptitle(f"Random document − top document test loss (above 0: the top document helps), T = {t}", fontsize=10)
+    fig.tight_layout()
+    fig.savefig(out / "P7.png", dpi=150)
+    plt.close(fig)
+
+
 def main(outputs: Path, results: Path) -> None:
     results.mkdir(parents=True, exist_ok=True)
     runs = collect(outputs)
@@ -276,6 +305,8 @@ def main(outputs: Path, results: Path) -> None:
                 fig.tight_layout()
                 fig.savefig(out / "P4_control.png", dpi=150)
                 plt.close(fig)
+
+        plot_random_doc(runs, t, out)
 
         # P5: IsoFLOP curves from the fitted law, over the trained encoder sizes
         fitted = [c for c in configs if (c, t) in fits]

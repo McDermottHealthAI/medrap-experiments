@@ -105,6 +105,7 @@ Metric: test loss, mean over (patient, task) pairs. AUROC also reported.
 | P4 | Retrieval − Patient-only loss vs `D` and `N`; control: #2 − #4 and #4 − #1 |
 | P5 | IsoFLOP curves: loss vs `N` at fixed compute (fitted law) |
 | P6 | Best loss vs training compute |
+| P7 | Random-document − top-document test loss vs `D` and `N`, for #2 and #3 |
 
 Fitted law, per configuration and `T`:
 
@@ -307,6 +308,28 @@ Compute: $C = 6 \cdot N_{\text{compute}} \cdot D \cdot \text{epochs} \cdot S$.
 #### T = 2500
 
 ![P6 T2500](T2500/P6.png)
+
+### P7
+
+#### T = 5
+
+![P7 T5](T5/P7.png)
+
+#### T = 25
+
+![P7 T25](T25/P7.png)
+
+#### T = 125
+
+![P7 T125](T125/P7.png)
+
+#### T = 625
+
+![P7 T625](T625/P7.png)
+
+#### T = 2500
+
+![P7 T2500](T2500/P7.png)
 
 ## Files
 
