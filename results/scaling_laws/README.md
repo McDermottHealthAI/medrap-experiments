@@ -331,9 +331,26 @@ $$
 
 ### P5: IsoFLOP curves and compute-optimal encoder size N*
 
-These IsoFLOP curves are read off the fitted law and cost model, not measured. The
+The IsoFLOP curves are predictions from two fitted formulas, not losses of runs trained at those settings:
+
+1. The fitted law $L(N, D)$ gives a loss for any encoder size `N` and patient count `D`.
+2. A cost model $C \approx k \cdot N^{a} \cdot D^{b}$, fitted to each run's compute, gives the cost of any (`N`, `D`).
+3. For each budget, the cost model gives the `D` each `N` can afford, and the law gives its loss. That is the curve.
+
+Example, #1 at T = 625 and $C = 3.2 \times 10^{12}$ FLOPs:
+
+| `N` | `D` it can afford |
+|---|---|
+| 1,000 | ~78,000 |
+| 10,000 | ~9,700 |
+| 100,000 | ~1,200 |
+
+Only 2 of the 48 trained #1 cells at T = 625 are within ±30% of that budget; the rest of the curve is the law
+interpolating between trained cells (solid) or extrapolating beyond them (dashed). The bands show statistical
+uncertainty, not whether the law's shape is right. The
 [simple-scaling-laws guide](https://github.com/mmcdermott/simple-scaling-laws#checking-the-frontier-without-the-law-isoflop-profiles)
-checks the frontier with law-free profiles, which need runs along equal-compute curves; our grid has none.
+checks that shape with law-free profiles, which train several sizes at each fixed budget; our grid has no such runs.
+Compute is estimated as $6 \cdot N_{\text{compute}} \cdot D \cdot \text{epochs} \cdot S$, not counted.
 
 #### T = 5
 
