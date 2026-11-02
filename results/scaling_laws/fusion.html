@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fusion Explained</title>
+<style>
+:root {
+  --bg: #f6f5f1; --surface: #ffffff; --ink: #1d1d1f; --ink-2: #4a4a50; --muted: #7a7a82; --line: #e2e0d9;
+  --pat: #3b5bdb; --pat-soft: #e7ecfd; --doc: #d9480f; --doc-soft: #fff0e6; --mix: #7048e8; --mix-soft: #f1ecfe;
+  --bad: #c92a2a; --bad-soft: #fdecec; --good: #2b8a3e; --good-soft: #e6f4ea; --code: #f1efe9; --pad: #adb5bd;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15161a; --surface: #1d1f24; --ink: #ececf1; --ink-2: #c3c4cc; --muted: #8b8c96; --line: #2e3038;
+    --pat: #8ea6ff; --pat-soft: #232a45; --doc: #ff9f6b; --doc-soft: #3a2619; --mix: #b197fc; --mix-soft: #2c2342;
+    --bad: #ff8787; --bad-soft: #3a1f22; --good: #69db7c; --good-soft: #1c3324; --code: #262830; --pad: #6c727a;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #15161a; --surface: #1d1f24; --ink: #ececf1; --ink-2: #c3c4cc; --muted: #8b8c96; --line: #2e3038;
+  --pat: #8ea6ff; --pat-soft: #232a45; --doc: #ff9f6b; --doc-soft: #3a2619; --mix: #b197fc; --mix-soft: #2c2342;
+  --bad: #ff8787; --bad-soft: #3a1f22; --good: #69db7c; --good-soft: #1c3324; --code: #262830; --pad: #6c727a;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif; }
+main { max-width: 1060px; margin: 0 auto; padding: 40px 16px 80px; }
+h1 { font-size: 38px; line-height: 1.15; margin: 0 0 12px; letter-spacing: -.02em; }
+h2 { font-size: 26px; margin: 48px 0 14px; letter-spacing: -.01em; }
+h3 { font-size: 18px; margin: 0 0 6px; }
+p { color: var(--ink-2); margin: 0 0 12px; }
+strong { color: var(--ink); }
+ul { color: var(--ink-2); padding-left: 22px; margin: 0 0 12px; }
+li { margin: 4px 0; }
+code, .shape { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .86em; background: var(--code); padding: 1px 6px; border-radius: 5px; color: var(--ink); white-space: nowrap; }
+.lead { font-size: 20px; color: var(--ink-2); }
+.kicker { color: var(--pat); font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; }
+.card.pat { background: var(--pat-soft); border-color: transparent; }
+.card.doc { background: var(--doc-soft); border-color: transparent; }
+.card.mix { background: var(--mix-soft); border-color: transparent; }
+.card.bad { background: var(--bad-soft); border-color: transparent; }
+.card.good { background: var(--good-soft); border-color: transparent; }
+.card p:last-child, .card ul:last-child { margin-bottom: 0; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+table { border-collapse: collapse; width: 100%; background: var(--surface); border-radius: 12px; overflow: hidden; font-size: 15px; }
+th, td { padding: 8px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+tr:last-child td { border-bottom: none; }
+.diagram { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px; overflow-x: auto; }
+.diagram svg { display: block; width: 100%; min-width: 860px; height: auto; }
+.legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 14px; color: var(--muted); margin-top: 10px; }
+.legend span::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; background: var(--c); }
+.steps { counter-reset: s; list-style: none; padding: 0; }
+.steps > li { counter-increment: s; position: relative; padding: 14px 16px 14px 56px; margin: 0 0 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+.steps > li::before { content: counter(s); position: absolute; left: 16px; top: 14px; width: 26px; height: 26px; border-radius: 50%; background: var(--pat); color: var(--bg); font-weight: 700; font-size: 14px; display: grid; place-items: center; }
+.steps .io { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 6px; font-size: 14px; color: var(--muted); }
+.toy { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin: 10px 0; }
+.toy div { border-radius: 8px; padding: 8px 4px; text-align: center; font-size: 13px; font-family: ui-monospace, Menlo, monospace; }
+.toy .c { background: var(--pat-soft); color: var(--pat); }
+.toy .p { background: var(--code); color: var(--pad); border: 1px dashed var(--pad); }
+.bar { height: 22px; border-radius: 6px; display: flex; overflow: hidden; margin: 6px 0 4px; font-size: 12px; font-weight: 700; }
+.bar > div { display: grid; place-items: center; color: #fff; }
+button.theme { position: fixed; right: 16px; bottom: 16px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font: inherit; cursor: pointer; }
+@media (max-width: 760px) {
+  body { font-size: 16px; }
+  h1 { font-size: 30px; } h2 { font-size: 22px; }
+  .grid2, .grid3 { grid-template-columns: 1fr; }
+  .toy { grid-template-columns: repeat(3, 1fr); }
+  th, td { padding: 6px 8px; } table { font-size: 13px; }
+}
+</style>
+</head>
+<body>
+<main>
+  <div class="kicker">MedRAP · scaling laws · explainer</div>
+  <h1>How fusion works, and whether it loses the patient</h1>
+  <p class="lead">Fusion is the step where the patient model "reads" each retrieved document. This page walks through it with the exact shapes from our code (<code>PerDocCrossAttentionFusion</code>, MedRAP <code>c3700ab</code>), then answers your question: <strong>does the patient information get lost there?</strong></p>
+
+  <div class="card mix" style="margin-top:18px">
+    <h3>Short answer</h3>
+    <p>The patient information is <strong>not cut off</strong>: it flows through the fusion on a "residual" path, and the documents are added on top. But the design weakens it in four ways (section 4). The two most concrete are that the final average <strong>includes padding positions</strong> (a third of all positions on average) and that the fusion is a <strong>fixed ~1.85M-parameter block</strong> that dwarfs the patient encoder at most sizes we tested.</p>
+  </div>
+
+  <h2>1. Running example</h2>
+  <p>All shapes below use one concrete setting. Letters are the names used in the code.</p>
+  <table>
+    <tr><th>Symbol</th><th>Meaning</th><th>Value here</th></tr>
+    <tr><td><code>B</code></td><td>patients in a batch</td><td>32</td></tr>
+    <tr><td><code>S</code></td><td>code positions per patient (real codes + padding)</td><td>256</td></tr>
+    <tr><td><code>W</code></td><td>patient-encoder width</td><td>64 (varies 4–256 in the grid)</td></tr>
+    <tr><td><code>K</code></td><td>documents per patient, including the null document</td><td>5 in training (4 + null), 2 at test (1 + null)</td></tr>
+    <tr><td><code>S_doc</code></td><td>tokens per document</td><td>256</td></tr>
+    <tr><td><code>d</code></td><td>fusion width (fixed, independent of W)</td><td>256</td></tr>
+    <tr><td><code>T</code></td><td>tasks</td><td>625</td></tr>
+  </table>
+
+  <h2>2. The picture</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 1160 620" role="img" aria-label="Fusion data flow with tensor shapes">
+      <defs>
+        <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker>
+        <marker id="ap" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--pat)"/></marker>
+        <marker id="ad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--doc)"/></marker>
+      </defs>
+      <style>
+        .t { font: 600 14px -apple-system, Inter, Helvetica, Arial, sans-serif; fill: var(--ink); }
+        .s { font: 12.5px ui-monospace, Menlo, monospace; fill: var(--ink-2); }
+        .n { font: 12px -apple-system, Inter, Helvetica, Arial, sans-serif; fill: var(--muted); }
+        .bp { fill: var(--pat-soft); stroke: var(--pat); stroke-width: 1.5; }
+        .bd { fill: var(--doc-soft); stroke: var(--doc); stroke-width: 1.5; }
+        .bm { fill: var(--mix-soft); stroke: var(--mix); stroke-width: 1.5; }
+        .bb { fill: var(--bad-soft); stroke: var(--bad); stroke-width: 1.5; stroke-dasharray: 5 4; }
+        .lp { stroke: var(--pat); stroke-width: 2.5; fill: none; }
+        .ld { stroke: var(--doc); stroke-width: 2.5; fill: none; }
+        .lg { stroke: var(--muted); stroke-width: 1.8; fill: none; }
+      </style>
+
+      <!-- patient input -->
+      <rect class="bp" x="20" y="40" width="200" height="74" rx="10"/>
+      <text class="t" x="34" y="66">Patient encoder output</text>
+      <text class="s" x="34" y="88">(B, S, W)</text>
+      <text class="s" x="34" y="106">(32, 256, 64)</text>
+
+      <!-- doc input -->
+      <rect class="bd" x="20" y="430" width="200" height="92" rx="10"/>
+      <text class="t" x="34" y="456">Document token vectors</text>
+      <text class="s" x="34" y="478">(B, K, S_doc, 1024)</text>
+      <text class="s" x="34" y="496">(32, 5, 256, 1024)</text>
+      <text class="n" x="34" y="514">frozen Qwen3 table</text>
+
+      <!-- copy per doc -->
+      <path class="lp" d="M220,77 L260,77" marker-end="url(#ap)"/>
+      <rect class="bp" x="262" y="40" width="170" height="74" rx="10"/>
+      <text class="t" x="276" y="66">① copy per doc</text>
+      <text class="s" x="276" y="88">(B·K, S, W)</text>
+      <text class="s" x="276" y="106">(160, 256, 64)</text>
+
+      <!-- project -->
+      <path class="lp" d="M432,77 L472,77" marker-end="url(#ap)"/>
+      <rect class="bp" x="474" y="40" width="170" height="74" rx="10"/>
+      <text class="t" x="488" y="66">② project W → 256</text>
+      <text class="s" x="488" y="88">(B·K, S, 256)</text>
+      <text class="s" x="488" y="106">(160, 256, 256)</text>
+
+      <!-- residual stream -->
+      <path class="lp" d="M644,77 L700,77 L700,150" marker-end="url(#ap)"/>
+      <text class="n" x="710" y="120">residual stream:</text>
+      <text class="n" x="710" y="136">one vector per patient position</text>
+
+      <!-- layer block -->
+      <rect x="262" y="160" width="700" height="230" rx="14" fill="none" stroke="var(--mix)" stroke-width="1.5" stroke-dasharray="6 5"/>
+      <text class="t" x="276" y="184" fill="var(--mix)">③ cross-attention layer  × 2</text>
+
+      <rect class="bm" x="300" y="210" width="250" height="84" rx="10"/>
+      <text class="t" x="314" y="234">Cross-attention (8 heads)</text>
+      <text class="n" x="314" y="254">queries: 256 patient positions</text>
+      <text class="n" x="314" y="270">keys/values: 256 doc tokens, 1024 → 256</text>
+      <text class="n" x="314" y="286">padding doc tokens masked out</text>
+
+      <rect class="bm" x="300" y="306" width="250" height="66" rx="10"/>
+      <text class="t" x="314" y="330">Feed-forward</text>
+      <text class="n" x="314" y="350">256 → 512 → 256 per position</text>
+
+      <!-- plus nodes on residual -->
+      <circle cx="700" cy="252" r="14" fill="var(--surface)" stroke="var(--mix)" stroke-width="2"/>
+      <text class="t" x="694" y="257">+</text>
+      <circle cx="700" cy="339" r="14" fill="var(--surface)" stroke="var(--mix)" stroke-width="2"/>
+      <text class="t" x="694" y="344">+</text>
+      <path class="lp" d="M700,150 L700,238"/>
+      <path class="lp" d="M700,266 L700,325"/>
+      <path class="lp" d="M700,353 L700,412" marker-end="url(#ap)"/>
+      <path class="lg" d="M550,252 L684,252" marker-end="url(#a)"/>
+      <path class="lg" d="M550,339 L684,339" marker-end="url(#a)"/>
+      <text class="n" x="566" y="244">+ what it read</text>
+      <text class="n" x="566" y="331">+ reworked</text>
+      <path class="lg" d="M700,190 L760,190 L760,226 L550,226" stroke-dasharray="3 3"/>
+      <text class="n" x="768" y="194">current patient state</text>
+      <text class="n" x="768" y="210">asks the questions</text>
+      <text class="n" x="768" y="274">dropout 0.1 on each "+"</text>
+      <text class="n" x="768" y="290">LayerNorm before each block</text>
+
+      <!-- doc into attention -->
+      <path class="ld" d="M220,476 L250,476 L250,252 L298,252" marker-end="url(#ad)"/>
+
+      <!-- after layers -->
+      <rect class="bm" x="620" y="414" width="160" height="58" rx="10"/>
+      <text class="t" x="634" y="438">④ LayerNorm</text>
+      <text class="s" x="634" y="458">(160, 256, 256)</text>
+
+      <path class="lp" d="M700,472 L700,500" marker-end="url(#ap)"/>
+      <rect class="bb" x="590" y="502" width="220" height="74" rx="10"/>
+      <text class="t" x="604" y="526">⑤ mean over all S</text>
+      <text class="s" x="604" y="546">(B, K, 256) = (32, 5, 256)</text>
+      <text class="n" x="604" y="564" fill="var(--bad)">includes padding positions</text>
+
+      <path class="lg" d="M810,539 L1070,539 L1070,490" marker-end="url(#a)"/>
+      <rect class="bp" x="1000" y="414" width="146" height="74" rx="10"/>
+      <text class="t" x="1010" y="438">⑥ head per doc</text>
+      <text class="s" x="1010" y="458">256 → T</text>
+      <text class="s" x="1010" y="476">(32, 5, 625)</text>
+
+      <path class="lg" d="M1070,414 L1070,380" marker-end="url(#a)"/>
+      <rect class="bp" x="1000" y="300" width="146" height="78" rx="10"/>
+      <text class="t" x="1010" y="324">⑦ weighted avg</text>
+      <text class="n" x="1010" y="342">over K documents</text>
+      <text class="s" x="1010" y="364">(32, 625)</text>
+    </svg>
+    <div class="legend">
+      <span style="--c: var(--pat)">patient information</span>
+      <span style="--c: var(--doc)">document information</span>
+      <span style="--c: var(--mix)">where they mix</span>
+      <span style="--c: var(--bad)">weak spot</span>
+    </div>
+  </div>
+
+  <h2>3. Step by step: what comes in, what comes out</h2>
+  <ol class="steps">
+    <li><strong>Copy the patient once per document.</strong> Each document is read separately, so the patient's 256 code vectors are duplicated K times.
+      <div class="io">in <span class="shape">(32, 256, 64)</span> → out <span class="shape">(160, 256, 64)</span> &nbsp;·&nbsp; 160 = 32 patients × 5 documents</div></li>
+    <li><strong>Project the patient to the fusion width.</strong> A linear layer maps every code vector from W to 256 numbers. For W ≤ 256 this can't lose information (it only stretches); at W = 4 it turns 4 numbers into 256.
+      <div class="io">in <span class="shape">(160, 256, W)</span> → out <span class="shape">(160, 256, 256)</span> &nbsp;·&nbsp; W·256 + 256 parameters</div></li>
+    <li><strong>Two cross-attention layers.</strong> Each patient position asks "which words of this document matter to me?", gathers a weighted mix of the document's word vectors, and <strong>adds</strong> it to its own vector. A small feed-forward network then reworks each vector and adds that too. Because every step is an addition onto the patient's own vector (a residual connection), the patient signal is carried forward, not replaced.
+      <div class="io">patient in <span class="shape">(160, 256, 256)</span> + doc <span class="shape">(160, 256, 1024)</span> → out <span class="shape">(160, 256, 256)</span> &nbsp;·&nbsp; ≈922K parameters per layer</div></li>
+    <li><strong>Normalize.</strong> LayerNorm rescales each position's vector.
+      <div class="io"><span class="shape">(160, 256, 256)</span> → <span class="shape">(160, 256, 256)</span></div></li>
+    <li><strong>Average over the patient's positions.</strong> One vector per (patient, document) pair. This average runs over <strong>all 256 positions, padding included</strong> (see 4a).
+      <div class="io">in <span class="shape">(160, 256, 256)</span> → out <span class="shape">(32, 5, 256)</span></div></li>
+    <li><strong>Predict once per document.</strong> The head (linear, 256 → T) gives a score for every task, separately for each document.
+      <div class="io">in <span class="shape">(32, 5, 256)</span> → out <span class="shape">(32, 5, 625)</span></div></li>
+    <li><strong>Average the per-document predictions.</strong> Weights come from query · key (softmax over the 5 documents). Final probability per task: p = Σ<sub>k</sub> w<sub>k</sub> σ(z<sub>k</sub>).
+      <div class="io">in <span class="shape">(32, 5, 625)</span> → out <span class="shape">(32, 625)</span></div></li>
+  </ol>
+
+  <div class="grid2">
+    <div class="card pat"><h3>Patient-only model, for comparison</h3><p>Encoder output <span class="shape">(32, 256, W)</span> → <strong>masked</strong> mean over real codes only → <span class="shape">(32, W)</span> → head W → T → <span class="shape">(32, 625)</span>. The head sees the encoder's summary directly.</p></div>
+    <div class="card mix"><h3>Retrieval model</h3><p>The head never sees the encoder's summary directly. It sees the patient only after projection, two rounds of mixing with a document, normalization, and an unmasked average.</p></div>
+  </div>
+
+  <h2>4. Is patient information being lost?</h2>
+  <p>Not cut off, but weakened. Four concrete reasons, from the code and our parameter counts:</p>
+
+  <div class="card bad" style="margin-bottom:14px">
+    <h3>4a. Padding is averaged in (step 5)</h3>
+    <p>Patients have up to 256 codes; shorter histories are padded. On the test set a patient has <strong>171 real codes on average, so 33% of positions are padding</strong> (logged as <code>mask/test/pad_fraction = 0.333</code>). The model passes the padding mask to the fusion (<code>patient_attention_mask</code>), but <code>PerDocCrossAttentionFusion</code> ignores it and takes a plain <code>x.mean(dim=1)</code>. The patient-only model uses a masked mean.</p>
+    <div class="toy"><div class="c">code</div><div class="c">code</div><div class="c">code</div><div class="c">code</div><div class="p">pad</div><div class="p">pad</div></div>
+    <p>Padding positions start from a zero embedding but still attend to the patient's codes in the encoder, and in the fusion they attend to the document like any other position. So for a patient with a short history, most of the averaged vector comes from positions that carry a blurred copy of the patient plus document content, and the real per-code detail is diluted.</p>
+    <div class="bar"><div style="flex:67;background:var(--pat)">real codes 67%</div><div style="flex:33;background:var(--pad)">padding 33%</div></div>
+    <p class="n" style="font-size:13px;color:var(--muted)">Average over test patients; much higher for patients with short histories.</p>
+  </div>
+
+  <div class="card bad" style="margin-bottom:14px">
+    <h3>4b. No direct path from the patient summary to the head</h3>
+    <p>In patient-only the head reads the encoder summary. In retrieval it reads a vector that went through two mixing layers with dropout 0.1 and LayerNorm. The residual connections keep the patient signal in principle, but the model has to learn to protect it while also learning to use documents.</p>
+  </div>
+
+  <div class="card bad" style="margin-bottom:14px">
+    <h3>4c. The fusion is a fixed, large block</h3>
+    <p>The fusion always works at width 256, whatever W is. Its size from our parameter counts:</p>
+    <table>
+      <tr><th>Encoder W</th><th>Patient encoder N</th><th>Fusion</th><th>Fusion ÷ encoder</th></tr>
+      <tr><td>4</td><td>180</td><td>1,846,528</td><td>≈ 10,000×</td></tr>
+      <tr><td>64</td><td>33,600</td><td>1,861,888</td><td>≈ 55×</td></tr>
+      <tr><td>256 (4 layers)</td><td>2,108,928</td><td>1,911,040</td><td>≈ 0.9×</td></tr>
+    </table>
+    <p style="margin-top:10px">So at most widths the retrieval model's capacity is mostly the fusion, and growing the patient encoder changes the total little. That matches P2, where retrieval barely improves with encoder size. It also explains why retrieval wins only at the tiniest widths: there it adds ~1.8M parameters to a 180-parameter model, and the control (#4, random documents) wins there too, so the gain is capacity, not knowledge.</p>
+  </div>
+
+  <div class="card bad">
+    <h3>4d. Every prediction is made "through" a document</h3>
+    <p>The head predicts separately for each of the K documents, and the final answer is a weighted average. The patient is present in every per-document vector, so averaging doesn't remove it, but each vector is also shaped by its document. P7 shows the models come to depend on that: swapping in a random passage at test raises the loss of #2 in 1,133 of 1,200 runs, even though random passages during training (#4) work just as well. The model leans on the document channel without gaining knowledge from it.</p>
+  </div>
+
+  <h2>5. How this fits our results</h2>
+  <div class="grid3">
+    <div class="card"><h3>P2 is flat for retrieval</h3><p>Expected if the fixed fusion, not the encoder, sets the retrieval model's capacity (4c), and if per-code detail is diluted (4a).</p></div>
+    <div class="card"><h3>#2 ≈ #4</h3><p>Real documents add nothing over random ones: the documents act as an extra channel, not as knowledge.</p></div>
+    <div class="card"><h3>Gap grows with scale</h3><p>Patient-only keeps improving with W and D; the retrieval path caps how much patient detail reaches the head (4a, 4b).</p></div>
+  </div>
+  <p style="margin-top:12px">These are explanations consistent with the code and the results, not yet tested causes.</p>
+
+  <h2>6. Checks that would settle it</h2>
+  <table>
+    <tr><th>Change</th><th>Tests</th><th>Size of change</th></tr>
+    <tr><td><strong>Masked mean in the fusion</strong>: average only real codes (use <code>patient_attention_mask</code>)</td><td>4a</td><td>a few lines in MedRAP</td></tr>
+    <tr><td><strong>Direct patient path</strong>: add (or concatenate) the encoder's masked-mean summary to each per-document vector before the head</td><td>4b; retrieval can then only add to the patient-only model</td><td>small MedRAP change</td></tr>
+    <tr><td><strong>Match capacity</strong>: compare against a patient-only model with a similar extra block, or shrink the fusion width with W</td><td>4c</td><td>config change</td></tr>
+    <tr><td><strong>Fusion dropout 0</strong></td><td>4b</td><td>config change</td></tr>
+  </table>
+  <p style="margin-top:12px">A cheap way to try them: rerun the control slice (W 4, 16, 64 × D 1K, 10K, 100K × T 625 × 5 draws = 45 runs per variant) and compare against #1, #2 and #4.</p>
+</main>
+<button class="theme" onclick="(function(){var r=document.documentElement;var d=r.dataset.theme?r.dataset.theme==='dark':matchMedia('(prefers-color-scheme: dark)').matches;r.dataset.theme=d?'light':'dark';})()" aria-label="Toggle light/dark">◐</button>
+</body>
+</html>
