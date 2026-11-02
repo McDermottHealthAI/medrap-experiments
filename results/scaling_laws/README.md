@@ -235,7 +235,7 @@ $$
 
 ## 4. Plots
 
-### P1
+### P1: Loss vs training patients D
 
 #### T = 5
 
@@ -257,7 +257,7 @@ $$
 
 ![P1 T2500](T2500/P1.png)
 
-### P2
+### P2: Loss vs encoder parameters N
 
 #### T = 5
 
@@ -279,7 +279,7 @@ $$
 
 ![P2 T2500](T2500/P2.png)
 
-### P3
+### P3: Fitted law with 95% interval
 
 #### T = 5
 
@@ -306,7 +306,7 @@ $$
 ![P3_D T2500](T2500/P3_D.png)
 ![P3_N T2500](T2500/P3_N.png)
 
-### P4
+### P4: Retrieval − Patient only (paired difference)
 
 #### T = 5
 
@@ -329,7 +329,7 @@ $$
 
 ![P4 T2500](T2500/P4.png)
 
-### P5
+### P5: Compute-optimal encoder size N* vs compute
 
 #### T = 5
 
@@ -351,7 +351,7 @@ $$
 
 ![P5 T2500](T2500/P5.png)
 
-### P6
+### P6: Test loss at N* vs compute
 
 #### T = 5
 
@@ -373,7 +373,7 @@ $$
 
 ![P6 T2500](T2500/P6.png)
 
-### P7
+### P7: Random document − top document test loss
 
 #### T = 5
 
