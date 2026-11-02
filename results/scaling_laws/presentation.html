@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Retrieval Scaling Laws</title>
+<style>
+:root {
+  --bg: #f6f5f1; --surface: #ffffff; --ink: #1d1d1f; --ink-2: #4a4a50; --muted: #7a7a82;
+  --line: #e2e0d9; --accent: #3b5bdb; --accent-soft: #e7ecfd; --good: #2b8a3e; --good-soft: #e6f4ea;
+  --bad: #c92a2a; --bad-soft: #fdecec; --warn: #b7791f; --warn-soft: #fdf4e3; --code: #f1efe9;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15161a; --surface: #1d1f24; --ink: #ececf1; --ink-2: #c3c4cc; --muted: #8b8c96;
+    --line: #2e3038; --accent: #8ea6ff; --accent-soft: #232a45; --good: #69db7c; --good-soft: #1c3324;
+    --bad: #ff8787; --bad-soft: #3a1f22; --warn: #f2c35b; --warn-soft: #3a3020; --code: #262830;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #15161a; --surface: #1d1f24; --ink: #ececf1; --ink-2: #c3c4cc; --muted: #8b8c96;
+  --line: #2e3038; --accent: #8ea6ff; --accent-soft: #232a45; --good: #69db7c; --good-soft: #1c3324;
+  --bad: #ff8787; --bad-soft: #3a1f22; --warn: #f2c35b; --warn-soft: #3a3020; --code: #262830;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 18px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif;
+  overflow: hidden;
+}
+.deck { position: relative; height: 100vh; }
+.slide {
+  position: absolute; inset: 0; display: none; overflow-y: auto;
+  padding: 56px max(16px, calc((100vw - 1100px) / 2)) 96px;
+}
+.slide.active { display: block; }
+.kicker { color: var(--accent); font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 8px; }
+h1 { font-size: 44px; line-height: 1.12; margin: 0 0 16px; letter-spacing: -.02em; }
+h2 { font-size: 32px; line-height: 1.2; margin: 0 0 20px; letter-spacing: -.01em; }
+h3 { font-size: 19px; margin: 0 0 8px; }
+p { margin: 0 0 14px; color: var(--ink-2); }
+strong { color: var(--ink); }
+ul { margin: 0 0 14px; padding-left: 22px; color: var(--ink-2); }
+li { margin: 4px 0; }
+code { background: var(--code); padding: 1px 6px; border-radius: 5px; font-size: .88em; }
+.lead { font-size: 21px; color: var(--ink-2); max-width: 820px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
+.card p:last-child, .card ul:last-child { margin-bottom: 0; }
+.card.accent { background: var(--accent-soft); border-color: transparent; }
+.card.good { background: var(--good-soft); border-color: transparent; }
+.card.bad { background: var(--bad-soft); border-color: transparent; }
+.card.warn { background: var(--warn-soft); border-color: transparent; }
+.tag { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); margin-bottom: 8px; }
+.big { font-size: 40px; font-weight: 800; letter-spacing: -.02em; color: var(--ink); line-height: 1.1; }
+.small { font-size: 14px; color: var(--muted); }
+.formula { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; font: 20px/1.4 "STIX Two Math", "Cambria Math", Georgia, serif; text-align: center; margin: 10px 0 16px; color: var(--ink); }
+table { border-collapse: collapse; width: 100%; font-size: 15px; background: var(--surface); border-radius: 12px; overflow: hidden; }
+th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--line); }
+th { font-size: 13px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+tr:last-child td { border-bottom: none; }
+td.num { font-variant-numeric: tabular-nums; }
+figure { margin: 0 0 12px; }
+figure img { width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); background: #fff; display: block; }
+figcaption { font-size: 14px; color: var(--muted); margin-top: 6px; }
+.flow { display: flex; align-items: stretch; gap: 10px; flex-wrap: wrap; margin: 10px 0 18px; }
+.flow .step { flex: 1 1 140px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; font-size: 15px; }
+.flow .step b { display: block; color: var(--ink); margin-bottom: 4px; }
+.flow .arrow { align-self: center; color: var(--muted); font-size: 22px; }
+.flow .step.ret { border-color: var(--accent); }
+.example { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; background: var(--code); border-radius: 10px; padding: 12px 14px; color: var(--ink-2); white-space: pre-wrap; margin-bottom: 14px; }
+.toc { columns: 2; column-gap: 32px; }
+.toc li { break-inside: avoid; }
+nav.bar {
+  position: fixed; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px);
+  border-top: 1px solid var(--line); font-size: 14px; color: var(--muted); z-index: 5;
+}
+nav.bar button {
+  background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 8px;
+  padding: 6px 12px; font: inherit; cursor: pointer;
+}
+nav.bar button:hover { border-color: var(--accent); }
+.progress { flex: 1; height: 4px; background: var(--line); border-radius: 4px; overflow: hidden; }
+.progress > div { height: 100%; background: var(--accent); width: 0; transition: width .2s; }
+.section-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 30vw; }
+@media (max-width: 760px) {
+  body { font-size: 16px; }
+  .slide { padding: 28px 16px 90px; }
+  h1 { font-size: 32px; } h2 { font-size: 25px; }
+  .grid2, .grid3 { grid-template-columns: 1fr; }
+  .toc { columns: 1; }
+  .flow .arrow { display: none; }
+  table { font-size: 13px; } th, td { padding: 6px 8px; }
+  .section-name { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="deck" id="deck">
+
+<!-- ============ 1. TITLE ============ -->
+<section class="slide" data-section="Start">
+  <div class="kicker">MedRAP · scaling-laws experiment</div>
+  <h1>Does looking things up help a medical model as it grows?</h1>
+  <p class="lead">A from-scratch walkthrough: what problem we work on, what "retrieval" means, what scaling laws are, how we set up 2,685 training runs, and what we found.</p>
+  <div class="grid3" style="margin-top:28px">
+    <div class="card"><div class="tag">Part 1</div><h3>Background</h3><p>Patients as sequences, prediction tasks, retrieval, scaling laws.</p></div>
+    <div class="card"><div class="tag">Part 2</div><h3>Our setup</h3><p>Four model configurations, the grid of sizes, training and testing.</p></div>
+    <div class="card"><div class="tag">Part 3</div><h3>Results</h3><p>Plots P1–P7, fitted laws, comparisons, and what they mean.</p></div>
+  </div>
+  <p class="small" style="margin-top:28px">Use ← / → (or space) to move. Press <code>T</code> to switch light/dark.</p>
+</section>
+
+<!-- ============ 2. ONE-SLIDE SUMMARY ============ -->
+<section class="slide" data-section="Start">
+  <div class="kicker">The answer first</div>
+  <h2>The one-slide summary</h2>
+  <div class="grid2">
+    <div class="card"><h3>Question</h3><p>We predict future events for hospital patients. If the model can also read medical textbook passages ("retrieval"), does it do better, and does that advantage grow or shrink as models and datasets get bigger?</p></div>
+    <div class="card"><h3>What we did</h3><p>Trained 2,685 models: four designs × many model sizes × many dataset sizes × several task counts × 5 repeats. Then fitted "scaling laws": formulas for how error falls with size.</p></div>
+    <div class="card bad"><h3>Main result</h3><p>The plain model <strong>without retrieval wins</strong> almost everywhere. Retrieval only helps tiny models trained on little data, and its disadvantage grows with scale.</p></div>
+    <div class="card warn"><h3>Why</h3><p>A control experiment shows the textbook <strong>content adds nothing measurable</strong>: random passages work as well as retrieved ones. The cost comes from the extra retrieval machinery.</p></div>
+  </div>
+</section>
+
+<!-- ============ 3. ROADMAP ============ -->
+<section class="slide" data-section="Start">
+  <div class="kicker">Roadmap</div>
+  <h2>What's in this deck</h2>
+  <ol class="toc">
+    <li>The problem: predicting from health records</li>
+    <li>Patients as sequences of codes</li>
+    <li>From Intro NLP: tokens, embeddings, transformers</li>
+    <li>The patient model</li>
+    <li>Many yes/no tasks at once</li>
+    <li>Loss and AUROC</li>
+    <li>Retrieval-augmented models (RAG)</li>
+    <li>How the lookup works</li>
+    <li>Reading a document: cross-attention</li>
+    <li>Combining several documents</li>
+    <li>Scaling laws</li>
+    <li>Our four configurations</li>
+    <li>The grid of runs</li>
+    <li>Training and testing</li>
+    <li>Results P1–P7</li>
+    <li>Takeaways, caveats, next steps</li>
+    <li>Glossary</li>
+  </ol>
+</section>
+
+<!-- ============ PART 1 ============ -->
+<section class="slide" data-section="Background">
+  <div class="kicker">Part 1 · Background</div>
+  <h2>The problem: predicting from health records</h2>
+  <p class="lead">Hospitals record everything that happens to a patient: diagnoses, lab results, medications, procedures. We want a model that reads a patient's history and predicts what happens next.</p>
+  <div class="grid2">
+    <div class="card"><h3>Data: MIMIC-IV</h3><p>A public, de-identified dataset of hospital patients (access needs credentials). After filtering (keep codes seen in ≥100 patients and patients with ≥10 events):</p>
+      <ul><li><strong>153,220</strong> training patients</li><li>19,180 validation patients</li><li><strong>19,158</strong> test patients</li></ul></div>
+    <div class="card"><h3>Format: MEDS</h3><p>Every record becomes a timestamped <strong>code</strong>, e.g. a diagnosis, a drug, or a lab value in a bucket:</p>
+      <div class="example">2150-03-01 08:12  DIAGNOSIS//I10 (hypertension)
+2150-03-01 09:40  LAB//creatinine//[0.9,1.1)
+2150-03-02 14:05  MEDICATION//metoprolol</div></div>
+  </div>
+</section>
+
+<section class="slide" data-section="Background">
+  <div class="kicker">Part 1 · Background</div>
+  <h2>A patient is a sentence; codes are words</h2>
+  <p class="lead">This is the key idea that lets us borrow tools from NLP. A patient history is a <strong>sequence of codes</strong>, just like a sentence is a sequence of words.</p>
+  <div class="grid2">
+    <div class="card"><h3>NLP</h3><div class="example">"the patient was given aspirin"
+→ [the] [patient] [was] [given] [aspirin]</div><p>Vocabulary: tens of thousands of word pieces.</p></div>
+    <div class="card accent"><h3>Our setting</h3><div class="example">patient 123
+→ [I10] [creatinine 0.9–1.1] [metoprolol] …</div><p>Vocabulary: up to 65,536 medical codes. We keep each patient's <strong>last 256 codes</strong>, plus the time gaps between them.</p></div>
+  </div>
+</section>
+
+<section class="slide" data-section="Background">
+  <div class="kicker">Part 1 · Background</div>
+  <h2>Refresher from Intro NLP</h2>
+  <div class="grid3">
+    <div class="card"><div class="tag">1</div><h3>Embedding</h3><p>Each token is turned into a vector of numbers (length <strong>W</strong>, the "width"). Similar meanings end up near each other.</p></div>
+    <div class="card"><div class="tag">2</div><h3>Transformer</h3><p>Layers of <strong>self-attention</strong>: every token looks at the other tokens and updates its vector with what's relevant. More layers and wider vectors = bigger model.</p></div>
+    <div class="card"><div class="tag">3</div><h3>Pooling + head</h3><p>Average all token vectors into one summary vector, then a final linear layer turns it into predictions.</p></div>
+  </div>
+  <div class="card warn" style="margin-top:18px"><p><strong>Parameters</strong> are the numbers the model learns. We count <strong>N</strong> = parameters of the patient encoder, excluding the big code-lookup table (a lookup costs almost no computation). In our grid N goes from <strong>180</strong> to <strong>2.1 million</strong>.</p></div>
+</section>
+
+<section class="slide" data-section="Background">
+  <div class="kicker">Part 1 · Background</div>
+  <h2>The patient-only model</h2>
+  <div class="flow">
+    <div class="step"><b>Codes</b>last 256 codes of the patient</div><div class="arrow">→</div>
+    <div class="step"><b>Patient encoder</b>embedding + transformer (width W)</div><div class="arrow">→</div>
+    <div class="step"><b>Mean over codes</b>one vector per patient</div><div class="arrow">→</div>
+    <div class="step"><b>Head</b>one score per task</div>
+  </div>
+  <p>This is configuration <strong>#1, Patient only</strong>: everything the model knows comes from the patient's own history and what it learned during training. It is our baseline.</p>
+  <figure><img src="../../scaling_laws/architecture.png" alt="Model architecture"><figcaption>The full architecture. The top path is the patient-only model; the bottom path adds retrieval (explained next).</figcaption></figure>
+</section>
+
+<section class="slide" data-section="Background">
+  <div class="kicker">Part 1 · Background</div>
+  <h2>Many yes/no questions at once</h2>
+  <p class="lead">For each patient we pick a random moment in their history (the <strong>prediction time</strong>). Each <strong>task</strong> asks: <em>will this specific code appear in the next 30 days?</em></p>
+  <div class="grid2">
+    <div class="card"><h3>Example, T = 3 tasks</h3><div class="example">Prediction time: 2150-03-02
+Task 1  "creatinine high"   → yes (1)
+Task 2  "insulin given"     → no  (0)
+Task 3  "sepsis diagnosis"  → no  (0)</div></div>
+    <div class="card"><h3>How tasks are chosen</h3><p>The T codes are drawn <strong>at random</strong> from all codes. We vary <strong>T = 5, 25, 125, 625, 2,500</strong>. One model answers all T questions at once (multi-task learning).</p><p>Most answers are "no": many codes are rare, so the base rates are small.</p></div>
+  </div>
+</section>
+
+<section class="slide" data-section="Background">
+  <div class="kicker">Part 1 · Background</div>
+  <h2>How we score a model</h2>
+  <div class="grid2">
+    <div class="card accent"><h3>Test loss (main metric)</h3><p>Binary cross-entropy: how surprised the model is by the true answers. If it predicts probability <em>p</em> and the answer is yes, the cost is −log <em>p</em>; if no, −log(1−<em>p</em>). Averaged over all (patient, task) pairs.</p><p><strong>Lower is better.</strong> Values here are small (≈0.02–0.04) because most answers are "no" and easy.</p></div>
+    <div class="card"><h3>AUROC (also reported)</h3><p>Pick a random "yes" patient and a random "no" patient. AUROC is the chance the model ranks the "yes" one higher.</p><p>0.5 = coin flip, 1.0 = perfect. Our best models reach ≈0.91.</p></div>
+  </div>
+  <p class="small">Scaling laws are usually fitted on loss, because it changes smoothly with size.</p>
+</section>
+
+<section class="slide" data-section="Background">
+  <div class="kicker">Part 1 · Background</div>
+  <h2>Retrieval-augmented models (RAG)</h2>
+  <p class="lead">A normal model must memorize everything in its parameters. A <strong>retrieval-augmented</strong> model can also <strong>look things up</strong> in an external library while it predicts, like an open-book exam.</p>
+  <div class="grid2">
+    <div class="card"><h3>The hope</h3><ul><li>Small models get access to knowledge they couldn't store.</li><li>Rare conditions are described in textbooks even when the training data has few examples.</li><li>So retrieval might be worth more than making the model bigger.</li></ul></div>
+    <div class="card"><h3>Our library</h3><p><strong>125,847 passages from medical textbooks</strong>, plus one special <strong>null document</strong> (empty), so the model can always choose "nothing here helps".</p></div>
+  </div>
+  <p class="small">"Retrieval-augmented pretraining" means the model learns with lookup switched on from the start, rather than having it bolted on afterwards.</p>
+</section>
+
+<section class="slide" data-section="Background">
+  <div class="kicker">Part 1 · Background</div>
+  <h2>How the lookup works</h2>
+  <div class="flow">
+    <div class="step ret"><b>1. Query</b>turn the patient into a 1,024-number vector</div><div class="arrow">→</div>
+    <div class="step ret"><b>2. Keys</b>every passage already has its own 1,024-number vector</div><div class="arrow">→</div>
+    <div class="step ret"><b>3. Score</b>similarity = dot product of query and key</div><div class="arrow">→</div>
+    <div class="step ret"><b>4. Top K</b>fetch the K best passages (+ the null document)</div>
+  </div>
+  <div class="grid2">
+    <div class="card"><h3>Where the query comes from</h3><ul><li><strong>Learned query</strong>: a layer maps the patient vector to 1,024 numbers; it is trained.</li><li><strong>Qwen3 query</strong>: write the patient's last 32 codes as text and embed it with a frozen pretrained text model (Qwen3-Embedding).</li></ul></div>
+    <div class="card"><h3>Finding the best passages fast</h3><p>Comparing to 125,848 keys for every patient is done with <strong>FAISS</strong>, a nearest-neighbour search library, on the GPU.</p><p>K = 4 in training, K = 1 at test (each plus the null document).</p></div>
+  </div>
+</section>
+
+<section class="slide" data-section="Background">
+  <div class="kicker">Part 1 · Background</div>
+  <h2>Reading a document: cross-attention</h2>
+  <p class="lead">Self-attention lets tokens of one sequence look at each other. <strong>Cross-attention</strong> lets the patient's codes look at the <em>document's</em> words instead.</p>
+  <div class="grid2">
+    <div class="card"><h3>Document words</h3><p>Each passage (256 tokens) is turned into vectors with Qwen3's <strong>frozen</strong> token-embedding table (151,669 × 1,024). Frozen = not trained by us.</p></div>
+    <div class="card"><h3>Fusion</h3><p>Each patient code asks "which words in this passage matter to me?" and mixes in what it finds. Then we average over codes → one 256-number vector per (patient, document).</p></div>
+  </div>
+  <div class="card warn"><p>Important detail for later: in the retrieval models, the patient's information reaches the prediction head <strong>only through this fusion step</strong>.</p></div>
+</section>
+
+<section class="slide" data-section="Background">
+  <div class="kicker">Part 1 · Background</div>
+  <h2>Combining several documents</h2>
+  <p class="lead">With K documents, the model makes K separate predictions, one per document, and averages them, giving more weight to more relevant documents.</p>
+  <div class="formula">p = Σ<sub>k</sub> w<sub>k</sub> · σ(z<sub>k</sub>) &nbsp;&nbsp;&nbsp; w<sub>k</sub> = softmax<sub>k</sub>( query · key<sub>k</sub> / √1024 )</div>
+  <div class="grid2">
+    <div class="card"><p><strong>z<sub>k</sub></strong> = prediction score using document k; <strong>σ</strong> = sigmoid, turning a score into a probability.</p><p><strong>w<sub>k</sub></strong> = how much we trust document k; the weights add up to 1.</p></div>
+    <div class="card"><p>This is called <strong>marginalizing</strong> over documents. The loss is computed on the final <em>p</em>, so training also teaches the query which documents to score highly.</p></div>
+  </div>
+</section>
+
+<section class="slide" data-section="Background">
+  <div class="kicker">Part 1 · Background</div>
+  <h2>Scaling laws</h2>
+  <p class="lead">In large language models, test loss falls in a very regular way as you add parameters (N) and data (D). That regularity lets you predict how a bigger model will do before training it.</p>
+  <div class="formula">L(N, D) = E + A / N<sup>α</sup> + B / D<sup>β</sup></div>
+  <div class="grid3">
+    <div class="card"><h3>E: the floor</h3><p>The best loss reachable with infinite model and data. Lower floor = better design in the long run.</p></div>
+    <div class="card"><h3>α: model term</h3><p>How fast loss falls as the model grows. Bigger α = more benefit from size.</p></div>
+    <div class="card"><h3>β: data term</h3><p>How fast loss falls with more training patients. Bigger β = more benefit from data.</p></div>
+  </div>
+  <p class="small">This is the "Chinchilla" form (Hoffmann et al., 2022). Here D counts training patients.</p>
+</section>
+
+<section class="slide" data-section="Background">
+  <div class="kicker">Part 1 · Background</div>
+  <h2>Why scaling laws answer our question</h2>
+  <div class="grid2">
+    <div class="card"><h3>A single comparison can mislead</h3><p>"Retrieval beats no retrieval at one size" says little. The real question is which way the gap moves as we scale up.</p></div>
+    <div class="card"><h3>Laws compare whole curves</h3><p>Fit one law per design. Compare floors (E), slopes (α, β) and the predicted loss at scales we haven't trained.</p></div>
+    <div class="card"><h3>Compute budgets</h3><p>Training cost ≈ 6 × parameters × tokens processed (forward + backward). For a fixed budget: bigger model on less data, or smaller model on more?</p></div>
+    <div class="card"><h3>Uncertainty matters</h3><p>Every run is noisy. We train 5 repeats ("draws") of each setting and put 95% intervals on everything, using the lab's <code>simple-scaling-laws</code> package.</p></div>
+  </div>
+</section>
+
+<!-- ============ PART 2 ============ -->
+<section class="slide" data-section="Our setup">
+  <div class="kicker">Part 2 · Our setup</div>
+  <h2>Four model configurations</h2>
+  <table>
+    <tr><th>#</th><th>Configuration</th><th>Query</th><th>Documents it sees</th></tr>
+    <tr><td>1</td><td><strong>Patient only</strong></td><td>none</td><td>none (baseline)</td></tr>
+    <tr><td>2</td><td><strong>Retrieval, learned query</strong></td><td>trained from the patient encoder</td><td>top K + null</td></tr>
+    <tr><td>3</td><td><strong>Retrieval, Qwen3 query</strong></td><td>frozen text embedding of the last 32 codes</td><td>top K + null</td></tr>
+    <tr><td>4</td><td><strong>Random documents</strong> (control)</td><td>as #2</td><td>random passages + null, always</td></tr>
+  </table>
+  <div class="card accent" style="margin-top:18px"><h3>Why #4 is clever</h3><p>#4 has exactly the same machinery and cost as #2, but the passages carry no patient-specific information. So:</p>
+    <ul><li><strong>#2 − #4</strong> = what the textbook <em>knowledge</em> is worth</li><li><strong>#4 − #1</strong> = what the extra <em>architecture</em> costs or gives</li></ul></div>
+</section>
+
+<section class="slide" data-section="Our setup">
+  <div class="kicker">Part 2 · Our setup</div>
+  <h2>The grid of runs</h2>
+  <div class="grid2">
+    <div class="card"><h3>Axes</h3><ul>
+      <li><strong>W</strong> encoder width: 4, 8, 16, 32, 64, 128, plus 128 (2 layers, 4 heads) and 256 (4 layers, 8 heads)</li>
+      <li><strong>D</strong> training patients: 1K, 3K, 10K, 30K, 100K, 153K</li>
+      <li><strong>T</strong> tasks: 5, 25, 125, 625, 2,500</li>
+      <li><strong>5 draws</strong>: new tasks, new patient subsample, new seed</li></ul></div>
+    <div class="card"><h3>Runs</h3><table>
+      <tr><th>Config</th><th>Grid</th><th>Runs</th></tr>
+      <tr><td>#1</td><td>all W, D, T</td><td class="num">1,200</td></tr>
+      <tr><td>#2</td><td>all W, D, T</td><td class="num">1,200</td></tr>
+      <tr><td>#3</td><td>4 widths, all D, T 25 &amp; 625</td><td class="num">240</td></tr>
+      <tr><td>#4</td><td>3 widths, 3 D, T 625</td><td class="num">45</td></tr>
+      <tr><td><strong>Total</strong></td><td></td><td class="num"><strong>2,685</strong></td></tr></table></div>
+  </div>
+  <p class="small">#3 runs on a subset because the frozen Qwen3 text model makes each run ~10× slower.</p>
+</section>
+
+<section class="slide" data-section="Our setup">
+  <div class="kicker">Part 2 · Our setup</div>
+  <h2>Training and testing</h2>
+  <div class="grid2">
+    <div class="card"><h3>Training (same for every run)</h3><ul>
+      <li>AdamW optimizer, learning rate 1e-3, warmup then cosine decay</li>
+      <li>Batches of 32 patients</li>
+      <li>More epochs for small D (10 at 1K → 3 at 153K) so every run gets enough updates</li>
+      <li>Each task's output starts at its base rate</li></ul></div>
+    <div class="card"><h3>Testing</h3><ul>
+      <li>One evaluation on the 19,158 held-out test patients</li>
+      <li>Retrieval models see the top document + null</li>
+      <li>#2 and #3 are also tested with a <strong>random</strong> document: does the model actually use what it retrieves?</li></ul></div>
+  </div>
+  <div class="card warn"><h3>Where it ran</h3><p>Columbia's C2B2 GPU cluster (SLURM), about 700 GPU-hours, split between us (#1, #2) and Zach (#3, #4).</p></div>
+</section>
+
+<section class="slide" data-section="Our setup">
+  <div class="kicker">Part 2 · Our setup</div>
+  <h2>How we fit and compare</h2>
+  <p class="lead">Following the lab's <code>simple-scaling-laws</code> guide:</p>
+  <div class="grid2">
+    <div class="card"><h3>Fit</h3><p>One law per configuration and task count, on all its runs. Parameters get <strong>95% intervals</strong> from a bootstrap (refit many times on resampled noise).</p></div>
+    <div class="card"><h3>Compare</h3><p>Fit two designs on the same grid with paired randomness, then look at the <strong>difference</strong> and its interval. "Significantly worse" = the whole interval is above 0.</p></div>
+    <div class="card"><h3>Fit quality</h3><p><strong>R²</strong> = fraction of the variation the law explains. We report it over single runs and over cell means (average of the 5 draws).</p></div>
+    <div class="card"><h3>Compute-optimal size</h3><p>For each compute budget, the law gives the best model size <strong>N*</strong> and the loss you'd reach there.</p></div>
+  </div>
+</section>
+
+<!-- ============ PART 3 ============ -->
+<section class="slide" data-section="Results">
+  <div class="kicker">Part 3 · Results</div>
+  <h2>Best result per task count</h2>
+  <table>
+    <tr><th>T</th><th>#1 Patient only</th><th>#2 Learned query</th><th>#3 Qwen3 query</th><th>#4 Random docs</th></tr>
+    <tr><td>5</td><td class="num"><strong>0.0299</strong> / 0.872</td><td class="num">0.0370 / 0.845</td><td>–</td><td>–</td></tr>
+    <tr><td>25</td><td class="num"><strong>0.0252</strong> / 0.897</td><td class="num">0.0309 / 0.844</td><td class="num">0.0298 / 0.845</td><td>–</td></tr>
+    <tr><td>125</td><td class="num"><strong>0.0168</strong> / 0.894</td><td class="num">0.0198 / 0.831</td><td>–</td><td>–</td></tr>
+    <tr><td>625</td><td class="num"><strong>0.0209</strong> / 0.909</td><td class="num">0.0251 / 0.846</td><td class="num">0.0255 / 0.844</td><td class="num">0.0256 / 0.827</td></tr>
+    <tr><td>2500</td><td class="num"><strong>0.0206</strong> / 0.907</td><td class="num">0.0241 / 0.840</td><td>–</td><td>–</td></tr>
+  </table>
+  <p class="small" style="margin-top:10px">Each cell: lowest mean test loss over all sizes / its AUROC. Patient-only's best is always W 128 (2 layers, 4 heads) on all 153K patients.</p>
+  <div class="card bad" style="margin-top:12px"><p>At every task count, the best model <strong>without retrieval</strong> beats the best model <strong>with retrieval</strong>, on both loss and AUROC.</p></div>
+</section>
+
+<section class="slide" data-section="Results">
+  <div class="kicker">Part 3 · Results · P1</div>
+  <h2>P1: more data helps everyone, but retrieval flattens out</h2>
+  <figure><img src="T625/P1.png" alt="P1 loss vs training patients, T=625"><figcaption>Test loss vs number of training patients (log scale), one line per encoder width. T = 625 tasks. Error bars: variation across the 5 draws.</figcaption></figure>
+  <div class="grid2">
+    <div class="card"><p><strong>Patient only (left):</strong> lines fan out. Wider models keep improving with more data, reaching ≈0.021.</p></div>
+    <div class="card"><p><strong>Retrieval (others):</strong> lines bunch together around 0.025–0.027. Making the encoder bigger barely helps.</p></div>
+  </div>
+</section>
+
+<section class="slide" data-section="Results">
+  <div class="kicker">Part 3 · Results · P2</div>
+  <h2>P2: bigger models help patient-only, not retrieval</h2>
+  <figure><img src="T625/P2.png" alt="P2 loss vs encoder parameters, T=625"><figcaption>Test loss vs encoder parameters N (log scale), one line per dataset size. T = 625.</figcaption></figure>
+  <p>Read each line left to right: for patient-only, loss keeps dropping as N grows (most clearly with lots of data). For retrieval the lines are almost flat; past ~10K parameters some even get worse.</p>
+</section>
+
+<section class="slide" data-section="Results">
+  <div class="kicker">Part 3 · Results · P3</div>
+  <h2>P3: the fitted laws</h2>
+  <figure><img src="T625/P3_D.png" alt="P3 fitted law vs D, T=625"><figcaption>Lines: fitted law L(N, D); bands: 95% intervals; dots: measured averages. T = 625.</figcaption></figure>
+  <table>
+    <tr><th>T = 625</th><th>Floor E [95% CI]</th><th>α (model)</th><th>β (data)</th><th>R² (cell means)</th></tr>
+    <tr><td>#1 Patient only</td><td class="num">0.0141 [−0.044, 0.018]</td><td class="num">0.23</td><td class="num">0.13</td><td class="num">0.96</td></tr>
+    <tr><td>#2 Learned query</td><td class="num">0.0249 [0.020, 0.026]</td><td class="num">0.61</td><td class="num">0.33</td><td class="num">0.88</td></tr>
+    <tr><td>#3 Qwen3 query</td><td class="num">0.0248 [−0.62, 0.026]</td><td class="num">0.40</td><td class="num">0.45</td><td class="num">0.95</td></tr>
+  </table>
+  <p class="small" style="margin-top:10px">Retrieval's floor is much higher (≈0.025 vs ≈0.014): even with infinite size it would stay worse. Its larger α, β just mean it reaches that higher floor faster. Some intervals are wide because the floor and the data term can trade off; the package flags these fits.</p>
+</section>
+
+<section class="slide" data-section="Results">
+  <div class="kicker">Part 3 · Results · P4</div>
+  <h2>P4: retrieval minus patient-only</h2>
+  <figure><img src="T625/P4.png" alt="P4 retrieval minus patient-only, T=625"><figcaption>Below 0 = retrieval better. Lines: fitted difference with 95% band; dots: measured differences. Top: #2, bottom: #3. T = 625.</figcaption></figure>
+  <div class="grid2">
+    <div class="card good"><p>Only the <strong>tiniest models with the least data</strong> (W 4–8, D 1K) sit below zero.</p></div>
+    <div class="card bad"><p>Everything else is above zero, and the gap <strong>grows</strong> with more data and bigger models.</p></div>
+  </div>
+</section>
+
+<section class="slide" data-section="Results">
+  <div class="kicker">Part 3 · Results · P4</div>
+  <h2>P4 in numbers: significance across all settings</h2>
+  <table>
+    <tr><th>Comparison</th><th>T</th><th>Settings</th><th>Significantly better</th><th>Significantly worse</th><th>At the largest setting</th></tr>
+    <tr><td>#2 − #1</td><td>5</td><td class="num">48</td><td class="num">0</td><td class="num">25</td><td class="num">+0.0077 [+0.0046, +0.0116]</td></tr>
+    <tr><td>#2 − #1</td><td>25</td><td class="num">48</td><td class="num">0</td><td class="num">28</td><td class="num">+0.0056 [+0.0037, +0.0077]</td></tr>
+    <tr><td>#2 − #1</td><td>125</td><td class="num">48</td><td class="num">1</td><td class="num">34</td><td class="num">+0.0032 [+0.0026, +0.0038]</td></tr>
+    <tr><td>#2 − #1</td><td>625</td><td class="num">48</td><td class="num">3</td><td class="num">37</td><td class="num">+0.0045 [+0.0038, +0.0051]</td></tr>
+    <tr><td>#2 − #1</td><td>2500</td><td class="num">48</td><td class="num">3</td><td class="num">38</td><td class="num">+0.0035 [+0.0030, +0.0039]</td></tr>
+    <tr><td>#3 − #1</td><td>625</td><td class="num">24</td><td class="num">0</td><td class="num">19</td><td class="num">+0.0039 [+0.0030, +0.0048]</td></tr>
+    <tr><td>#3 − #2</td><td>625</td><td class="num">24</td><td class="num">0</td><td class="num">5</td><td class="num">−0.0004 [−0.0009, +0.0001]</td></tr>
+  </table>
+  <p class="small" style="margin-top:10px">"Significantly" = the 95% interval excludes 0. Largest setting = W 256 (4 layers), D 153K. The Qwen3 query is no better than the learned one.</p>
+</section>
+
+<section class="slide" data-section="Results">
+  <div class="kicker">Part 3 · Results · Control</div>
+  <h2>The control: knowledge or architecture?</h2>
+  <figure><img src="T625/P4_control.png" alt="P4 control, T=625"><figcaption>Left: #2 − #4 (does real retrieved content beat random passages?). Right: #4 − #1 (does the retrieval machinery itself help?). Below 0 = first config better.</figcaption></figure>
+  <div class="grid2">
+    <div class="card warn"><h3>Knowledge ≈ 0</h3><p>#2 − #4 is not significant in any of the 9 settings (at the largest: −0.0001 [−0.0024, +0.0023]). Retrieved passages are no better than random ones.</p></div>
+    <div class="card bad"><h3>Architecture costs</h3><p>#4 − #1 is significantly worse in 4 of 9 settings (largest: +0.0029 [+0.0010, +0.0051]); it helps only the tiniest model at 1K patients.</p></div>
+  </div>
+</section>
+
+<section class="slide" data-section="Results">
+  <div class="kicker">Part 3 · Results · P7</div>
+  <h2>P7: the models do lean on their documents</h2>
+  <figure><img src="T625/P7.png" alt="P7 random minus top document, T=625"><figcaption>Loss with a random document minus loss with the retrieved document, same trained model. Above 0 = the retrieved document helps. T = 625.</figcaption></figure>
+  <div class="grid2">
+    <div class="card"><p>Swapping in a random passage at test makes #2 worse in <strong>1,133 of 1,200</strong> runs (by 0.0086 on average) and #3 worse in <strong>236 of 240</strong> (by 0.0019).</p></div>
+    <div class="card warn"><p>Combined with the control, the picture is: the model learns to <strong>depend</strong> on the passage it is trained with, yet gains nothing from what that passage <strong>says</strong>.</p></div>
+  </div>
+</section>
+
+<section class="slide" data-section="Results">
+  <div class="kicker">Part 3 · Results · P5 &amp; P6</div>
+  <h2>P5–P6: spending compute wisely</h2>
+  <div class="grid2">
+    <figure><img src="T625/P5.png" alt="P5 compute-optimal model size, T=625"><figcaption>P5: best encoder size N* for each compute budget.</figcaption></figure>
+    <figure><img src="T625/P6.png" alt="P6 best loss vs compute, T=625"><figcaption>P6: loss at N* for each budget; dots are trained settings.</figcaption></figure>
+  </div>
+  <p>For any compute budget, patient-only reaches lower loss, and retrieval costs far more compute to start with (the fusion and document side are big). Dashed parts are extrapolations: at large budgets the law wants more patients than the 153K we have.</p>
+</section>
+
+<section class="slide" data-section="Results">
+  <div class="kicker">Part 3 · Results</div>
+  <h2>Same story at every task count</h2>
+  <div class="grid2">
+    <figure><img src="T5/P4.png" alt="P4 T=5"><figcaption>P4, T = 5</figcaption></figure>
+    <figure><img src="T2500/P4.png" alt="P4 T=2500"><figcaption>P4, T = 2,500</figcaption></figure>
+  </div>
+  <p class="small">All 41 plots for T = 5, 25, 125, 625 and 2,500 are in <code>results/scaling_laws/README.md</code>.</p>
+</section>
+
+<!-- ============ WRAP UP ============ -->
+<section class="slide" data-section="Wrap-up">
+  <div class="kicker">Wrap-up</div>
+  <h2>Takeaways</h2>
+  <div class="grid2">
+    <div class="card bad"><h3>1. Retrieval loses at scale</h3><p>Patient-only wins at every task count. Retrieval helps only tiny models with ~1K patients, and the gap grows with data and model size.</p></div>
+    <div class="card warn"><h3>2. The documents add no knowledge</h3><p>Random passages work as well as retrieved ones (#2 ≈ #4).</p></div>
+    <div class="card warn"><h3>3. The architecture is the bottleneck</h3><p>Retrieval models barely improve with encoder size; the patient's information must squeeze through the fusion step.</p></div>
+    <div class="card"><h3>4. The query doesn't matter</h3><p>A pretrained Qwen3 text query performs like the learned query.</p></div>
+  </div>
+</section>
+
+<section class="slide" data-section="Wrap-up">
+  <div class="kicker">Wrap-up</div>
+  <h2>Caveats and next steps</h2>
+  <div class="grid2">
+    <div class="card"><h3>Caveats</h3><ul>
+      <li>One test evaluation per run, so test-set noise and training noise are mixed.</li>
+      <li>Compute is estimated with a formula, not measured.</li>
+      <li>Some law parameters are poorly pinned down at small T; the package flags them.</li>
+      <li>#3 and #4 cover a subset of the grid only.</li>
+      <li>Documents are read with context-free token embeddings.</li></ul></div>
+    <div class="card accent"><h3>Next steps</h3><ul>
+      <li>Give the head a direct path to the patient representation, so retrieval can only add, not block.</li>
+      <li>Read documents with Qwen3's full contextual model instead of its token table.</li>
+      <li>Check fusion without dropout.</li>
+      <li>Keep checkpoints to allow repeated test evaluations.</li></ul></div>
+  </div>
+</section>
+
+<section class="slide" data-section="Wrap-up">
+  <div class="kicker">Reference</div>
+  <h2>Glossary</h2>
+  <div class="grid2">
+    <div class="card"><ul>
+      <li><strong>EHR / MIMIC-IV / MEDS</strong>: electronic health records; the hospital dataset; its standard event format.</li>
+      <li><strong>Code</strong>: one recorded event type (diagnosis, drug, lab bucket); our "word".</li>
+      <li><strong>Task</strong>: "does code X appear in the next 30 days?"</li>
+      <li><strong>W / N</strong>: encoder width / encoder parameters (without the code table).</li>
+      <li><strong>D / T</strong>: training patients / number of tasks.</li>
+      <li><strong>Draw</strong>: one repeat with new tasks, patients and seed.</li></ul></div>
+    <div class="card"><ul>
+      <li><strong>RAG</strong>: retrieval-augmented generation/prediction: look up documents while predicting.</li>
+      <li><strong>Query / key</strong>: vectors whose dot product scores a document's relevance.</li>
+      <li><strong>Null document</strong>: an empty passage that means "nothing helps".</li>
+      <li><strong>Cross-attention / fusion</strong>: patient codes read a document's tokens.</li>
+      <li><strong>Marginalization</strong>: weighted average of per-document predictions.</li>
+      <li><strong>Scaling law, E, α, β</strong>: formula for loss vs size; floor; model and data slopes.</li>
+      <li><strong>95% CI</strong>: range that contains the true value with 95% confidence.</li></ul></div>
+  </div>
+</section>
+
+</div>
+
+<nav class="bar">
+  <button id="prev" aria-label="Previous slide">←</button>
+  <button id="next" aria-label="Next slide">→</button>
+  <span id="count"></span>
+  <div class="progress"><div id="prog"></div></div>
+  <span class="section-name" id="section"></span>
+  <button id="theme" aria-label="Toggle light/dark">◐</button>
+</nav>
+
+<script>
+(function () {
+  const slides = Array.from(document.querySelectorAll(".slide"));
+  let i = 0;
+  try { i = Math.min(slides.length - 1, Math.max(0, parseInt(location.hash.slice(1), 10) - 1 || 0)); } catch (e) {}
+  function show(n) {
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach((s, k) => s.classList.toggle("active", k === i));
+    slides[i].scrollTop = 0;
+    document.getElementById("count").textContent = (i + 1) + " / " + slides.length;
+    document.getElementById("prog").style.width = ((i + 1) / slides.length * 100) + "%";
+    document.getElementById("section").textContent = slides[i].dataset.section || "";
+    try { history.replaceState(null, "", "#" + (i + 1)); } catch (e) {}
+  }
+  document.getElementById("prev").onclick = () => show(i - 1);
+  document.getElementById("next").onclick = () => show(i + 1);
+  document.getElementById("theme").onclick = toggleTheme;
+  function toggleTheme() {
+    const root = document.documentElement;
+    const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    root.dataset.theme = dark ? "light" : "dark";
+  }
+  document.addEventListener("keydown", (e) => {
+    if (["ArrowRight", "PageDown", " "].includes(e.key)) { e.preventDefault(); show(i + 1); }
+    else if (["ArrowLeft", "PageUp"].includes(e.key)) { e.preventDefault(); show(i - 1); }
+    else if (e.key === "Home") show(0);
+    else if (e.key === "End") show(slides.length - 1);
+    else if (e.key === "t" || e.key === "T") toggleTheme();
+  });
+  let x0 = null;
+  document.addEventListener("touchstart", (e) => { x0 = e.touches[0].clientX; }, { passive: true });
+  document.addEventListener("touchend", (e) => {
+    if (x0 === null) return;
+    const dx = e.changedTouches[0].clientX - x0;
+    if (Math.abs(dx) > 60) show(i + (dx < 0 ? 1 : -1));
+    x0 = null;
+  });
+  show(i);
+})();
+</script>
+</body>
+</html>

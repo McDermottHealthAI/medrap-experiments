@@ -103,7 +103,7 @@ Metric: test loss, mean over (patient, task) pairs. AUROC also reported.
 | P2 | Loss vs `N`, one line per `D`, one panel per configuration |
 | P3 | Fitted law (line) with its 95% interval (band) vs `D` and `N`; cell means as dots |
 | P4 | Paired law difference, retrieval − Patient only, with 95% interval; matched cell differences as dots. Control: #2 − #4 and #4 − #1 |
-| P5 | Compute-optimal encoder size `N*` vs training compute, with 95% interval |
+| P5 | IsoFLOP curves: fitted loss vs `N` at fixed compute, with 95% interval; compute-optimal `N*` vs compute |
 | P6 | Test loss at `N*` vs training compute, with 95% interval; cells as dots |
 | P7 | Random-document − top-document test loss vs `D` and `N`, for #2 and #3 |
 
@@ -329,26 +329,35 @@ $$
 
 ![P4 T2500](T2500/P4.png)
 
-### P5: Compute-optimal encoder size N* vs compute
+### P5: IsoFLOP curves and compute-optimal encoder size N*
+
+These IsoFLOP curves are read off the fitted law and cost model, not measured. The
+[simple-scaling-laws guide](https://github.com/mmcdermott/simple-scaling-laws#checking-the-frontier-without-the-law-isoflop-profiles)
+checks the frontier with law-free profiles, which need runs along equal-compute curves; our grid has none.
 
 #### T = 5
 
+![P5 IsoFLOP T5](T5/P5_isoflop.png)
 ![P5 T5](T5/P5.png)
 
 #### T = 25
 
+![P5 IsoFLOP T25](T25/P5_isoflop.png)
 ![P5 T25](T25/P5.png)
 
 #### T = 125
 
+![P5 IsoFLOP T125](T125/P5_isoflop.png)
 ![P5 T125](T125/P5.png)
 
 #### T = 625
 
+![P5 IsoFLOP T625](T625/P5_isoflop.png)
 ![P5 T625](T625/P5.png)
 
 #### T = 2500
 
+![P5 IsoFLOP T2500](T2500/P5_isoflop.png)
 ![P5 T2500](T2500/P5.png)
 
 ### P6: Test loss at N* vs compute

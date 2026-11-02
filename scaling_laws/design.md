@@ -178,7 +178,7 @@ Fitted with [simple-scaling-laws](https://github.com/mmcdermott/simple-scaling-l
 | P2 | Loss vs encoder parameters `N`, one line per `D`, one panel per configuration | model scaling |
 | P3 | Fitted law per configuration with its 95% interval, drawn through P1 and P2; parameters with intervals in a table | the law itself |
 | P4 | Paired law difference, retrieval − Patient only, vs `D` and vs `N`, split into #2 − #4 (knowledge) and #4 − #1 (architecture) on the control slice | where retrieval helps, and why |
-| P5 | Compute-optimal encoder size `N*` vs training compute | compute-optimal model size |
+| P5 | IsoFLOP curves (fitted loss vs `N` at fixed compute) and compute-optimal encoder size `N*` vs compute | compute-optimal model size |
 | P6 | Test loss at `N*` vs training compute, all configurations on one plot | whether retrieval is worth its compute |
 | P7 | Random-document − top-document test loss vs `D` and vs `N`, for #2 and #3 | reliance on the retrieved document |
 
