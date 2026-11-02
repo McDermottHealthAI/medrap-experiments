@@ -17,7 +17,7 @@ Writes to RESULTS_DIR:
     comparisons.csv    paired differences between configurations at every trained (N, D)
     allocation.csv     compute-optimal N, D and loss per budget
     fits/*.slaw        the fitted models (simple_scaling_laws.load)
-    T<T>/P1.png ...    the plots
+    T<T>/P1.png ...    the plots (P5_isoflop.png: IsoFLOP curves read off the fitted law)
 
     N          patient-encoder parameters without the code embedding table (a lookup).
     N_compute  all trainable parameters except embedding tables: encoder, query projector, fusion
@@ -216,6 +216,38 @@ def plot_random_doc(runs: pl.DataFrame, t: int, out: Path) -> None:
     plt.close(fig)
 
 
+def plot_isoflop(models: dict, costs: dict, ct: pl.DataFrame, configs: list[str], t: int, out: Path) -> None:
+    """P5 IsoFLOP curves: fitted loss vs N along equal-compute curves of each configuration's cost model."""
+    fig, axes = plt.subplots(1, len(configs), figsize=(4.2 * len(configs), 3.6), sharey=True, squeeze=False)
+    for ax, config in zip(axes[0], configs):
+        cc = ct.filter(pl.col("config") == config)
+        sizes = np.geomspace(cc["N"].min(), cc["N"].max(), 40)
+        budgets = np.geomspace(cc["C"].min(), cc["C"].max(), 6)
+        for col, budget in zip(colors(len(budgets)), budgets):
+            d = costs[config, t].dataset_size_for(budget, sizes)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                pred = models[config, t].predict({N_COL: sizes, D_COL: d}, targets=[LOSS])
+            y = pred[f"{LOSS}__median"].to_numpy()
+            inside = (pred["domain"] == "interpolation").to_numpy()
+            ax.plot(sizes, y, color=col, lw=1, ls="--")
+            ax.plot(sizes, np.where(inside, y, np.nan), color=col, lw=1.8, label=f"C={budget:.1e}")
+            ax.fill_between(sizes, pred[f"{LOSS}__q025"], pred[f"{LOSS}__q975"], color=col, alpha=0.15, lw=0)
+            i = int(np.argmin(y))
+            ax.plot(sizes[i], y[i], "*", color="k", ms=9)
+        ax.set_xscale("log")
+        ax.set_xlabel("encoder parameters N")
+        ax.set_title(CONFIGS[config], fontsize=10)
+        ax.grid(alpha=0.3)
+    axes[0][0].set_ylabel("test loss (fitted law)")
+    axes[0][0].set_ylim(ct["loss"].min() * 0.9, ct["loss"].max() * 1.1)
+    axes[0][0].legend(fontsize=7)
+    fig.suptitle(f"IsoFLOP curves, T = {t} (★ best size per budget; dashed: extrapolated)", fontsize=10)
+    fig.tight_layout()
+    fig.savefig(out / "P5_isoflop.png", dpi=150)
+    plt.close(fig)
+
+
 def fit_arm(test: pl.DataFrame):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -338,10 +370,10 @@ def main(source: Path, results: Path) -> None:
     comparisons.drop("target", "direction").write_csv(results / "comparisons.csv")
 
     # Compute-optimal allocation from a cost model fitted to each configuration's runs.
-    allocation = []
+    allocation, costs = [], {}
     for (config, t), model in models.items():
         sub = test.filter((pl.col("config") == config) & (pl.col("T") == t))
-        cost = fit_cost_model(package_table(sub), form="power")
+        cost = costs[config, t] = fit_cost_model(package_table(sub), form="power")
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             a = model.optimal_allocation(np.geomspace(sub["C"].min(), sub["C"].max(), 12).tolist(), cost, targets=[LOSS])
@@ -448,6 +480,7 @@ def main(source: Path, results: Path) -> None:
             fig.savefig(out / f"{name}.png", dpi=150)
             plt.close(fig)
 
+        plot_isoflop(models, costs, ct, configs, t, out)
         plot_random_doc(runs, t, out)
 
     print(f"{runs.height} evaluations, {cells.height} cells, {len(models)} fits -> {results}")
