@@ -26,5 +26,6 @@ pip install -r requirements.txt
 
 | Directory | Description |
 |---|---|
+| [`mimic_iv_task_training_replication/`](mimic_iv_task_training_replication/) | MIMIC-IV three-arm retrieval comparison across three task seeds and three training seeds |
 | [`mimic_iv/`](mimic_iv/) | MIMIC-IV mortality prediction — initial MedRAP paper experiments (RoPE, cross-attention, retrieval ablations, hyperparameter sweeps) |
 | [`mimic_iv_smoke/`](mimic_iv_smoke/) | Smoke test validating the post-refactor MedRAP CLI/structure (flat entrypoints, `medrap-preprocess`) on the same MIMIC-IV pipeline |
