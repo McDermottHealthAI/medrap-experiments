@@ -37,7 +37,7 @@ def main() -> None:
 
     db = load_from_disk(str(args.db))
     ds = db.with_format("numpy", columns=["doc_tokens", "doc_attention_mask"])
-    keys = db.with_format("numpy", columns=["doc_key_embeddings"])["doc_key_embeddings"].astype(np.float32)
+    keys = db.with_format("numpy", columns=["doc_key_embeddings"])[:]["doc_key_embeddings"].astype(np.float32)
     n_docs, seq_len = len(ds), len(ds[0]["doc_tokens"])
     null_index = n_docs - 1
     if seq_len % args.memory:
