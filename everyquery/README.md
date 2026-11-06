@@ -6,6 +6,7 @@ retrieval + patient**. Details in [`design.md`](design.md).
 
 | File | What it does |
 |---|---|
+| [`EVERYQUERY.md`](EVERYQUERY.md) | how EveryQuery works: model, training, loss, evaluation (no retrieval) |
 | [`design.md`](design.md) | the design, for review |
 | [`run.sh`](run.sh) | one step: `preprocess`, `labels DRAW`, `eval_grid`, `encode_docs`, `train CONFIG SIZE LR DRAW` |
 | [`submit.sh`](submit.sh) | submits `data`, `docs`, `pilot` or `stage0` to SLURM; skips finished and queued work; refuses to train without data |
