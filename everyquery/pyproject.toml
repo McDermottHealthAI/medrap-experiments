@@ -1,0 +1,17 @@
+[project]
+name = "everyquery-retrieval"
+version = "0.0.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "EveryQuery @ git+https://github.com/payalchandak/EveryQuery.git@13d7df8155429aa2c70d59ec26e35b5684d54ce2",
+    "datasets>=3",
+    # FAISS search over document keys; GPU wheels have no H100 kernels, so search runs on the CPU there.
+    "faiss-gpu-cu12==1.13.2; sys_platform == 'linux'",
+    "simple-scaling-laws==0.2.0",
+    # Same torch and CUDA 12 libraries as scaling_laws/ (works on the cluster with faiss-gpu-cu12).
+    "torch==2.10.0",
+]
+
+[tool.uv]
+package = false
+override-dependencies = ["faiss-cpu==1.13.2; sys_platform != 'linux'"]
