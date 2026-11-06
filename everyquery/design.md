@@ -1,12 +1,11 @@
 # EveryQuery with retrieval: design
 
 Retrieval-augmented [EveryQuery](https://github.com/payalchandak/EveryQuery) (EQ) on MIMIC-IV, with
-the medical-textbook corpus. This replaces the next round of [`scaling_laws/`](../scaling_laws/design.md)
-and folds in the feedback on it (section 3).
+the medical-textbook corpus. This replaces the next round of [`scaling_laws/`](../scaling_laws/design.md).
 
 Status: design for review. Data preparation, the patient-only stage and the offline document
 encoding are runnable now ([`README.md`](README.md)); the retrieval model waits on the choice of
-objective (section 6).
+objective (section 5).
 
 ## 1. EveryQuery in brief
 
@@ -60,7 +59,7 @@ One causal Llama backbone reads a single stream:
 A separate grid fixes **1,000 query specifications** (query code, window, up to 2 conditioning
 queries) and labels them at one prediction time per held-out patient. The model scores the last
 query of each row. The evaluator reports one AUROC per specification with a 1,000-resample
-bootstrap. We additionally compute **test loss** per row from the predictions (section 8).
+bootstrap. We additionally compute **test loss** per row from the predictions (section 7).
 
 ### Commands
 
@@ -84,7 +83,7 @@ patient events ──► backbone ──► h_last (hidden state at the last pat
                                   ▼ document k: M memory vectors (precomputed, 1024-d) → linear → 384
 [ patient events | doc k memory (M) | W0 C0 A0 … W4 ]   ──► logits for document k
                                   │
-                       combine over the K documents (section 6)
+                       combine over the K documents (section 5)
 ```
 
 This is option (a) in the feedback: retrieval from the patient embedding before any query. The
@@ -126,40 +125,19 @@ The patient prefix is computed once and cached; each document adds a continuatio
 |---|---|---|
 | Patient-only | 269 | 1× |
 | K = 8, M = 16 | 269 + 8 × 29 | ≈ 1.9× |
-| K = 128 | 269 + 128 × 29 | ≈ 15× (most of it without gradients, section 6) |
+| K = 128 | 269 + 128 × 29 | ≈ 15× (most of it without gradients, section 5) |
 | K = 512 | 269 + 512 × 29 | ≈ 56× |
 
-## 3. Feedback and what this design does with it
-
-| Feedback | Here |
-|---|---|
-| Drop the static Qwen3 query (#3) | dropped |
-| Fewer, better-placed sizes; tune patient-only first, use it as the seed for retrieval | Stage 0 (section 7) picks the EQ configuration; retrieval starts from it |
-| No need for many task settings; ~1,000 to reduce variance | EQ trains on all codes; evaluation uses 1,000 query specs |
-| 3 draws instead of 5 | 3 draws |
-| Retrieve many more documents (128–512); performance should rise with K, then pick K; anneal later | K sweep {8, 32, 128, 512} in Stage 1; objectives in section 6 make large K affordable |
-| Estimate retrieval-only models at the same settings | configuration #3 (section 4) |
-| Count compute and parameters accurately | measured FLOPs and wall time per run, trainable and frozen parameters (section 8) |
-| Other law forms, loss scale only, drop poor fits | section 8 |
-| Paired runs and paired analyses | shared splits, contexts, evaluation grid and seeds; analysis on differences (section 8) |
-| PubMed | later; textbooks first |
-| Retrieval integrated with EveryQuery, rich encoding, larger K, option (a) | sections 2 and 6 |
-
-## 4. Configurations
+## 3. Configurations
 
 | # | Configuration | Windows attend to | Query |
 |---|---|---|---|
 | 1 | Patient only | patient events | – |
-| 2 | Retrieval | patient events + document memory | learned from `h_last` |
-| 3 | Retrieval only | document memory only (patient events masked for window tokens) | learned from `h_last` |
-| 4 | Random documents (control) | patient events + memory of random passages | as #2 |
+| 2 | Retrieval + patient | patient events + document memory | learned from `h_last` |
 
-#3 still uses the patient to *choose* documents, but must answer from the documents alone: it
-measures how much the documents carry, and how that changes with richer document encodings.
-#4 is the train-time control that separated knowledge from architecture last time (#2 − #4 and
-#4 − #1); run at the chosen configuration only.
+Retrieval-only and random-document configurations come later.
 
-## 5. Shapes, end to end (#2)
+## 4. Shapes, end to end (#2)
 
 | Step | Shape |
 |---|---|
@@ -170,10 +148,10 @@ measures how much the documents carry, and how that changes with richer document
 | Memory tokens | B × K × M × 384 |
 | Continuations (doc k + windows) | (B·K) × (M + 13) tokens attending to the cached prefix |
 | Window hidden states | B × K × 5 × 384 |
-| Per-document logits | B × K × 5 × V (built in chunks or not at all, section 6) |
+| Per-document logits | B × K × 5 × V (built in chunks or not at all, section 5) |
 | Combined | B × 5 × V or a scalar loss |
 
-## 6. Combining documents: options for review
+## 5. Combining documents: options for review
 
 Retrieval weights `w_k = softmax_k(q · key_k / √1024)` over the K retrieved documents + null.
 
@@ -191,10 +169,19 @@ pass 2 backpropagates only through the top-m documents by `π_k` (m = 4–8), re
 K = 128–512 affordable, and the posterior over many documents is the training signal the feedback
 asks for.
 
-**Suggested default:** B (per window) with the two-pass gradient; E as the first variant if the
-query learns slowly. A only as a check at small K. **To decide.**
+**Sharpness of B and C.** `log p(y_window | doc k)` sums V per-code terms, so small per-code
+differences between documents add up and the posterior `π_k` can become nearly one-hot from the
+first steps (hard EM on whichever document happens to fit best). B is therefore implemented with a
+temperature: `π_k ∝ w_k · p(y_window | doc k)^(1/τ)`, with τ = 1 the exact joint and τ = V close to
+an average over codes. τ is swept in Stage 1 alongside K.
 
-## 7. Stages and run counts (3 draws each)
+At test, EQ scores one code per row; under B its probability is the per-code marginal of the same
+model, `Σ_k w_k σ(z_kc)`, so training and evaluation agree.
+
+**Suggested default:** B (per window) with the two-pass gradient and a temperature; A at K = 8 as a
+check (affordable there); E if the query learns slowly. **To decide.**
+
+## 6. Stages and run counts (3 draws each)
 
 A draw is one training-label sample (seed = draw) and training seed = draw. The tuning labels and
 the evaluation grid are shared by every run, so all runs are paired on the same test rows.
@@ -202,8 +189,8 @@ the evaluation grid are shared by every run, so all runs are paired on the same 
 | Stage | What | Runs | Status |
 |---|---|---|---|
 | 0 | Patient-only configuration: 3 sizes × 2 learning rates | 18 | runnable |
-| 1 | K sweep at the Stage 0 configuration: #2 at K ∈ {8, 32, 128, 512}; #1, #3, #4 at the chosen K | ~21 | after section 6 |
-| 2 | Scaling around the chosen configuration: 3 sizes × 3 training-set sizes, #1–#3 | ~81 | after Stage 1 |
+| 1 | K sweep at the Stage 0 configuration: #2 at K ∈ {8, 32, 128, 512} (#1 from Stage 0) | 12 | after section 5 |
+| 2 | Scaling around the chosen configuration: 3 sizes × 3 training-set sizes, #1 and #2 | 54 | after Stage 1 |
 | 3 | PubMed | ~10 | later |
 
 Stage 0 sizes:
@@ -218,15 +205,15 @@ Learning rates 2e-4 (EQ default) and 5e-4. One epoch over 5M contexts, batch 96,
 every 5% of the epoch on 100 batches; the best checkpoint by tuning loss is tested. A pilot (base,
 2e-4, draw 1) times the run before the rest is submitted.
 
-## 8. Measurement and analysis
+## 7. Measurement and analysis
 
 - **Test loss per row**: binary cross-entropy of each grid row's probability against its label,
   averaged over rows. AUROC per specification is kept from `EQ_evaluate_multitask` but scaling fits
   use loss only.
 - **Repeated evaluations**: per run, 1,000 bootstrap resamples of the evaluation rows with fixed
   resample ids, shared across runs (`test_set_id`). Checkpoints are kept, so this can be redone.
-- **Paired analysis**: for each (setting, draw), the difference #1 − #2 (and #2 − #4, #4 − #1, #2 − #3)
-  on the same rows and resamples is one number; statistics are over those differences.
+- **Paired analysis**: for each (setting, draw), the difference #1 − #2 on the same rows and
+  resamples is one number; statistics are over those differences.
 - **Laws**: simple-scaling-laws, fitted on loss; separable-power plus the other forms it offers,
   compared by its diagnostics; a fit flagged `lack_of_fit` or `ill_conditioned_fit`, or with low
   R², is reported but not used.
@@ -236,7 +223,7 @@ every 5% of the epoch on 100 batches; the best checkpoint by tuning loss is test
   projections; Qwen3 and the memory table frozen). Document encoding and FAISS search counted
   separately.
 
-## 9. Environment
+## 8. Environment
 
 EQ requires polars ≥ 1.35, meds-torch-data 0.9 and meds-transforms ≥ 0.6.7; MedRAP pins older
 versions, so the two cannot share an environment. This directory has its own environment
@@ -244,9 +231,9 @@ versions, so the two cannot share an environment. This directory has its own env
 retrieval database (`scaling_laws/data/retrieval_db`) directly with `datasets` and FAISS, without
 importing MedRAP.
 
-## 10. Open decisions
+## 9. Open decisions
 
-1. Objective: B, C, D or E (section 6).
+1. Objective: B, C, D or E (section 5).
 2. Memory per document: M = 16 (and whether to try M = 4, 64).
 3. Top-m for the gradient pass: 4 or 8.
 4. Training-set sizes for Stage 2 (subsets of patients, shared across configurations).

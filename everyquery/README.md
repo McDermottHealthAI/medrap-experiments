@@ -19,7 +19,7 @@ retriever connects to it, the feedback it addresses, and the objectives to choos
 | Data: preprocessing, training labels (3 draws), evaluation grid (1,000 specs) | ready to run |
 | Stage 0: patient-only configuration search (18 runs) | ready to run |
 | Document encoding (keys index + memory) | ready to run |
-| Retrieval model (#2–#4), K sweep, paired analysis | after the objective decision ([`design.md` §6](design.md#6-combining-documents-options-for-review)) |
+| Retrieval + patient model (#2), K sweep, paired analysis | after the objective decision ([`design.md` §5](design.md#5-combining-documents-options-for-review)) |
 
 ## Running on the cluster
 

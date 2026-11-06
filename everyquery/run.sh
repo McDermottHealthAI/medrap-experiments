@@ -7,8 +7,8 @@
 #   everyquery/run.sh encode_docs                document keys index + contextual memory (GPU)
 #   everyquery/run.sh train CONFIG SIZE LR DRAW  train, predict on the grid, evaluate
 #
-#   CONFIG  patient_only  (retrieval configurations follow the objective decision, design.md §6)
-#   SIZE    small | base | large   (design.md §7)
+#   CONFIG  patient_only  (retrieval_patient follows the objective decision, design.md §5)
+#   SIZE    small | base | large   (design.md §6)
 #   LR      learning rate, e.g. 2e-4
 #   DRAW    1-3
 #
@@ -57,7 +57,7 @@ case "${1:-}" in
             large) LAYERS=12 HIDDEN=512 HEADS=8 FF=2048 ;;
             *) echo "unknown SIZE ${SIZE}" >&2; exit 1 ;;
         esac
-        [ "${CONFIG}" = patient_only ] || { echo "CONFIG ${CONFIG} not implemented yet (design.md §6)" >&2; exit 1; }
+        [ "${CONFIG}" = patient_only ] || { echo "CONFIG ${CONFIG} not implemented yet (design.md §5)" >&2; exit 1; }
         RUN="outputs/${CONFIG}_${SIZE}_lr${LR}/draw${DRAW}"
         mkdir -p "${RUN}"
         EQ_train --config-name=conditional_multitask_ar_config \
