@@ -4,8 +4,8 @@ Retrieval-augmented [EveryQuery](https://github.com/payalchandak/EveryQuery) (EQ
 the medical-textbook corpus. This replaces the next round of [`scaling_laws/`](../scaling_laws/design.md).
 
 Status: design for review. Data preparation, the patient-only stage and the offline document
-encoding are runnable now ([`README.md`](README.md)); the retrieval model waits on the choice of
-objective (section 5).
+encoding are runnable now ([`README.md`](README.md)); the retrieval model (per-window objective,
+section 5) is next.
 
 ## 1. EveryQuery in brief
 
@@ -151,7 +151,7 @@ Retrieval-only and random-document configurations come later.
 | Per-document logits | B × K × 5 × V (built in chunks or not at all, section 5) |
 | Combined | B × 5 × V or a scalar loss |
 
-## 5. Combining documents: options for review
+## 5. Combining documents
 
 Retrieval weights `w_k = softmax_k(q · key_k / √1024)` over the K retrieved documents + null.
 
@@ -178,8 +178,8 @@ an average over codes. τ is swept in Stage 1 alongside K.
 At test, EQ scores one code per row; under B its probability is the per-code marginal of the same
 model, `Σ_k w_k σ(z_kc)`, so training and evaluation agree.
 
-**Suggested default:** B (per window) with the two-pass gradient and a temperature; A at K = 8 as a
-check (affordable there); E if the query learns slowly. **To decide.**
+**Decision:** B (per window) with the two-pass gradient and a temperature τ. A at K = 8 as a check
+(affordable there); E if the query learns slowly.
 
 ## 6. Stages and run counts (3 draws each)
 
@@ -233,7 +233,7 @@ importing MedRAP.
 
 ## 9. Open decisions
 
-1. Objective: B, C, D or E (section 5).
+1. Temperature τ values for Stage 1 (e.g. 1, √V, V).
 2. Memory per document: M = 16 (and whether to try M = 4, 64).
 3. Top-m for the gradient pass: 4 or 8.
 4. Training-set sizes for Stage 2 (subsets of patients, shared across configurations).
