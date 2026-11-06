@@ -10,7 +10,7 @@ retrieval + patient**. Details in [`design.md`](design.md).
 | [`design.md`](design.md) | the design, for review |
 | [`run.sh`](run.sh) | one step: `preprocess`, `labels DRAW`, `eval_grid`, `encode_docs`, `train CONFIG SIZE LR DRAW` |
 | [`submit.sh`](submit.sh) | submits `data`, `docs`, `pilot` or `stage0` to SLURM; skips finished and queued work; refuses to train without data |
-| [`encode_docs.py`](encode_docs.py) | document key index + contextual Qwen3 memory (M vectors per passage) |
+| [`encode_docs.py`](encode_docs.py) | document key index (and contextual Qwen3 vectors per passage, kept for a richer encoding later) |
 | [`pyproject.toml`](pyproject.toml) | environment: EveryQuery pinned to `13d7df8`, torch 2.10, FAISS, datasets, simple-scaling-laws |
 
 ## EveryQuery today (#1)
@@ -33,29 +33,30 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    P["Patient events<br/>last ≤ 256 codes"] --> LP["Causal Llama over the patient events<br/>run once, reused for the rest of the stream"]
+    P["Patient events<br/>last ≤ 256 codes"] --> LP["Causal Llama over the patient events"]
     LP --> HL["Hidden state at the last patient event<br/>B × 384"]
     HL --> QP["Query: linear 384 → 1024<br/>trained"]
-    QP --> F["FAISS search over textbook keys<br/>top K, score s_k = query · key"]
-    DB[("Textbook passages<br/>precomputed: keys + contextual Qwen3 vectors")] --> F
-    F --> MEM["Memory of the K documents<br/>M vectors each, 1024 → 384, + s_k · u<br/>B × (K·M) × 384"]
-    MEM --> S
-    LP --> S
+    QP --> F["FAISS search over textbook keys<br/>top K, score s_k = query · key / √1024"]
+    DB[("Textbook passages<br/>one 1024-d key each")] --> F
+    F --> DT["One token per passage<br/>linear(key_k) + s_k · u<br/>B × K × 384"]
+    DT --> S
+    P --> S
     Q["Window tokens<br/>W0, C0 A0, … , W4"] --> S
-    S["One stream: [ patient events | doc 1 … doc K memory | W0 C0 A0 … W4 ]<br/>B × (S + K·M + 13) tokens"]
+    S["One stream: [ patient events | K passage tokens | W0 C0 A0 … W4 ]<br/>B × (S + K + 13) tokens"]
     S --> L["Causal Llama<br/>same backbone"]
     L --> H["Hidden state at each W token<br/>B × 5 × 384"]
     H --> R["× code-embedding table<br/>one logit per code"]
     R --> O["Logits B × 5 × V"]
     O --> Loss["BCE against the labels<br/>same loss as #1"]
     classDef added fill:#e7ecfd,stroke:#3b5bdb,color:#1d1d1f
-    class HL,QP,F,DB,MEM added
+    class LP,HL,QP,F,DB,DT added
 ```
 
-Blue boxes are added by retrieval; the rest is EveryQuery as above. All K documents are in the
-stream at once and attention decides which matter; the loss is unchanged. The score term `s_k · u`
-is what trains the query. The only settings are K (documents) and M (memory vectors per document);
-cost grows with K × M ([`design.md`](design.md) §2).
+Blue boxes are added by retrieval; the rest is EveryQuery as above. Each retrieved passage is one
+token: its key embedding projected to 384, plus its search score times a learned vector `u`. The
+score term is what trains the query (nothing flows back through the search). The loss and
+evaluation are unchanged; the only setting is K. Retrieval runs on L40S GPUs (FAISS has no H100
+kernels). Details in [`design.md`](design.md) §2.
 
 ## Status
 
@@ -63,9 +64,9 @@ cost grows with K × M ([`design.md`](design.md) §2).
 |---|---|
 | Data: preprocessing, training labels (3 draws), evaluation grid (1,000 specs) | ready to run |
 | Stage 0: patient-only configuration search (18 runs) | ready to run |
-| Document encoding (keys index + memory) | ready to run |
-| Retrieval + patient model (#2), documents in context | next |
-| Stage 1 (K, M) sweep, paired analysis | after #2 is implemented |
+| Document key index | done |
+| Retrieval + patient model (#2), one token per passage | next |
+| Stage 1 K sweep, paired analysis | after #2 is implemented |
 
 ## Running on the cluster
 
@@ -76,7 +77,7 @@ uv sync                      # .venv: EveryQuery + torch 2.10 (CUDA 12) + FAISS
 # Data (CPU): preprocess, then 3 training-label draws and the evaluation grid after it
 ./submit.sh data
 
-# Retrieval memory (GPU, independent of the above); reads ../scaling_laws/data/retrieval_db
+# Document key index (GPU, independent of the above); reads ../scaling_laws/data/retrieval_db
 ./submit.sh docs
 
 # After the data jobs: one pilot run to time training, then Stage 0

@@ -29,7 +29,7 @@ flowchart LR
     WB -->|"W0 … W4<br/>B × 5 × 384"| ST
     CS -->|"C0..C3 codes, A0..A3 yes/no<br/>B × 4"| CB
     CB -->|"C, A tokens<br/>B × 8 × 384"| ST
-    ST -->|"[patient | doc memory | W0 C0 A0 … W4]<br/>B × (S + K·M + 13) × 384, time positions<br/>(#1: no doc memory)"| LL
+    ST -->|"[patient | K passage tokens | W0 C0 A0 … W4]<br/>B × (S + K + 13) × 384, time positions<br/>(#1: no passage tokens)"| LL
     LL -->|"hidden state at each W<br/>B × 5 × 384"| RO
     RO -->|"one logit per code<br/>B × 5 × V"| LO
     LB[["Labels<br/>B × 5 × V bits"]] -->|"did each code occur<br/>in each window"| LO
@@ -37,24 +37,23 @@ flowchart LR
     PB["Backbone over the<br/>patient tokens<br/>(same weights)"]
     QP["Query<br/>projection"]
     FS["FAISS<br/>search"]
-    DB[("Textbook passages<br/>keys + contextual<br/>Qwen3 vectors")]
-    MT["Memory-token<br/>builder"]
+    DB[("Textbook passages<br/>one key each")]
+    MT["Passage-token<br/>builder"]
 
     CE -->|"patient tokens<br/>B × S × 384"| PB
     PB -->|"hidden state at the<br/>last patient event<br/>B × 384"| QP
     QP -->|"query<br/>B × 1024"| FS
     DB -->|"125,847 keys<br/>1024-d"| FS
-    FS -->|"top K passages<br/>+ scores s_k"| MT
-    DB -->|"M vectors per passage<br/>1024-d"| MT
-    MT -->|"document memory<br/>B × (K·M) × 384"| ST
+    FS -->|"keys of the top K<br/>+ scores s_k"| MT
+    MT -->|"one token per passage<br/>B × K × 384"| ST
 
     classDef retrieval fill:#e7ecfd,stroke:#3b5bdb,color:#1d1d1f
     class PB,QP,FS,DB,MT retrieval
 ```
 
 Shapes use the defaults: hidden width 384, 5 windows, `S` ≤ 256 patient codes, `V` codes in the
-vocabulary, `K` retrieved passages with `M` memory vectors each. With retrieval the stream is
-`[patient | doc 1 … doc K memory | W0 C0 A0 … W4]`, `B × (S + K·M + 13) × 384`.
+vocabulary, `K` retrieved passages. With retrieval the stream is
+`[patient | K passage tokens | W0 C0 A0 … W4]`, `B × (S + K + 13) × 384`.
 
 ### Components
 
@@ -66,7 +65,7 @@ vocabulary, `K` retrieved passages with `M` memory vectors each. With retrieval 
 | **Code embedding table** | One learned 384-d vector per code (`V × 384`). | Turns patient codes into vectors; the same table also embeds C*i* and the start/end codes, and scores the outputs (readout). |
 | **Window-token builder** | For each window: start part (a small network on the delay in years, *or* the start code's vector + a "start" marker) + end part (a small network on the duration, *or* the end code's vector + a "bound" marker) + a token-type vector + a window-number vector. | Encodes "which period" as one token, W*i*. |
 | **Condition / answer tokens** | C*i* = the conditioning code's vector; A*i* = a learned "yes" or "no" vector; each plus type and window-number vectors. | Feed earlier outcomes forward. |
-| **Stream assembly** | Concatenates `[patient tokens | W0 C0 A0 | W1 C1 A1 | … | W4]` (with retrieval: the document memory goes between the patient tokens and W0). Positions are clock time in hours (rotary): patient tokens at their own hour, memory and question tokens at the hour of the last patient event. | One sequence for the backbone. |
+| **Stream assembly** | Concatenates `[patient tokens | W0 C0 A0 | W1 C1 A1 | … | W4]` (with retrieval: the K passage tokens go between the patient tokens and W0). Positions are clock time in hours (rotary): patient tokens at their own hour, passage and question tokens at the hour of the last patient event. | One sequence for the backbone. |
 | **Causal Llama backbone** | A standard decoder-only transformer: 12 layers, width 384, 6 heads, feed-forward 1,536. Causal: each token sees only tokens before it. | Builds a summary at each W*i* of the patient and of the questions and answers before it. W*i* never sees its own C*i*/A*i*. |
 | **Readout (tied code table)** | The hidden state at W*i* times the code embedding table, plus a per-code bias (starts at −3, as most codes are rare). | One logit per code: P(code occurs in window *i*) = sigmoid(logit). |
 | **Labels** | For every window, one bit per code: did it occur in that window. | Training targets. |
@@ -76,13 +75,13 @@ vocabulary, `K` retrieved passages with `M` memory vectors each. With retrieval 
 
 | Component | What it is | What it does |
 |---|---|---|
-| **Backbone over the patient tokens** | The same Llama, run on the patient tokens alone first. Causal, so the result is identical to the patient part of the full pass; it is reused, not recomputed. | Gives a summary of the patient before any question: the hidden state at the last patient event. |
+| **Backbone over the patient tokens** | The same Llama, run on the patient tokens alone first (a second pass per batch). Causal, so the result equals the patient part of the full pass. | Gives a summary of the patient before any question: the hidden state at the last patient event. |
 | **Query projection** | A learned linear layer, 384 → 1,024. | Turns that summary into a search query in the passages' key space. |
-| **Textbook passages** | 125,847 medical-textbook passages, precomputed once ([`encode_docs.py`](encode_docs.py)): a 1,024-d key each (Qwen3 embedding of the passage) and 16 memory vectors each (Qwen3's contextual token states, averaged over 16 chunks of 16 tokens). Frozen. | What can be looked up, and what a looked-up passage contributes. |
-| **FAISS search** | Inner-product nearest-neighbour search over the keys. | Returns the top K passages for each patient and their scores `s_k = query · key_k / √1024`. |
-| **Memory-token builder** | Each passage's 16 vectors averaged down to M, projected 1,024 → 384 (learned), plus `s_k · u` (`u` a learned 384-d vector) and a "memory" token type. | Turns the K passages into K·M tokens for the stream. The score term is how the query gets a gradient: nothing flows back through the search itself. |
+| **Textbook passages** | 125,847 medical-textbook passages, each with a 1,024-d key: its Qwen3-Embedding vector, precomputed and frozen. The search index is built by [`encode_docs.py`](encode_docs.py). | What can be looked up; the key is also what a passage contributes. |
+| **FAISS search** | Inner-product nearest-neighbour search over the keys, on an L40S GPU. | Returns the top K passages for each patient and their scores `s_k = query · key_k / √1024`. |
+| **Passage-token builder** | `token_k = linear(key_k) + s_k · u`: the key projected 1,024 → 384 (learned), plus the score times a learned 384-d vector `u`, plus a "passage" token type. | One token per passage. The score term is how the query gets a gradient: nothing flows back through the search itself. |
 
-The window tokens then attend to the patient tokens and to every passage's memory; attention decides
+The window tokens then attend to the patient tokens and to every passage token; attention decides
 which passages matter. Readout, labels and loss are unchanged.
 
 ## Training
@@ -161,9 +160,9 @@ evaluation reads out one code at the last window.
 
 | | #1 Patient only | #2 Retrieval + patient |
 |---|---|---|
-| Stream | `[patient | W0 C0 A0 … W4]` | `[patient | K·M memory tokens | W0 C0 A0 … W4]` |
-| Passes per batch | one | the patient part once, then the rest of the stream on top of it |
-| New trained parameters | – | query projection, memory projection, `u` (~0.8M) |
+| Stream | `[patient | W0 C0 A0 … W4]` | `[patient | K passage tokens | W0 C0 A0 … W4]` |
+| Passes per batch | one | two: the patient tokens alone (for the query), then the full stream |
+| New trained parameters | – | query projection, key projection, `u` (~0.8M) |
 | Loss | binary cross-entropy over every (window, code) | the same |
 | Evaluation | grid → predict → AUROC per spec | the same; retrieval runs for every row as in training |
-| Settings | – | K (passages), M (memory vectors per passage) |
+| Settings | – | K (passages) |
