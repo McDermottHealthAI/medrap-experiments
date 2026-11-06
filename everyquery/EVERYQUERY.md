@@ -124,9 +124,3 @@ flowchart LR
 
 Training and evaluation use the same model pass: training reads out all `V` codes at every window,
 evaluation reads out one code at the last window.
-
-## How this relates to MedRAP's tasks
-
-MedRAP's tasks ("will code X occur in the 30 days after the prediction time?") are one EQ window
-(start = prediction time, end = +30 days) and one code. EQ answers that for every code and any
-window from the same model, and can condition on earlier answers.
