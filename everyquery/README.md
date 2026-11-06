@@ -32,32 +32,29 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    P["Patient events<br/>last ≤ 256 codes"] --> LP["Causal Llama over the patient events<br/>computed once, cached"]
+    P["Patient events<br/>last ≤ 256 codes"] --> LP["Causal Llama over the patient events<br/>run once, reused for the rest of the stream"]
     LP --> HL["Hidden state at the last patient event<br/>B × 384"]
     HL --> QP["Query: linear 384 → 1024<br/>trained"]
-    QP --> F["FAISS search over textbook keys<br/>top K + null document"]
-    DB[("Textbook passages<br/>precomputed: keys + 16 contextual Qwen3 vectors each")] --> F
-    F --> MEM["Memory of document k<br/>16 × 1024 → linear → 16 × 384"]
-    F --> WK["Retrieval weights w_k<br/>softmax of query · key"]
+    QP --> F["FAISS search over textbook keys<br/>top K, score s_k = query · key"]
+    DB[("Textbook passages<br/>precomputed: keys + contextual Qwen3 vectors")] --> F
+    F --> MEM["Memory of the K documents<br/>M vectors each, 1024 → 384, + s_k · u<br/>B × (K·M) × 384"]
     MEM --> S
-    Q["Window tokens<br/>W0, C0 A0, … , W4"] --> S
-    S["Stream per document k:<br/>[ cached patient | doc k memory (16) | W0 C0 A0 … W4 ]"]
-    S --> L["Causal Llama, continuation only<br/>(B·K) × 29 tokens"]
-    L --> O["Logits per document<br/>B × K × 5 × V"]
-    O --> LL["Window log-likelihood per document<br/>B × K × 5"]
-    LL --> C
-    WK --> C
-    C["Per window: log Σ_k w_k · p(window | doc k)^(1/τ)<br/>all K scored without gradients; backprop through top m"]
-    C --> Loss["Loss"]
     LP --> S
+    Q["Window tokens<br/>W0, C0 A0, … , W4"] --> S
+    S["One stream: [ patient events | doc 1 … doc K memory | W0 C0 A0 … W4 ]<br/>B × (S + K·M + 13) tokens"]
+    S --> L["Causal Llama<br/>same backbone"]
+    L --> H["Hidden state at each W token<br/>B × 5 × 384"]
+    H --> R["× code-embedding table<br/>one logit per code"]
+    R --> O["Logits B × 5 × V"]
+    O --> Loss["BCE against the labels<br/>same loss as #1"]
     classDef added fill:#e7ecfd,stroke:#3b5bdb,color:#1d1d1f
-    class HL,QP,F,DB,MEM,WK,C added
+    class HL,QP,F,DB,MEM added
 ```
 
-Blue boxes are added by retrieval; the rest is EveryQuery as above.
-
-The backbone and the code readout are shared. #2 adds the query projection, the search, the memory
-tokens and the per-window combination over documents ([`design.md`](design.md) §2 and §5).
+Blue boxes are added by retrieval; the rest is EveryQuery as above. All K documents are in the
+stream at once and attention decides which matter; the loss is unchanged. The score term `s_k · u`
+is what trains the query. The only settings are K (documents) and M (memory vectors per document);
+cost grows with K × M ([`design.md`](design.md) §2).
 
 ## Status
 
@@ -66,8 +63,8 @@ tokens and the per-window combination over documents ([`design.md`](design.md) �
 | Data: preprocessing, training labels (3 draws), evaluation grid (1,000 specs) | ready to run |
 | Stage 0: patient-only configuration search (18 runs) | ready to run |
 | Document encoding (keys index + memory) | ready to run |
-| Retrieval + patient model (#2), per-window objective | next |
-| K and τ sweep (Stage 1), paired analysis | after #2 is implemented |
+| Retrieval + patient model (#2), documents in context | next |
+| Stage 1 (K, M) sweep, paired analysis | after #2 is implemented |
 
 ## Running on the cluster
 
