@@ -32,7 +32,7 @@ not (0).
 
 ### The model
 
-One causal Llama backbone reads a single stream:
+One causal transformer (Llama architecture) reads a single stream:
 
 ```
 [ patient events (≤ 256) | W0 | C0 A0 | W1 | C1 A1 | W2 | C2 A2 | W3 | C3 A3 | W4 ]
@@ -49,7 +49,7 @@ One causal Llama backbone reads a single stream:
 | Shape | Default |
 |---|---|
 | Stream | B × (S + 13) tokens, S ≤ 256 |
-| Backbone | 12 layers, hidden 384, 6 heads, feed-forward 1,536 |
+| Transformer | 12 layers, hidden 384, 6 heads, feed-forward 1,536 |
 | Window hidden states | B × 5 × 384 |
 | Logits | B × 5 × V |
 | Loss | binary cross-entropy over every (window, code), padding codes excluded |
@@ -75,7 +75,7 @@ bootstrap. We additionally compute **test loss** per row from the predictions (s
 ## 2. What retrieval adds
 
 ```
-patient events ──► backbone ──► h_last (hidden state at the last patient event)
+patient events ──► transformer ──► h_last (hidden state at the last patient event)
                                   │
                                   ▼ query q: linear 384 → 1024
                      FAISS top-K over textbook keys, scores s_k = q · key_k / √1024
@@ -87,12 +87,12 @@ patient events ──► backbone ──► h_last (hidden state at the last pat
 The simplest version: retrieval from the patient embedding before any query, one token per
 passage, and EveryQuery's own loss.
 
-1. The backbone runs over the patient events alone; the hidden state at the last event, `h_last`,
+1. The transformer runs over the patient events alone; the hidden state at the last event, `h_last`,
    becomes the query through one linear layer.
 2. FAISS returns the top K passages by inner product with their keys.
 3. Each passage becomes one token: its key embedding (the passage's 1,024-d Qwen3-Embedding
    vector, already in the database) projected to 384, plus `s_k · u`.
-4. The backbone runs over the full stream; the window tokens attend to the patient events and to
+4. The transformer runs over the full stream; the window tokens attend to the patient events and to
    every passage token. Readout and loss are those of #1.
 
 ### Training the query
@@ -144,7 +144,7 @@ Retrieval-only and random-document configurations come later.
 | Step | Shape |
 |---|---|
 | Patient events | B × S |
-| Backbone over the patient events | B × S × 384 |
+| Transformer over the patient events | B × S × 384 |
 | Query from the last patient event | B × 1,024 |
 | Retrieve | B × K passage ids, keys and scores |
 | Passage tokens | B × K × 384 |
@@ -198,7 +198,7 @@ every 5% of the epoch on 100 batches; the best checkpoint by tuning loss is test
   R², is reported but not used.
 - **Compute and parameters**: one training step under `torch.utils.flop_counter.FlopCounterMode`
   gives FLOPs per step (forward + backward, including the patient pass used for the query); times steps run. Wall time per
-  run from the trainer. Parameters reported as trainable and frozen (backbone, embeddings,
+  run from the trainer. Parameters reported as trainable and frozen (transformer, embeddings,
   projections; passage keys frozen). FAISS search counted
   separately.
 

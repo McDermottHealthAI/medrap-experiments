@@ -43,7 +43,7 @@ flowchart TB
     P --> S
     Q["Window tokens<br/>W0, C0 A0, … , W4"] --> S
     S["One stream: [ patient events | K passage tokens | W0 C0 A0 … W4 ]<br/>B × (S + K + 13) tokens"]
-    S --> L["Causal Llama<br/>same backbone"]
+    S --> L["Transformer (Llama)<br/>same as above"]
     L --> H["Hidden state at each W token<br/>B × 5 × 384"]
     H --> R["× code-embedding table<br/>one logit per code"]
     R --> O["Logits B × 5 × V"]

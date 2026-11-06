@@ -19,7 +19,7 @@ flowchart LR
     WB["Window-token<br/>builder"]
     CB["Condition / answer<br/>tokens"]
     ST["Stream<br/>assembly"]
-    LL["Causal Llama<br/>backbone"]
+    LL["Transformer<br/>(causal Llama)"]
     RO["Readout<br/>(tied code table)"]
     LO["Loss"]
 
@@ -34,7 +34,7 @@ flowchart LR
     RO -->|"one logit per code<br/>B × 5 × V"| LO
     LB[["Labels<br/>B × 5 × V bits"]] -->|"did each code occur<br/>in each window"| LO
 
-    PB["Backbone over the<br/>patient tokens<br/>(same weights)"]
+    PB["Transformer over the<br/>patient tokens<br/>(same weights)"]
     QP["Query<br/>projection"]
     FS["FAISS<br/>search"]
     DB[("Textbook passages<br/>one key each")]
@@ -65,8 +65,8 @@ vocabulary, `K` retrieved passages. With retrieval the stream is
 | **Code embedding table** | One learned 384-d vector per code (`V × 384`). | Turns patient codes into vectors; the same table also embeds C*i* and the start/end codes, and scores the outputs (readout). |
 | **Window-token builder** | For each window: start part (a small network on the delay in years, *or* the start code's vector + a "start" marker) + end part (a small network on the duration, *or* the end code's vector + a "bound" marker) + a token-type vector + a window-number vector. | Encodes "which period" as one token, W*i*. |
 | **Condition / answer tokens** | C*i* = the conditioning code's vector; A*i* = a learned "yes" or "no" vector; each plus type and window-number vectors. | Feed earlier outcomes forward. |
-| **Stream assembly** | Concatenates `[patient tokens | W0 C0 A0 | W1 C1 A1 | … | W4]` (with retrieval: the K passage tokens go between the patient tokens and W0). Positions are clock time in hours (rotary): patient tokens at their own hour, passage and question tokens at the hour of the last patient event. | One sequence for the backbone. |
-| **Causal Llama backbone** | A standard decoder-only transformer: 12 layers, width 384, 6 heads, feed-forward 1,536. Causal: each token sees only tokens before it. | Builds a summary at each W*i* of the patient and of the questions and answers before it. W*i* never sees its own C*i*/A*i*. |
+| **Stream assembly** | Concatenates `[patient tokens | W0 C0 A0 | W1 C1 A1 | … | W4]` (with retrieval: the K passage tokens go between the patient tokens and W0). Positions are clock time in hours (rotary): patient tokens at their own hour, passage and question tokens at the hour of the last patient event. | One sequence for the transformer. |
+| **Transformer (causal Llama)** | The main network: a standard decoder-only transformer, 12 layers, width 384, 6 heads, feed-forward 1,536. Causal: each token sees only tokens before it. | Builds a summary at each W*i* of the patient and of the questions and answers before it. W*i* never sees its own C*i*/A*i*. |
 | **Readout (tied code table)** | The hidden state at W*i* times the code embedding table, plus a per-code bias (starts at −3, as most codes are rare). | One logit per code: P(code occurs in window *i*) = sigmoid(logit). |
 | **Labels** | For every window, one bit per code: did it occur in that window. | Training targets. |
 | **Loss** | Binary cross-entropy over every (window, code). | See below. |
@@ -75,7 +75,7 @@ vocabulary, `K` retrieved passages. With retrieval the stream is
 
 | Component | What it is | What it does |
 |---|---|---|
-| **Backbone over the patient tokens** | The same Llama, run on the patient tokens alone first (a second pass per batch). Causal, so the result equals the patient part of the full pass. | Gives a summary of the patient before any question: the hidden state at the last patient event. |
+| **Transformer over the patient tokens** | The same Llama, run on the patient tokens alone first (a second pass per batch). Causal, so the result equals the patient part of the full pass. | Gives a summary of the patient before any question: the hidden state at the last patient event. |
 | **Query projection** | A learned linear layer, 384 → 1,024. | Turns that summary into a search query in the passages' key space. |
 | **Textbook passages** | 125,847 medical-textbook passages, each with a 1,024-d key: its Qwen3-Embedding vector, precomputed and frozen. The search index is built by [`encode_docs.py`](encode_docs.py). | What can be looked up; the key is also what a passage contributes. |
 | **FAISS search** | Inner-product nearest-neighbour search over the keys, on an L40S GPU. | Returns the top K passages for each patient and their scores `s_k = query · key_k / √1024`. |
@@ -110,7 +110,7 @@ flowchart LR
 
 1. Take a batch of 96 contexts.
 2. Build the stream for each (patient tokens, window tokens, condition/answer tokens) and run the
-   backbone once.
+   transformer once.
 3. Read out `5 × V` logits per context and compare to the `5 × V` labels.
 
 ### Loss
