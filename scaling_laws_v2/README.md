@@ -12,6 +12,7 @@ advisor's comments. The design is in [`design.md`](design.md).
 | [`gaps.py`](gaps.py) | the paired v1 numbers below, from `results/scaling_laws/runs.csv` |
 | [`run.sh`](run.sh) | one step: `tasks DRAW`, or `train CONFIG W D DRAW` (train, then test) |
 | [`submit.sh`](submit.sh) | submits `tasks`, `stage0` or `stage1` to SLURM; skips finished and queued runs |
+| [`pyproject.toml`](pyproject.toml) | environment: MedRAP with the fixes (v1's configurations use `../scaling_laws/.venv`) |
 
 ## 1. What the v1 runs show
 
@@ -119,7 +120,8 @@ Details in [`design.md`](design.md).
 | Piece | Status |
 |---|---|
 | Diagnosis of the v1 results (this page) | done |
-| Stage 0: patient-only configuration search | ready to run (needs `run.sh tasks` first) |
-| Stage 1 rungs on existing MedRAP (#1, v1 #2 with matched-K test, #4) | ready to run |
-| MedRAP changes for the fixed fusion, retrieval only, precomputed documents, sampled K | to implement (design.md §8) |
+| MedRAP M1 masked mean ([MedRAP#123](https://github.com/McDermottHealthAI/MedRAP/pull/123)), M2 gated fusion + retrieval only ([#124](https://github.com/McDermottHealthAI/MedRAP/pull/124)) | in review; [`pyproject.toml`](pyproject.toml) pins #124 |
+| Stage 0: patient-only configuration search | ready to run (needs `submit.sh tasks` first) |
+| Stage 1 ladder, all 7 configurations | ready to run |
+| MedRAP M3 precomputed documents, M4 sampled K | to implement (design.md §8) |
 | Stages 2–4 | after the MedRAP changes and Stage 1 |
