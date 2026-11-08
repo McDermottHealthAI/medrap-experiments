@@ -4,8 +4,7 @@
 #   scaling_laws_v2/submit.sh tasks    # T = 1,000 task labels for draws 1-3 (CPU); run first
 #   scaling_laws_v2/submit.sh stage0   # patient-only search: 3 W x 3 lr x 2 dropout, D 153K (54 runs)
 #   LR=... DROPOUT=... scaling_laws_v2/submit.sh stage1
-#                                      # ladder rungs on current MedRAP (A0, A1, v1 #4) with
-#                                      # Stage 0's settings: 3 configs x 2 W x 2 D (36 runs)
+#                                      # the ladder (design.md §7): 7 configs x 2 W x 2 D (84 runs)
 #
 # Runs whose tests already exist or that are already queued are skipped, so it is safe to resubmit.
 
@@ -30,7 +29,7 @@ submit_train() {  # CONFIG W D LR DROPOUT
     local run="outputs/${config}_W${w}_D${d}_lr${lr}_do${dropout}"
     case "${config}" in
         patient_only) last=test_last ;;
-        v1_random_docs) last=test_topK ;;
+        *random_docs) last=test_topK ;;
     esac
     [ "${config}" = patient_only ] || run="${run}_K${K:-4}"
     local name="v2-${run#outputs/}"
@@ -66,7 +65,7 @@ case "${1:-}" in
         ;;
     stage1)
         : "${LR:?set LR from Stage 0}" "${DROPOUT:?set DROPOUT from Stage 0}"
-        for config in patient_only v1_retrieval v1_random_docs; do
+        for config in patient_only v1_retrieval v1_random_docs v1_masked retrieval random_docs retrieval_only; do
             for w in 64x2x4 256x4x8; do
                 for d in 10000 153220; do
                     submit_train "${config}" "${w}" "${d}" "${LR}" "${DROPOUT}"

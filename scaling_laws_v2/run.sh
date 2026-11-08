@@ -6,10 +6,13 @@
 #   scaling_laws_v2/run.sh train CONFIG W D DRAW
 #       Train one run (checkpoints kept), then test it.
 #
-#   CONFIG  patient_only     #1
-#           v1_retrieval     v1's #2 (per-document cross-attention, learned query): ladder rung A1
-#           v1_random_docs   v1's #4 (as v1_retrieval, random documents): reference for rung A4
-#           v1_masked, retrieval, retrieval_only, random_docs: rungs A2-A5, need MedRAP M1/M2 (design.md §8)
+#   CONFIG  patient_only     #1 (rung A0)
+#           v1_retrieval     v1's #2 (per-document cross-attention, learned query), v1 code (A1)
+#           v1_random_docs   v1's #4 (as v1_retrieval, random documents), v1 code (reference)
+#           v1_masked        v1's #2 with the masked mean over codes, MedRAP#123 (A2)
+#           retrieval        fixed #2: gated fusion, starts as #1, MedRAP#124 (A3)
+#           random_docs      fixed #2 with random documents (A4)
+#           retrieval_only   fixed #R: the documents read with the retrieval query, no patient (A5)
 #   W       WIDTHxLAYERSxHEADS, e.g. 128x2x4
 #   D       training patients: 3000 10000 30000 100000 153220
 #   DRAW    1-3 (task seed 101 * DRAW, training seed DRAW)
@@ -21,12 +24,16 @@
 # Tests, each in RUN/test_*: patient_only: best, last. Retrieval: top K + null (as trained), top 1 +
 # null (v1's test), and K random documents + null (reliance on the retrieved documents).
 #
-# Uses ../scaling_laws/.venv (MedRAP pinned there), its cohort and its retrieval database.
+# Environments: v1_retrieval and v1_random_docs use ../scaling_laws/.venv (MedRAP c3700ab, v1's code);
+# everything else uses .venv here (pyproject.toml: MedRAP with the fixes). The cohort and retrieval
+# database are v1's.
 
 set -euo pipefail
 cd "$(dirname "$0")"
+VENV=.venv
+case "${1:-} ${2:-}" in "train v1_retrieval" | "train v1_random_docs") VENV=../scaling_laws/.venv ;; esac
 # shellcheck source=/dev/null
-[ ! -f ../scaling_laws/.venv/bin/activate ] || source ../scaling_laws/.venv/bin/activate
+[ ! -f "${VENV}/bin/activate" ] || source "${VENV}/bin/activate"
 export WANDB_MODE="${WANDB_MODE:-offline}"
 
 COHORT_DIR="${COHORT_DIR:-../scaling_laws/data/cohort}"
@@ -106,8 +113,8 @@ case "${CONFIG}" in
         ARGS+=(fusion=passthrough "query_projector.in_dim=${WIDTH}" "head.in_dim=${WIDTH}"
             training/loss=multitask_binary_bce)
         ;;
-    v1_retrieval | v1_random_docs)
-        [ "${CONFIG}" = v1_retrieval ] || ARGS+=(retriever.ablation_mode=random_docs)
+    v1_retrieval | v1_random_docs | v1_masked | retrieval | random_docs | retrieval_only)
+        case "${CONFIG}" in v1_random_docs | random_docs) ARGS+=(retriever.ablation_mode=random_docs) ;; esac
         ARGS+=(
             query_projector=sequence_mean_1024 "query_projector.in_dim=${WIDTH}"
             retriever=hf_dataset
@@ -118,18 +125,16 @@ case "${CONFIG}" in
             retriever.cache_payloads=true
             retriever.payload_cache_device=cuda
             retrieval_encoder=qwen3_token_embeddings
-            fusion=cross_attention_perdoc_medium
-            "fusion.dropout=${DROPOUT}"
             marginalized_retrieval=true
             marginalized_output_mode=binary
-            head.in_dim=256
             training/loss=multitask_binary_bce_marginalized
             "training.loss.num_tasks=${T}"
         )
-        ;;
-    v1_masked | retrieval | retrieval_only | random_docs)
-        echo "${CONFIG} needs MedRAP M1/M2 (design.md §8)" >&2
-        exit 1
+        case "${CONFIG}" in
+            v1_*) ARGS+=(fusion=cross_attention_perdoc_medium "fusion.dropout=${DROPOUT}" head.in_dim=256) ;;
+            *) ARGS+=(fusion=gated_doc "fusion.dropout=${DROPOUT}" "head.in_dim=${WIDTH}") ;;
+        esac
+        [ "${CONFIG}" != retrieval_only ] || ARGS+=(fusion.mode=query)
         ;;
     *) echo "unknown CONFIG ${CONFIG}" >&2; exit 1 ;;
 esac
@@ -176,8 +181,8 @@ else
     CK="${RUN}/train/checkpoints/last.ckpt"
     [ "${CKPT}" = last ] || CK="${BEST}"
     test_run topK "${CK}" "retriever.k=${K}"
-    # v1_random_docs already tests on random documents (its ARGS), so topK is its only test.
-    [ "${CONFIG}" = v1_random_docs ] && exit 0
+    # The random-documents configurations already test on random documents (their ARGS).
+    case "${CONFIG}" in *random_docs) exit 0 ;; esac
     test_run top1 "${CK}" retriever.k=1
     test_run randomK "${CK}" "retriever.k=${K}" retriever.ablation_mode=random_docs
 fi

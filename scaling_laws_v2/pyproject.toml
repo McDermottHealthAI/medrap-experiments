@@ -1,0 +1,17 @@
+[project]
+name = "scaling-laws-v2"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    # MedRAP#124 (GatedDocFusion), stacked on #123 (masked mean in PerDocCrossAttentionFusion).
+    "medrap @ git+https://github.com/McDermottHealthAI/MedRAP.git@aab99d7a89a7e5f82d0b514fa79b4dda7d90f84e",
+    # FAISS search on the GPU (retriever.device=0); same version as MedRAP's faiss-cpu.
+    "faiss-gpu-cu12==1.13.2; sys_platform == 'linux'",
+    "matplotlib>=3.9",
+    "simple-scaling-laws==0.2.0",
+]
+
+[tool.uv]
+package = false
+# faiss-cpu and faiss-gpu-cu12 install the same `faiss` module, so use only the GPU build on Linux.
+override-dependencies = ["faiss-cpu==1.13.2; sys_platform != 'linux'"]
