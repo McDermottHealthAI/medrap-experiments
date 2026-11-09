@@ -38,7 +38,7 @@ def collect(outputs: Path) -> pl.DataFrame:
             "top1_mode_frac": last.get("retrieval/test/top1_mode_frac") if m["K"] else None,
             "top1_unique_ratio": last.get("retrieval/test/top1_unique_ratio") if m["K"] else None,
         })
-    return pl.DataFrame(rows)
+    return pl.DataFrame(rows, infer_schema_length=None)
 
 
 def gates(outputs: Path) -> pl.DataFrame:
@@ -49,7 +49,7 @@ def gates(outputs: Path) -> pl.DataFrame:
         if gate is not None:
             m = RUN.fullmatch(ckpt.parts[-5]).groupdict()
             rows.append({"config": m["config"], "W": m["W"], "D": int(m["D"]), "gate": float(torch.tanh(gate))})
-    return pl.DataFrame(rows)
+    return pl.DataFrame(rows, infer_schema_length=None)
 
 
 def main(outputs: Path) -> None:
