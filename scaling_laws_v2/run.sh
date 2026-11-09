@@ -168,8 +168,9 @@ BEST=$(find "${RUN}/train/checkpoints" -name 'epoch=*.ckpt' | head -1)
 test_run() {  # NAME CHECKPOINT EXTRA_ARGS...
     local name=$1 ckpt=$2
     shift 2
+    # Quoted for Hydra: best-checkpoint names contain '=' (epoch=5-step=542.ckpt).
     medrap-eval "${ARGS[@]}" "$@" eval_mode=test \
-        "checkpoint_path=${ckpt}" \
+        "checkpoint_path='${ckpt}'" \
         "output_dir=${RUN}/test_${name}" \
         "wandb_run_name=v2-${NAME}-${name}" \
         do_overwrite=true
