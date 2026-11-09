@@ -10,6 +10,7 @@
 #           v1_retrieval     v1's #2 (per-document cross-attention, learned query), v1 code (A1)
 #           v1_random_docs   v1's #4 (as v1_retrieval, random documents), v1 code (reference)
 #           v1_masked        v1's #2 with the masked mean over codes, MedRAP#123 (A2)
+#           v1_random_docs_masked  v1_masked with random documents (ablation reference)
 #           retrieval        fixed #2: gated fusion, starts as #1, MedRAP#124 (A3)
 #           random_docs      fixed #2 with random documents (A4)
 #           retrieval_only   fixed #R: the documents read with the retrieval query, no patient (A5)
@@ -45,6 +46,12 @@ D_VALUES=(3000 10000 30000 100000 153220)
 LR="${LR:-1e-3}" DROPOUT="${DROPOUT:-0}" K="${K:-4}" CKPT="${CKPT:-last}"
 # NULL_DOC=false drops the null document; with K=1 there is then no average over documents.
 NULL_DOC="${NULL_DOC:-true}"
+# Ablations of the v1 fusion (v1_masked), each true/false, each adding a suffix to the run name:
+#   ZERO_INIT  cross-attention output projections start at zero (_z)
+#   WARM       encoder starts from the patient-only run with the same W, D, lr, dropout, draw (_warm)
+#   CENTER     search centered, unit-length keys: data/retrieval_db_centered from center_keys.py (_c)
+ZERO_INIT="${ZERO_INIT:-false}" WARM="${WARM:-false}" CENTER="${CENTER:-false}"
+[ "${CENTER}" = false ] || RETRIEVAL_DB=data/retrieval_db_centered
 
 if [ "$1" = tasks ]; then
     DRAW=$2
@@ -85,6 +92,9 @@ LABELS="data/tasks${T}_D${D}/draw${DRAW}/tasks"
 RUN="${OUTPUT_DIR}/${CONFIG}_W${W}_D${D}_lr${LR}_do${DROPOUT}"
 [ "${CONFIG}" = patient_only ] || RUN="${RUN}_K${K}"
 [ "${NULL_DOC}" = true ] || RUN="${RUN}_nonull"
+[ "${ZERO_INIT}" = false ] || RUN="${RUN}_z"
+[ "${WARM}" = false ] || RUN="${RUN}_warm"
+[ "${CENTER}" = false ] || RUN="${RUN}_c"
 RUN="${RUN}/draw${DRAW}"
 
 ARGS=(
@@ -117,8 +127,8 @@ case "${CONFIG}" in
         ARGS+=(fusion=passthrough "query_projector.in_dim=${WIDTH}" "head.in_dim=${WIDTH}"
             training/loss=multitask_binary_bce)
         ;;
-    v1_retrieval | v1_random_docs | v1_masked | retrieval | random_docs | retrieval_only)
-        case "${CONFIG}" in v1_random_docs | random_docs) ARGS+=(retriever.ablation_mode=random_docs) ;; esac
+    v1_retrieval | v1_random_docs | v1_masked | v1_random_docs_masked | retrieval | random_docs | retrieval_only)
+        case "${CONFIG}" in *random_docs*) ARGS+=(retriever.ablation_mode=random_docs) ;; esac
         ARGS+=(
             query_projector=sequence_mean_1024 "query_projector.in_dim=${WIDTH}"
             retriever=hf_dataset
@@ -135,7 +145,8 @@ case "${CONFIG}" in
             "training.loss.num_tasks=${T}"
         )
         case "${CONFIG}" in
-            v1_*) ARGS+=(fusion=cross_attention_perdoc_medium "fusion.dropout=${DROPOUT}" head.in_dim=256) ;;
+            v1_*) ARGS+=(fusion=cross_attention_perdoc_medium "fusion.dropout=${DROPOUT}" head.in_dim=256)
+                [ "${ZERO_INIT}" = false ] || ARGS+=(fusion.zero_init_attn_out=true) ;;
             *) ARGS+=(fusion=gated_doc "fusion.dropout=${DROPOUT}" "head.in_dim=${WIDTH}") ;;
         esac
         [ "${CONFIG}" != retrieval_only ] || ARGS+=(fusion.mode=query)
@@ -155,6 +166,11 @@ if nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | grep -q H100;
     ARGS=("${ARGS[@]/#retriever.device=0/retriever.device=null}")
 fi
 NAME="${RUN//\//_}"
+if [ "${WARM}" = true ]; then
+    WARM_FROM="${OUTPUT_DIR}/patient_only_W${W}_D${D}_lr${LR}_do${DROPOUT}/draw${DRAW}/train/checkpoints/last.ckpt"
+    [ -f "${WARM_FROM}" ] || { echo "missing ${WARM_FROM}" >&2; exit 1; }
+    ARGS+=("training.module.init_encoder_from='${WARM_FROM}'")
+fi
 TRAIN_K=()
 [ "${CONFIG}" = patient_only ] || TRAIN_K=("retriever.k=${K}")
 
@@ -187,7 +203,7 @@ else
     [ "${CKPT}" = last ] || CK="${BEST}"
     test_run topK "${CK}" "retriever.k=${K}"
     # The random-documents configurations already test on random documents (their ARGS).
-    case "${CONFIG}" in *random_docs) exit 0 ;; esac
+    case "${CONFIG}" in *random_docs*) exit 0 ;; esac
     test_run top1 "${CK}" retriever.k=1
     test_run randomK "${CK}" "retriever.k=${K}" retriever.ablation_mode=random_docs
 fi

@@ -30,10 +30,13 @@ submit_train() {  # CONFIG W D LR DROPOUT
     local run="outputs/${config}_W${w}_D${d}_lr${lr}_do${dropout}"
     case "${config}" in
         patient_only) last=test_last ;;
-        *random_docs) last=test_topK ;;
+        *random_docs*) last=test_topK ;;
     esac
     [ "${config}" = patient_only ] || run="${run}_K${K:-4}"
     [ "${NULL_DOC:-true}" = true ] || run="${run}_nonull"
+    [ "${ZERO_INIT:-false}" = false ] || run="${run}_z"
+    [ "${WARM:-false}" = false ] || run="${run}_warm"
+    [ "${CENTER:-false}" = false ] || run="${run}_c"
     local name="v2-${run#outputs/}"
     ! grep -qx "${name}" <<<"${QUEUED}" || return 0
     for draw in "${DRAWS[@]}"; do
@@ -42,7 +45,7 @@ submit_train() {  # CONFIG W D LR DROPOUT
     [ "${#missing[@]}" -gt 0 ] || return 0
     sbatch "${SLURM[@]}" --time=12:00:00 --mem=32G --partition="${GPU_PARTITION:-gpu,h100}" --gres=gpu:1 \
         --array="$(IFS=,; echo "${missing[*]}")" --job-name="${name}" \
-        --wrap="LR=${lr} DROPOUT=${dropout} K=${K:-4} NULL_DOC=${NULL_DOC:-true} ./run.sh train ${config} ${w} ${d} \${SLURM_ARRAY_TASK_ID}"
+        --wrap="LR=${lr} DROPOUT=${dropout} K=${K:-4} NULL_DOC=${NULL_DOC:-true} ZERO_INIT=${ZERO_INIT:-false} WARM=${WARM:-false} CENTER=${CENTER:-false} ./run.sh train ${config} ${w} ${d} \${SLURM_ARRAY_TASK_ID}"
 }
 
 case "${1:-}" in
@@ -84,8 +87,17 @@ case "${1:-}" in
             done
         done
         ;;
+    ablate)
+        # One v1-fusion ablation (set ZERO_INIT, WARM and/or CENTER) with top and random
+        # documents, at D 153K: ZERO_INIT=true ./submit.sh ablate
+        for config in v1_masked v1_random_docs_masked; do
+            for w in 64x2x4 256x4x8; do
+                submit_train "${config}" "${w}" 153220 1e-3 0
+            done
+        done
+        ;;
     *)
-        echo "usage: $0 tasks | stage0 | stage1 | nomix" >&2
+        echo "usage: $0 tasks | stage0 | stage1 | nomix | ablate" >&2
         exit 1
         ;;
 esac
