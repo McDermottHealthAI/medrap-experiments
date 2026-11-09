@@ -39,7 +39,7 @@ export WANDB_MODE="${WANDB_MODE:-offline}"
 COHORT_DIR="${COHORT_DIR:-../scaling_laws/data/cohort}"
 RETRIEVAL_DB="${RETRIEVAL_DB:-../scaling_laws/data/retrieval_db}"
 OUTPUT_DIR="${OUTPUT_DIR:-outputs}"
-T=1000
+T="${T:-1000}"  # override only for smoke tests on v1 labels (e.g. T=625 OUTPUT_DIR=smoke)
 D_VALUES=(3000 10000 30000 100000 153220)
 LR="${LR:-1e-3}" DROPOUT="${DROPOUT:-0}" K="${K:-4}" CKPT="${CKPT:-last}"
 
