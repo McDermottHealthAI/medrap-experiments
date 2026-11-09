@@ -42,3 +42,25 @@ patient only's test loss; positive means retrieval is better.
 - **Decision**: keep the warm start. Run the fair baseline (patient only continued from the same
   checkpoint for the same epochs, `./submit.sh warm`) and the D 10K cells, then test whether the reader
   can use documents at all (positive control).
+
+## Round 4: warm start against its fair baseline (lr 1e-3, 3 draws)
+
+- **Hypothesis**: Round 3's +2% is the 3 extra epochs, not the documents.
+- **Baseline**: patient only continued from the same checkpoint for the same epochs (`patient_only_warm`):
+  0.02499 / 0.02113 (64x2x4, D 10K / 153K), 0.02461 / 0.02128 (256x4x8). This alone is 1.5–2.6% better than
+  the paired baseline used before, so the earlier +2% was the extra training.
+- **Result** (`Δ` ×1e-4 vs `patient_only_warm`, 95% interval; positive = retrieval better):
+
+  | | 64/10K | 64/153K | 256/10K | 256/153K |
+  |---|---|---|---|---|
+  | warm, topK | −0.63 ± 1.52 | +0.30 ± 1.38 | −2.50 ± 3.13 | −1.25 ± 2.47 |
+  | warm, randomK at test | −2.80 ± 2.23 | −0.39 ± 1.03 | −4.11 ± 6.13 | −3.91 ± 2.17 |
+  | warm, trained on random documents | −1.02 ± 2.18 | +0.21 ± 1.48 | −1.69 ± 2.35 | −1.94 ± 1.14 |
+
+- **G1 (no harm)**: met; every topK interval includes 0.
+- **G2 (uses the documents)**: half met. The retrieved documents beat random ones at test in all 4 cells
+  (by 0.7–2.7 ×1e-4), but a model trained on random documents does as well, so what it reads is not
+  knowledge yet.
+- **G3 (helps)**: not met; `Δ` ≈ 0.
+- **Decision**: the warm start is the new default (and its baseline is `patient_only_warm`). The reader no
+  longer harms; the question is now whether it *can* gain from a document. Next: the positive control.

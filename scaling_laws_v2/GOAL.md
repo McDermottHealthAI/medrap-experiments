@@ -37,7 +37,7 @@ Cheapest first. Each step is kept only if it moves G1, G2 or G3. The order chang
 | # | Hypothesis | Change | Status |
 |---|---|---|---|
 | 1 | Documents add noise as large as the patient signal from step 1 | zero-init cross-attention output | no effect |
-| 2 | Cold start: the encoder learns while being fed noise | encoder from the patient-only checkpoint | **removes the harm**; kept; fair baseline running |
+| 2 | Cold start: the encoder learns while being fed noise | encoder from the patient-only checkpoint | **removes the harm** (G1 met vs the fair baseline); kept; no gain (G3) |
 | 3 | The search finds the same passages for everyone | centered, unit-length keys | no effect |
 | 4 | **Positive control**: can the reader use documents at all? | a synthetic document per patient that states some of its labels (leaked on purpose); if the model can't exploit it, the reader is broken, whatever the corpus | next |
 | 5 | Cold-start retriever (REALM's ICT warm start) | pre-train the query to match the Qwen3 embedding of the patient's recent codes as text, then train end to end | |
