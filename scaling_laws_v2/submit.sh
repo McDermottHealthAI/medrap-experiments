@@ -33,6 +33,7 @@ submit_train() {  # CONFIG W D LR DROPOUT
         *random_docs) last=test_topK ;;
     esac
     [ "${config}" = patient_only ] || run="${run}_K${K:-4}"
+    [ "${NULL_DOC:-true}" = true ] || run="${run}_nonull"
     local name="v2-${run#outputs/}"
     ! grep -qx "${name}" <<<"${QUEUED}" || return 0
     for draw in "${DRAWS[@]}"; do
@@ -41,7 +42,7 @@ submit_train() {  # CONFIG W D LR DROPOUT
     [ "${#missing[@]}" -gt 0 ] || return 0
     sbatch "${SLURM[@]}" --time=12:00:00 --mem=32G --partition="${GPU_PARTITION:-gpu,h100}" --gres=gpu:1 \
         --array="$(IFS=,; echo "${missing[*]}")" --job-name="${name}" \
-        --wrap="LR=${lr} DROPOUT=${dropout} K=${K:-4} ./run.sh train ${config} ${w} ${d} \${SLURM_ARRAY_TASK_ID}"
+        --wrap="LR=${lr} DROPOUT=${dropout} K=${K:-4} NULL_DOC=${NULL_DOC:-true} ./run.sh train ${config} ${w} ${d} \${SLURM_ARRAY_TASK_ID}"
 }
 
 case "${1:-}" in
@@ -74,8 +75,17 @@ case "${1:-}" in
             done
         done
         ;;
+    nomix)
+        # Diagnosis: v1's fusion with one document and no null document, so no average over
+        # documents. Run as K=1 NULL_DOC=false ./submit.sh nomix.
+        for config in v1_retrieval v1_random_docs; do
+            for w in 64x2x4 256x4x8; do
+                submit_train "${config}" "${w}" 153220 1e-3 0
+            done
+        done
+        ;;
     *)
-        echo "usage: $0 tasks | stage0 | stage1" >&2
+        echo "usage: $0 tasks | stage0 | stage1 | nomix" >&2
         exit 1
         ;;
 esac

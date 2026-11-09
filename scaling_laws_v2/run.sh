@@ -43,6 +43,8 @@ OUTPUT_DIR="${OUTPUT_DIR:-outputs}"
 T="${N_TASKS:-1000}"
 D_VALUES=(3000 10000 30000 100000 153220)
 LR="${LR:-1e-3}" DROPOUT="${DROPOUT:-0}" K="${K:-4}" CKPT="${CKPT:-last}"
+# NULL_DOC=false drops the null document; with K=1 there is then no average over documents.
+NULL_DOC="${NULL_DOC:-true}"
 
 if [ "$1" = tasks ]; then
     DRAW=$2
@@ -82,6 +84,7 @@ IFS=x read -r WIDTH LAYERS HEADS <<<"${W}"
 LABELS="data/tasks${T}_D${D}/draw${DRAW}/tasks"
 RUN="${OUTPUT_DIR}/${CONFIG}_W${W}_D${D}_lr${LR}_do${DROPOUT}"
 [ "${CONFIG}" = patient_only ] || RUN="${RUN}_K${K}"
+[ "${NULL_DOC}" = true ] || RUN="${RUN}_nonull"
 RUN="${RUN}/draw${DRAW}"
 
 ARGS=(
@@ -121,7 +124,7 @@ case "${CONFIG}" in
             retriever=hf_dataset
             "retriever.dataset_path=${RETRIEVAL_DB}"
             retriever.doc_ids_column=null
-            retriever.append_null_doc=true
+            "retriever.append_null_doc=${NULL_DOC}"
             retriever.device=0
             retriever.cache_payloads=true
             retriever.payload_cache_device=cuda
