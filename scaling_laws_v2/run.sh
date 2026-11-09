@@ -213,4 +213,6 @@ else
     esac
 fi
 # The group quota is shared: drop the frozen Qwen table and optimizer state once tests are done.
+# medrap-train also copies the best checkpoint to train/best_model.ckpt; the last one is kept instead.
+rm -f "${RUN}/train/best_model.ckpt"
 python slim_checkpoint.py "${RUN}/train/checkpoints/last.ckpt"
