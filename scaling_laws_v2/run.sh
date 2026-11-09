@@ -119,7 +119,8 @@ ARGS=(
     training.datamodule.batch_size=32
     training/trainer=lightning_wandb
     training.trainer.accelerator=gpu
-    # Keep the best checkpoint (validation loss) and the last one; no progress snapshots.
+    # Keep only the last checkpoint (Stage 0: best = last in every run); no progress snapshots.
+    +training.trainer.callbacks.0.save_top_k=0
     "training.trainer.callbacks.1.fractions=[]"
 )
 case "${CONFIG}" in
@@ -184,7 +185,7 @@ medrap-train "${ARGS[@]}" ${TRAIN_K[@]+"${TRAIN_K[@]}"} \
     "wandb_run_name=v2-${NAME}" \
     do_overwrite=true
 
-BEST=$(find "${RUN}/train/checkpoints" -name 'epoch=*.ckpt' | head -1)
+BEST="${RUN}/train/checkpoints/last.ckpt"  # save_top_k=0: the last checkpoint is the only one
 test_run() {  # NAME CHECKPOINT EXTRA_ARGS...
     local name=$1 ckpt=$2
     shift 2
@@ -203,7 +204,13 @@ else
     [ "${CKPT}" = last ] || CK="${BEST}"
     test_run topK "${CK}" "retriever.k=${K}"
     # The random-documents configurations already test on random documents (their ARGS).
-    case "${CONFIG}" in *random_docs*) exit 0 ;; esac
-    test_run top1 "${CK}" retriever.k=1
-    test_run randomK "${CK}" "retriever.k=${K}" retriever.ablation_mode=random_docs
+    case "${CONFIG}" in
+        *random_docs*) ;;
+        *)
+            test_run top1 "${CK}" retriever.k=1
+            test_run randomK "${CK}" "retriever.k=${K}" retriever.ablation_mode=random_docs
+            ;;
+    esac
 fi
+# The group quota is shared: drop the frozen Qwen table and optimizer state once tests are done.
+python slim_checkpoint.py "${RUN}/train/checkpoints/last.ckpt"
