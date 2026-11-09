@@ -25,7 +25,7 @@ T_975 = 4.303  # t quantile, 2 degrees of freedom (3 draws)
 def collect(outputs: Path) -> pl.DataFrame:
     rows = []
     for f in sorted(outputs.glob("*/draw*/test_*/loggers/csv/*/metrics.csv")):
-        run, draw, test = f.parts[-6], f.parts[-5], f.parts[-4]
+        run, draw, test = f.parts[-7], f.parts[-6], f.parts[-5]
         m = RUN.fullmatch(run).groupdict()
         last = pl.read_csv(f).tail(1).to_dicts()[0]
         rows.append({
