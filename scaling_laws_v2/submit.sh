@@ -96,8 +96,20 @@ case "${1:-}" in
             done
         done
         ;;
+    warm)
+        # Warm-started encoder (Round 4) with its fair baseline: patient only continued from the
+        # same checkpoint for the same epochs, at D 10K and 153K.
+        export WARM=true
+        for config in patient_only v1_masked v1_random_docs_masked; do
+            for w in 64x2x4 256x4x8; do
+                for d in 10000 153220; do
+                    submit_train "${config}" "${w}" "${d}" 1e-3 0
+                done
+            done
+        done
+        ;;
     *)
-        echo "usage: $0 tasks | stage0 | stage1 | nomix | ablate" >&2
+        echo "usage: $0 tasks | stage0 | stage1 | nomix | ablate | warm" >&2
         exit 1
         ;;
 esac

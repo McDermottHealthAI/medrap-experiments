@@ -18,7 +18,7 @@ from pathlib import Path
 import polars as pl
 import torch
 
-RUN = re.compile(r"(?P<config>.+)_W(?P<W>[^_]+)_D(?P<D>\d+)_lr(?P<lr>[^_]+)_do(?P<dropout>[^_/]+)(_K(?P<K>\d+))?")
+RUN = re.compile(r"(?P<config>.+)_W(?P<W>[^_]+)_D(?P<D>\d+)_lr(?P<lr>[^_]+)_do(?P<dropout>[^_/]+)(_K(?P<K>\d+))?(?P<suffix>(_nonull|_z|_warm|_c)*)")
 T_975 = 4.303  # t quantile, 2 degrees of freedom (3 draws)
 
 
@@ -29,7 +29,8 @@ def collect(outputs: Path) -> pl.DataFrame:
         m = RUN.fullmatch(run).groupdict()
         last = pl.read_csv(f).tail(1).to_dicts()[0]
         rows.append({
-            **{k: m[k] for k in ("config", "W", "lr", "dropout")},
+            "config": m["config"] + m["suffix"],
+            **{k: m[k] for k in ("W", "lr", "dropout")},
             "D": int(m["D"]),
             "draw": int(draw.removeprefix("draw")),
             "test": test.removeprefix("test_"),
@@ -48,7 +49,7 @@ def gates(outputs: Path) -> pl.DataFrame:
         gate = next((v for k, v in state.items() if k.endswith("fusion.gate")), None)
         if gate is not None:
             m = RUN.fullmatch(ckpt.parts[-5]).groupdict()
-            rows.append({"config": m["config"], "W": m["W"], "D": int(m["D"]), "gate": float(torch.tanh(gate))})
+            rows.append({"config": m["config"] + m["suffix"], "W": m["W"], "D": int(m["D"]), "gate": float(torch.tanh(gate))})
     return pl.DataFrame(rows, infer_schema_length=None)
 
 
