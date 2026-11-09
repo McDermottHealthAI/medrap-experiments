@@ -20,7 +20,7 @@ Design: [`scaling_laws_v2/design.md`](../../scaling_laws_v2/design.md). Made by
 | retrieval only | −8.0% | −16.7% | −9.7% | −17.2% |
 
 - **The gated fusion closes the gap**: from −12% to −23% (v1) to within ±1.3% of patient only, with
-  intervals that include 0 in three of four cells (64x2x4 at 153K: −0.16% ± 0.13%).
+  intervals that include 0 in three of four cells (64x2x4 at 153K: −0.16% ± 0.14%).
 - **But it doesn't use the documents**: the gate ends at `tanh(g)` ≈ 0.001–0.02, and top-K, top-1
   and random-document tests give the same loss. The model has learned that K = 4 token-embedding
   documents don't help, and switched them off.
@@ -28,7 +28,7 @@ Design: [`scaling_laws_v2/design.md`](../../scaling_laws_v2/design.md). Made by
   changes little. Most of v1's loss came from the fusion design (no way to ignore documents).
 - Retrieval only is 8–17% worse than patient only, and much worse again with random documents,
   so its retrieved documents do carry patient information, but mostly as a lossy code for the
-  patient: 45–78% of test patients share the same top document.
+  patient: 50–78% of its test patients share the same top document (45–64% for gated retrieval).
 
 ## Stage 0: patient-only settings (D 153K)
 
