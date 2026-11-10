@@ -2,19 +2,74 @@
 
 The v1 grid ([`results/scaling_laws`](../results/scaling_laws/README.md)) found retrieval (#2) worse
 than patient only (#1) almost everywhere. A model that is given extra input should be able to
-ignore it, so that is a sign that the architecture is wrong, not that the documents are useless.
-This directory finds where it goes wrong and redesigns the experiment around the fix and the
-advisor's comments. The design is in [`design.md`](design.md).
+ignore it, so that pointed to the architecture, not the documents. This directory finds where it
+goes wrong, fixes it, and redesigns the experiment around the advisor's comments.
 
-| File | What it does |
-|---|---|
-| [`design.md`](design.md) | the v2 design: fixed architecture, configurations, stages, compute counting, analysis |
-| [`gaps.py`](gaps.py) | the paired v1 numbers below, from `results/scaling_laws/runs.csv` |
-| [`run.sh`](run.sh) | one step: `tasks DRAW`, or `train CONFIG W D DRAW` (train, then test) |
-| [`submit.sh`](submit.sh) | submits `tasks`, `stage0` or `stage1` to SLURM; skips finished and queued runs |
-| [`pyproject.toml`](pyproject.toml) | environment: MedRAP with the fixes (v1's configurations use `../scaling_laws/.venv`) |
+The goal and its rules (no gate or switch that turns retrieval off, paired runs, no test-set
+tuning) are in [`GOAL.md`](GOAL.md); each experiment round is logged in [`EXPERIMENTS.md`](EXPERIMENTS.md).
 
-## 1. What the v1 runs show
+## Where we are
+
+1. **The harm is fixed.** Retrieval was 12–18% worse than patient only because of a **cold start**:
+   the patient encoder and the document reader trained together from scratch, and the documents
+   drowned the patient signal. Starting the encoder from the trained patient-only checkpoint (the
+   advisor's "use the good configuration as a seed") removes it: against patient only trained for
+   the same extra epochs, retrieval is now even in all 4 cells (G1 met).
+2. **The documents don't help yet.** The model reads them (random documents at test make it worse
+   in all 4 cells), but a model trained on random documents does just as well (G2 half met, G3 not
+   met).
+3. **Next: richer documents**, as the advisor suggested: a frozen Qwen3 runs over each retrieved
+   passage and the fusion attends over every token of every layer. Built; smoke runs in progress.
+
+## The advisor's comments: what we did
+
+| Comment | What we did | Where | Status |
+|---|---|---|---|
+| **Drop setting #3** (static query from Qwen on the last 32 codes) | Dropped. | [`design.md`](design.md) §3 | done |
+| **Fewer `W` settings**, at sensible points | `W` 4–128 single-layer dropped. Stage 0 uses 64x2x4, 128x2x4, 256x4x8; the retrieval rounds use 64x2x4 and 256x4x8. | [`run.sh`](run.sh), [`submit.sh`](submit.sh) | done |
+| **Minimal patient-only sweep first**, then seed retrieval from the good configuration | Stage 0: 3 `W` × 3 learning rates × 2 dropouts at `D` 153K, 3 draws (results below). Retrieval now starts its encoder from the patient-only checkpoint, and this turned out to be the fix for the harm. | `submit.sh stage0`, `WARM=true` | done |
+| **One task setting** (~1,000 tasks) | `T` = 1,000 everywhere. | `run.sh tasks` | done |
+| **3 draws** instead of 5 | 3 draws everywhere. | `submit.sh` | done |
+| **More documents** (128, 512), since the loss learns "which retrieved document is best" | `K` is a switch (`K=128 ./submit.sh …`), but every run so far uses `K` = 4. A `K` sweep is planned once a document encoding uses the documents; with contextual documents, memory grows with `K`, so it needs a smaller batch or fewer layers. | `run.sh` (`K`) | to do |
+| **Retrieval-only models** at the same settings, especially for richer document encodings | Run once, with context-free documents: 17% worse than patient only at `D` 153K, so those documents carry little on their own. Not yet run with contextual documents. | `retrieval_only` in `run.sh` | partly done |
+| **Count compute and parameters accurately** | Designed: FLOPs measured with `FlopCounterMode`, FAISS search counted (~2.6 × 10⁸ FLOPs per patient), the frozen Qwen forward pass counted for contextual documents. Not yet applied to results; needed before the scaling grid. | [`design.md`](design.md) §9 | to do |
+| **Other law forms, loss scale only, drop poor fits** | Planned: the 7 law families of `simple-scaling-laws`, fitted on loss, with a fit-quality cutoff. All results so far are already in loss. No laws fitted yet: the scaling grid waits until retrieval helps. | [`design.md`](design.md) §10 | to do |
+| **Paired analyses**: (patient only − retrieval) as one number per shared split and seed | Every comparison is a paired difference per draw (same tasks, patients and seed), reported as a mean with a 95% t-interval. | [`ladder.py`](ladder.py) | done |
+| **Richer document value encodings** (all Qwen tokens; run Qwen over the documents, take all layers, attend through them) | New MedRAP encoder: a frozen Qwen3-Embedding-0.6B runs over each retrieved passage; fusion attends over all 256 tokens × 29 layers, with a learned layer embedding (`DOCS=attend`). Also last layer only (`DOCS=last`) and a learned layer mix (`DOCS=mix`). | MedRAP `feat/qwen-hidden-state-docs`; `run.sh` (`DOCS`) | built; smoke runs in progress |
+
+## Results so far
+
+All at lr 1e-3, dropout 0, `K` 4, 3 draws. `Δ` = L(patient only) − L(retrieval) as a share of patient
+only's test loss, paired per draw; positive means retrieval is better. Full tables in
+[`results/scaling_laws_v2`](../results/scaling_laws_v2/README.md) and [`EXPERIMENTS.md`](EXPERIMENTS.md).
+
+**Stage 0, patient only at `D` 153K** (best learning rate per size; dropout changes the loss by < 1%;
+the best checkpoint is the last in every run):
+
+| `W` | Best lr | Test loss |
+|---|---|---|
+| 64x2x4 | 3e-3 | 0.02127 |
+| 128x2x4 | 1e-3 | 0.02122 |
+| 256x4x8 | 3e-4 | 0.02077 |
+
+**Retrieval, `D` 153K** (`Δ` vs patient only):
+
+| Round | Change | 64x2x4 | 256x4x8 | Reading |
+|---|---|---|---|---|
+| 1 | v1 fusion, top 1 at test (as in v1) | −18.7% | −22.6% | the v1 result, reproduced |
+| 1 | same K in training and test (top 4) | −12.1% | −18.1% | a third of the harm was the test mismatch |
+| 1 | masked mean over patient codes (bug fix) | −13.4% | −18.1% | little effect |
+| 2 | one document, no averaging | −15% | | averaging is not the cause |
+| 3 | cross-attention output starts at zero | −15.8% | −18.3% | no effect |
+| 3 | centered search keys | −12.6% | −15.3% | no effect |
+| 3 | **encoder warm-started from patient only** | **+2.5%** | **+2.0%** | the harm is gone, but see Round 4 |
+| 4 | the same, against patient only trained for the same extra epochs | +0.1% | −0.6% | even (G1 met); the +2% was the extra training |
+| 4 | the same model trained on random documents | +0.1% | −0.9% | as good as retrieved documents: they add no knowledge yet |
+
+Also ruled out: the loss implementation, gradient clipping (never triggers), and overfitting (v1 is
+worse on training loss too).
+
+## Appendix A. What the v1 runs show
 
 From [`gaps.py`](gaps.py). Each pair is #1 and #2 with the same `W`, `D`, `T` and draw, so the same tasks,
 patients and seed. **Gap** is #2's test loss relative to #1's (positive means retrieval is worse).
@@ -51,7 +106,7 @@ Four observations:
    query computed from the patient, so it is a lossy function of the patient: it adds no information
    the encoder doesn't already have, and the model now relies on it.
 
-## 2. Where the architecture goes wrong
+## Appendix B. Where the architecture goes wrong (first hypotheses)
 
 Reading `PerDocCrossAttentionFusion` and `RetrievalAugmentedModel` in MedRAP (`c3700ab`, which is
 also current `main`):
@@ -65,10 +120,12 @@ also current `main`):
 | C5 | **Weak retriever signal.** The query learns only from which of 5 documents predicts best. With 4 candidates, mostly poor early on, that is a noisy estimate. The keys are only mildly anisotropic (mean pairwise cosine 0.22; `center_keys.py`), so the collapse onto a few passages comes mostly from the query. | `retriever.k=4` | #2 ≈ #4 (observation 2). In v2, 45–80% of test patients retrieve the same top passage. |
 | C6 | **Context-free documents.** A document is 256 frozen Qwen3 word-piece embeddings, with no context between them. | `qwen3_token_embeddings` | Little usable knowledge, even with the right passage. |
 
-C1–C4 explain why retrieval is **worse** than patient only; C5–C6 why it is **no better** than random
-documents. C1 and C3 are bugs; C2 and C4 are design choices that other retrieval models avoid.
+These were the first hypotheses. C1 (fixed, MedRAP#123) and C3 (fixed) were real bugs but explained
+little; the main cause turned out to be the cold start (Rounds 3–4). A gate for C2 was tried and
+dropped: it lets the model switch retrieval off, which the goal's rules forbid. C6 is what the
+contextual-document encoder addresses.
 
-## 3. What other retrieval models do
+## Appendix C. What other retrieval models do
 
 - **Start at the model without retrieval.** Flamingo adds each cross-attention block through a
   `tanh` gate initialised at 0, so at the start the model is exactly the frozen language model and
@@ -94,34 +151,18 @@ documents. C1 and C3 are bugs; C2 and C4 are design choices that other retrieval
   scores (Gumbel-top-K; [Kool et al. 2019](https://arxiv.org/abs/1903.06059)) lets the retriever
   see and learn from passages it would not have ranked first.
 
-## 4. What v2 changes
 
-Details in [`design.md`](design.md).
+## Files
 
-- **Fixed fusion.** The prediction for document k is `head(h + tanh(g) · c_k)`. `h` is exactly #1's
-  masked mean, `c_k` is what the patient reads from document k, and the gate `g` starts at 0. At
-  the start #2 *is* #1, and documents are used only if they lower the loss (C1, C2, C4).
-- **Same K in training and at test** (C3).
-- **K up to 512** and a **sampled-K** variant (C5, advisor). The fused patient side is a single
-  query token, so the cost per document is small.
-- **Retrieval only** (advisor): the same fusion with the learned retrieval query in place of the
-  patient, and no `h`. This shows what the documents carry on their own.
-- **Contextual documents** (C6, advisor): Qwen3 hidden states in 16 chunks per passage, last layer
-  first, then several layers with a learned mix.
-- **Fewer runs** (advisor): #3 dropped, `W` 4–16 dropped, one task count (`T` = 1,000), 3 draws, a
-  patient-only configuration search first, then a diagnosis ladder, then the K sweep, then the
-  scaling grid.
-- **Compute and parameters counted**, FAISS search included, which v1 left out (it is ~2.6 × 10⁸
-  FLOPs per patient, roughly 60% of a `W` 128x2x4 encoder's training cost by the 6·N·S estimate).
-- **Analysis on paired differences**, loss only, several law forms, and no law reported when none fits.
-
-## Status
-
-| Piece | Status |
+| File | What it does |
 |---|---|
-| Diagnosis of the v1 results (this page) | done |
-| MedRAP M1 masked mean ([MedRAP#123](https://github.com/McDermottHealthAI/MedRAP/pull/123)), M2 gated fusion + retrieval only ([#124](https://github.com/McDermottHealthAI/MedRAP/pull/124)) | in review; [`pyproject.toml`](pyproject.toml) pins #124 |
-| Stage 0: patient-only configuration search | ready to run (needs `submit.sh tasks` first) |
-| Stage 1 ladder, all 7 configurations | ready to run |
-| MedRAP M3 precomputed documents, M4 sampled K | to implement (design.md §8) |
-| Stages 2–4 | after the MedRAP changes and Stage 1 |
+| [`GOAL.md`](GOAL.md) | the goal, success criteria G1–G3, rules, and the exploration plan |
+| [`EXPERIMENTS.md`](EXPERIMENTS.md) | each round: hypothesis, change, numbers, decision |
+| [`design.md`](design.md) | the full v2 design: configurations, stages, compute counting, analysis |
+| [`run.sh`](run.sh) | one step: `tasks DRAW`, or `train CONFIG W D DRAW` (train, then test); switches `LR`, `DROPOUT`, `K`, `NULL_DOC`, `ZERO_INIT`, `WARM`, `CENTER`, `DOCS`, `LAYER_STRIDE` |
+| [`submit.sh`](submit.sh) | submits `tasks`, `stage0`, `stage1`, `nomix`, `ablate`, `warm`, `docs` to SLURM; skips finished and queued runs |
+| [`ladder.py`](ladder.py) | collects test results into `results.csv`; paired differences with 95% intervals |
+| [`gaps.py`](gaps.py) | the paired v1 numbers in Appendix A |
+| [`center_keys.py`](center_keys.py) | the centered-keys retrieval database (Round 3) |
+| [`slim_checkpoint.py`](slim_checkpoint.py) | drops frozen weights and optimizer state from finished checkpoints (disk quota) |
+| [`pyproject.toml`](pyproject.toml) | environment: MedRAP with the fixes (v1's configurations use `../scaling_laws/.venv`) |
