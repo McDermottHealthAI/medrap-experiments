@@ -52,10 +52,12 @@ NULL_DOC="${NULL_DOC:-true}"
 #   CENTER     search centered, unit-length keys: data/retrieval_db_centered from center_keys.py (_c)
 ZERO_INIT="${ZERO_INIT:-false}" WARM="${WARM:-false}" CENTER="${CENTER:-false}"
 # What the fusion reads from each retrieved document (GOAL.md, richer documents); suffix _DOCS:
-#   e0    Qwen3 input token embeddings, no context (v1)
-#   last  a frozen Qwen3 run over the document, last-layer output per token (E3)
-#   mix   the same, a learned mix of all layers (ELMo)
-DOCS="${DOCS:-e0}"
+#   e0      Qwen3 input token embeddings, no context (v1)
+#   attend  a frozen Qwen3 runs over the document; fusion attends over every token of every layer
+#           (LAYER_STRIDE=4 keeps every 4th layer; suffix _attend or _attend4)
+#   last    the same, last-layer output per token only
+#   mix     the same, a learned mix of all layers per token (ELMo)
+DOCS="${DOCS:-e0}" LAYER_STRIDE="${LAYER_STRIDE:-1}"
 [ "${CENTER}" = false ] || RETRIEVAL_DB=data/retrieval_db_centered
 
 if [ "$1" = tasks ]; then
@@ -101,6 +103,7 @@ RUN="${OUTPUT_DIR}/${CONFIG}_W${W}_D${D}_lr${LR}_do${DROPOUT}"
 [ "${WARM}" = false ] || RUN="${RUN}_warm"
 [ "${CENTER}" = false ] || RUN="${RUN}_c"
 [ "${DOCS}" = e0 ] || RUN="${RUN}_${DOCS}"
+[ "${LAYER_STRIDE}" = 1 ] || RUN="${RUN}${LAYER_STRIDE}"
 RUN="${RUN}/draw${DRAW}"
 
 ARGS=(
@@ -152,8 +155,8 @@ case "${CONFIG}" in
         )
         case "${DOCS}" in
             e0) ARGS+=(retrieval_encoder=qwen3_token_embeddings) ;;
-            last) ARGS+=(retrieval_encoder=qwen3_hidden_states) ;;
-            mix) ARGS+=(retrieval_encoder=qwen3_hidden_states retrieval_encoder.layer_mix=true) ;;
+            attend | last | mix) ARGS+=(retrieval_encoder=qwen3_hidden_states "retrieval_encoder.layers=${DOCS}"
+                "retrieval_encoder.layer_stride=${LAYER_STRIDE}") ;;
             *) echo "unknown DOCS ${DOCS}" >&2; exit 1 ;;
         esac
         case "${CONFIG}" in

@@ -38,6 +38,7 @@ submit_train() {  # CONFIG W D LR DROPOUT
     [ "${WARM:-false}" = false ] || run="${run}_warm"
     [ "${CENTER:-false}" = false ] || run="${run}_c"
     [ "${DOCS:-e0}" = e0 ] || run="${run}_${DOCS}"
+    [ "${LAYER_STRIDE:-1}" = 1 ] || run="${run}${LAYER_STRIDE}"
     local name="v2-${run#outputs/}"
     ! grep -qx "${name}" <<<"${QUEUED}" || return 0
     for draw in "${DRAWS[@]}"; do
@@ -46,7 +47,7 @@ submit_train() {  # CONFIG W D LR DROPOUT
     [ "${#missing[@]}" -gt 0 ] || return 0
     sbatch "${SLURM[@]}" --time=12:00:00 --mem=32G --partition="${GPU_PARTITION:-gpu,h100}" --gres=gpu:1 \
         --array="$(IFS=,; echo "${missing[*]}")" --job-name="${name}" \
-        --wrap="LR=${lr} DROPOUT=${dropout} K=${K:-4} NULL_DOC=${NULL_DOC:-true} ZERO_INIT=${ZERO_INIT:-false} WARM=${WARM:-false} CENTER=${CENTER:-false} DOCS=${DOCS:-e0} ./run.sh train ${config} ${w} ${d} \${SLURM_ARRAY_TASK_ID}"
+        --wrap="LR=${lr} DROPOUT=${dropout} K=${K:-4} NULL_DOC=${NULL_DOC:-true} ZERO_INIT=${ZERO_INIT:-false} WARM=${WARM:-false} CENTER=${CENTER:-false} DOCS=${DOCS:-e0} LAYER_STRIDE=${LAYER_STRIDE:-1} ./run.sh train ${config} ${w} ${d} \${SLURM_ARRAY_TASK_ID}"
 }
 
 case "${1:-}" in
@@ -110,7 +111,7 @@ case "${1:-}" in
         done
         ;;
     docs)
-        # Contextual document vectors (Round 5), warm-started: DOCS=last ./submit.sh docs
+        # Contextual document vectors (Round 5), warm-started: DOCS=attend ./submit.sh docs
         export WARM=true
         for config in v1_masked v1_random_docs_masked; do
             for w in 64x2x4 256x4x8; do
