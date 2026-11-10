@@ -51,6 +51,11 @@ NULL_DOC="${NULL_DOC:-true}"
 #   WARM       encoder starts from the patient-only run with the same W, D, lr, dropout, draw (_warm)
 #   CENTER     search centered, unit-length keys: data/retrieval_db_centered from center_keys.py (_c)
 ZERO_INIT="${ZERO_INIT:-false}" WARM="${WARM:-false}" CENTER="${CENTER:-false}"
+# What the fusion reads from each retrieved document (GOAL.md, richer documents); suffix _DOCS:
+#   e0    Qwen3 input token embeddings, no context (v1)
+#   last  a frozen Qwen3 run over the document, last-layer output per token (E3)
+#   mix   the same, a learned mix of all layers (ELMo)
+DOCS="${DOCS:-e0}"
 [ "${CENTER}" = false ] || RETRIEVAL_DB=data/retrieval_db_centered
 
 if [ "$1" = tasks ]; then
@@ -95,6 +100,7 @@ RUN="${OUTPUT_DIR}/${CONFIG}_W${W}_D${D}_lr${LR}_do${DROPOUT}"
 [ "${ZERO_INIT}" = false ] || RUN="${RUN}_z"
 [ "${WARM}" = false ] || RUN="${RUN}_warm"
 [ "${CENTER}" = false ] || RUN="${RUN}_c"
+[ "${DOCS}" = e0 ] || RUN="${RUN}_${DOCS}"
 RUN="${RUN}/draw${DRAW}"
 
 ARGS=(
@@ -139,12 +145,17 @@ case "${CONFIG}" in
             retriever.device=0
             retriever.cache_payloads=true
             retriever.payload_cache_device=cuda
-            retrieval_encoder=qwen3_token_embeddings
             marginalized_retrieval=true
             marginalized_output_mode=binary
             training/loss=multitask_binary_bce_marginalized
             "training.loss.num_tasks=${T}"
         )
+        case "${DOCS}" in
+            e0) ARGS+=(retrieval_encoder=qwen3_token_embeddings) ;;
+            last) ARGS+=(retrieval_encoder=qwen3_hidden_states) ;;
+            mix) ARGS+=(retrieval_encoder=qwen3_hidden_states retrieval_encoder.layer_mix=true) ;;
+            *) echo "unknown DOCS ${DOCS}" >&2; exit 1 ;;
+        esac
         case "${CONFIG}" in
             v1_*) ARGS+=(fusion=cross_attention_perdoc_medium "fusion.dropout=${DROPOUT}" head.in_dim=256)
                 [ "${ZERO_INIT}" = false ] || ARGS+=(fusion.zero_init_attn_out=true) ;;
