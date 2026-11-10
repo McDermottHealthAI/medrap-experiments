@@ -111,11 +111,11 @@ case "${1:-}" in
         done
         ;;
     docs)
-        # Contextual document vectors (Round 5), warm-started: DOCS=attend ./submit.sh docs
+        # Contextual document vectors (Round 5), warm-started: DOCS=attend [D_LIST="10000 153220"] ./submit.sh docs
         export WARM=true
         for config in v1_masked v1_random_docs_masked; do
             for w in 64x2x4 256x4x8; do
-                for d in 10000 153220; do
+                for d in ${D_LIST:-153220}; do
                     submit_train "${config}" "${w}" "${d}" 1e-3 0
                 done
             done
