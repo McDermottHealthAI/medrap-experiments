@@ -28,3 +28,4 @@ pip install -r requirements.txt
 |---|---|
 | [`mimic_iv/`](mimic_iv/) | MIMIC-IV mortality prediction — initial MedRAP paper experiments (RoPE, cross-attention, retrieval ablations, hyperparameter sweeps) |
 | [`mimic_iv_smoke/`](mimic_iv_smoke/) | Smoke test validating the post-refactor MedRAP CLI/structure (flat entrypoints, `medrap-preprocess`) on the same MIMIC-IV pipeline |
+| [`mimic_iv_scaling_laws/`](mimic_iv_scaling_laws/) | Scaling laws over model capacity × number of training patients, retrieval vs. patient-only, fit with `simple-scaling-laws` |
