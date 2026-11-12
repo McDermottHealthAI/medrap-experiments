@@ -195,7 +195,8 @@ fi
 TRAIN_K=()
 [ "${CONFIG}" = patient_only ] || TRAIN_K=("retriever.k=${K}")
 
-medrap-train "${ARGS[@]}" ${TRAIN_K[@]+"${TRAIN_K[@]}"} \
+# TEST_ONLY=true reruns only the tests of a finished training run (e.g. after a filesystem error).
+[ "${TEST_ONLY:-false}" = true ] || medrap-train "${ARGS[@]}" ${TRAIN_K[@]+"${TRAIN_K[@]}"} \
     "+training.trainer.accumulate_grad_batches=${ACCUM}" \
     "training.trainer.max_epochs=${EPOCHS}" \
     "training.module.warmup_steps=${WARMUP}" \
