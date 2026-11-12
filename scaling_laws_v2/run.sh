@@ -57,6 +57,8 @@ ZERO_INIT="${ZERO_INIT:-false}" WARM="${WARM:-false}" CENTER="${CENTER:-false}"
 #           (LAYER_STRIDE=4 keeps every 4th layer; suffix _attend or _attend4)
 #   last    the same, last-layer output per token only
 #   mix     the same, a learned mix of all layers per token (ELMo)
+#   pre     last-layer vectors precomputed once (encode_last_layer.py, data/docs_last_fp16.npy, 66 GB
+#           held in RAM), looked up by retrieved row: as fast as e0, so K can be large
 DOCS="${DOCS:-e0}" LAYER_STRIDE="${LAYER_STRIDE:-1}"
 [ "${CENTER}" = false ] || RETRIEVAL_DB=data/retrieval_db_centered
 
@@ -155,6 +157,7 @@ case "${CONFIG}" in
         )
         case "${DOCS}" in
             e0) ARGS+=(retrieval_encoder=qwen3_token_embeddings) ;;
+            pre) ARGS+=(retrieval_encoder=precomputed_token_states retrieval_encoder.path=data/docs_last_fp16.npy) ;;
             attend | last | mix) ARGS+=(retrieval_encoder=qwen3_hidden_states "retrieval_encoder.layers=${DOCS}"
                 "retrieval_encoder.layer_stride=${LAYER_STRIDE}") ;;
             *) echo "unknown DOCS ${DOCS}" >&2; exit 1 ;;

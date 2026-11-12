@@ -45,7 +45,7 @@ submit_train() {  # CONFIG W D LR DROPOUT
         compgen -G "${run}/draw${draw}/${last}/loggers/csv/*/metrics.csv" >/dev/null || missing+=("${draw}")
     done
     [ "${#missing[@]}" -gt 0 ] || return 0
-    sbatch "${SLURM[@]}" --time=12:00:00 --mem=32G --partition="${GPU_PARTITION:-gpu,h100}" --gres=gpu:1 \
+    sbatch "${SLURM[@]}" --time="${TIME:-12:00:00}" --mem="${MEM:-32G}" --partition="${GPU_PARTITION:-gpu,h100}" --gres=gpu:1 \
         --array="$(IFS=,; echo "${missing[*]}")" --job-name="${name}" \
         --wrap="LR=${lr} DROPOUT=${dropout} K=${K:-4} NULL_DOC=${NULL_DOC:-true} ZERO_INIT=${ZERO_INIT:-false} WARM=${WARM:-false} CENTER=${CENTER:-false} DOCS=${DOCS:-e0} LAYER_STRIDE=${LAYER_STRIDE:-1} ./run.sh train ${config} ${w} ${d} \${SLURM_ARRAY_TASK_ID}"
 }
@@ -121,8 +121,25 @@ case "${1:-}" in
             done
         done
         ;;
+    encode)
+        # Last-layer vectors of every passage for DOCS=pre (one GPU job, ~66 GB written)
+        [ -f data/docs_last_fp16.npy ] || sbatch "${SLURM[@]}" --partition=gpu --gres=gpu:1 --mem=64G --time=06:00:00 \
+            --job-name=v2-encode-last --wrap="source .venv/bin/activate && python encode_last_layer.py ${RETRIEVAL_DB:-../scaling_laws/data/retrieval_db} data/docs_last_fp16.npy"
+        ;;
+    kdocs)
+        # More documents per patient (Round 6): precomputed last-layer vectors, warm-started, D 153K,
+        # for each K in K_LIST: K_LIST="4 32 128" ./submit.sh kdocs
+        export WARM=true DOCS=pre MEM="${MEM:-128G}"
+        for k in ${K_LIST:-4 32 128}; do
+            for config in v1_masked v1_random_docs_masked; do
+                for w in 64x2x4 256x4x8; do
+                    K="${k}" submit_train "${config}" "${w}" 153220 1e-3 0
+                done
+            done
+        done
+        ;;
     *)
-        echo "usage: $0 tasks | stage0 | stage1 | nomix | ablate | warm | docs" >&2
+        echo "usage: $0 tasks | stage0 | stage1 | nomix | ablate | warm | docs | encode | kdocs" >&2
         exit 1
         ;;
 esac

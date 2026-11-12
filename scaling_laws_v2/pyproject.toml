@@ -4,7 +4,7 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
     # MedRAP feat/retrieval-ablations (zero-init fusion output, encoder warm start), on #124 and #123.
-    "medrap @ git+https://github.com/McDermottHealthAI/MedRAP.git@841d0c617afcfce00766351c410b9009788f67a7",
+    "medrap @ git+https://github.com/McDermottHealthAI/MedRAP.git@56881625cdc1934881b6f6a9c4c93c02c48d1153",
     # FAISS search on the GPU (retriever.device=0); same version as MedRAP's faiss-cpu.
     "faiss-gpu-cu12==1.13.2; sys_platform == 'linux'",
     "matplotlib>=3.9",

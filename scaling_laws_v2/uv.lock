@@ -1315,8 +1315,8 @@ wheels = [
 
 [[package]]
 name = "medrap"
-version = "0.1.dev372+g841d0c617"
-source = { git = "https://github.com/McDermottHealthAI/MedRAP.git?rev=841d0c617afcfce00766351c410b9009788f67a7#841d0c617afcfce00766351c410b9009788f67a7" }
+version = "0.1.dev373+g56881625c"
+source = { git = "https://github.com/McDermottHealthAI/MedRAP.git?rev=56881625cdc1934881b6f6a9c4c93c02c48d1153#56881625cdc1934881b6f6a9c4c93c02c48d1153" }
 dependencies = [
     { name = "datasets" },
     { name = "faiss-cpu", marker = "sys_platform != 'linux'" },
@@ -2838,7 +2838,7 @@ dependencies = [
 requires-dist = [
     { name = "faiss-gpu-cu12", marker = "sys_platform == 'linux'", specifier = "==1.13.2" },
     { name = "matplotlib", specifier = ">=3.9" },
-    { name = "medrap", git = "https://github.com/McDermottHealthAI/MedRAP.git?rev=841d0c617afcfce00766351c410b9009788f67a7" },
+    { name = "medrap", git = "https://github.com/McDermottHealthAI/MedRAP.git?rev=56881625cdc1934881b6f6a9c4c93c02c48d1153" },
     { name = "simple-scaling-laws", specifier = "==0.2.0" },
 ]
 
