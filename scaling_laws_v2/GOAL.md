@@ -14,10 +14,11 @@ retrieval is better.
 | | Criterion | Test |
 |---|---|---|
 | G1 | **No harm** | `Δ` ≥ 0, or its 95% interval includes 0, in all 4 cells |
+| G1+ | **Not worse at large `D`** | at `D` 153K, the point estimate of `Δ` is ≥ 0 for both `W`, not only its interval; every change is checked against this |
 | G2 | **Uses the documents** | the same model is better with its retrieved documents than with random ones (`randomK` − `topK` > 0, interval excludes 0), and better than the same architecture trained on random documents |
 | G3 | **Helps** | `Δ` > 0 with the interval excluding 0 in at least 2 of the 4 cells |
 
-G1 and G2 are required before any scaling-law runs. G3 is the goal.
+G1, G1+ and G2 are required before any scaling-law runs. G3 is the goal.
 
 ## Rules (what counts as cheating)
 
