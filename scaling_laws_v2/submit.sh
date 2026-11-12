@@ -21,8 +21,9 @@ case "${1:-}" in
         ;;
 esac
 
-# c0406's GPU reports uncorrectable ECC errors (FAISS cannot allocate on it); override with EXCLUDE.
-SLURM=(--account=${ACCOUNT:-mm6677_gp} --exclude="${EXCLUDE-c0406}" --cpus-per-task=8 --output=logs/%x_%A_%a.out --error=logs/%x_%A_%a.err)
+# c0406's GPU reports uncorrectable ECC errors (FAISS cannot allocate on it); c0301 returned corrupt
+# parquet reads (polars errors in two runs). Override with EXCLUDE.
+SLURM=(--account=${ACCOUNT:-mm6677_gp} --exclude="${EXCLUDE-c0406,c0301}" --cpus-per-task=8 --output=logs/%x_%A_%a.out --error=logs/%x_%A_%a.err)
 DRAWS=(1 2 3)
 
 submit_train() {  # CONFIG W D LR DROPOUT
