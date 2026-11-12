@@ -152,7 +152,7 @@ case "${CONFIG}" in
             training/loss=multitask_binary_bce)
         ;;
     v1_retrieval | v1_random_docs | v1_masked | v1_random_docs_masked | retrieval | random_docs | retrieval_only \
-        | residual | residual_random_docs)
+        | residual | residual_random_docs | xres | xres_random_docs)
         case "${CONFIG}" in *random_docs*) ARGS+=(retriever.ablation_mode=random_docs) ;; esac
         ARGS+=(
             query_projector=sequence_mean_1024 "query_projector.in_dim=${WIDTH}"
@@ -178,6 +178,11 @@ case "${CONFIG}" in
         case "${CONFIG}" in
             v1_*) ARGS+=(fusion=cross_attention_perdoc_medium "fusion.dropout=${DROPOUT}" head.in_dim=256)
                 [ "${ZERO_INIT}" = false ] || ARGS+=(fusion.zero_init_attn_out=true) ;;
+            # xres: v1's per-code reader on the encoder's own states (no projection or output norm),
+            # so the head reads the patient-only input plus the documents' updates.
+            xres*) ARGS+=(fusion=cross_attention_perdoc_medium fusion.residual=true "fusion.d_model=${WIDTH}"
+                "fusion.num_heads=${HEADS:-1}" "fusion.ff_dim=$((2 * WIDTH))" "fusion.dropout=${DROPOUT}"
+                "head.in_dim=${WIDTH}") ;;
             *) ARGS+=(fusion=gated_doc "fusion.dropout=${DROPOUT}" "head.in_dim=${WIDTH}") ;;
         esac
         [ "${CONFIG}" != retrieval_only ] || ARGS+=(fusion.mode=query)
