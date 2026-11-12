@@ -141,3 +141,13 @@ patient only's test loss; positive means retrieval is better.
   `h + c_k`, where `c_k` is that document's cross-attention contribution. No gate or scalar can turn
   the documents off; every document always changes the output. Control: `residual_random_docs`.
   Precomputed last layer, K 4, lr 1e-3, both W and both D. `./submit.sh residual`.
+
+## Round 8: the per-code reader in residual form (running)
+
+- **Hypothesis**: Round 7's `residual` reads each passage with one pooled query vector, a weaker
+  reader than v1's, where every patient code cross-attends to the passage. Keep v1's reader, but on
+  the encoder's own states (no projection, no output norm), so the pooled output is `h` plus the
+  mean of the documents' updates and the head reads the patient-only input.
+- **Change**: `xres` (MedRAP `PerDocCrossAttentionFusion(residual=True)`, `d_model` = W, the
+  encoder's head count, `ff_dim` 2W, 2 layers). Control: `xres_random_docs`. Precomputed last layer,
+  K 4, lr 1e-3, both W and both D. `CONFIGS="xres xres_random_docs" ./submit.sh residual`.
