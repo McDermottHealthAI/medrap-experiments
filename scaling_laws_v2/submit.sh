@@ -140,8 +140,19 @@ case "${1:-}" in
             done
         done
         ;;
+    tuned)
+        # Each W at its Stage 0 learning rate (3e-3, 3e-4) instead of 1e-3, both arms warm-started
+        # from that lr's checkpoint; precomputed documents, D 153K: [K=4] ./submit.sh tuned
+        export WARM=true MEM="${MEM:-128G}"
+        for wlr in 64x2x4:3e-3 256x4x8:3e-4; do
+            DOCS=e0 MEM=32G submit_train patient_only "${wlr%:*}" 153220 "${wlr#*:}" 0
+            for config in v1_masked v1_random_docs_masked; do
+                DOCS=pre submit_train "${config}" "${wlr%:*}" 153220 "${wlr#*:}" 0
+            done
+        done
+        ;;
     *)
-        echo "usage: $0 tasks | stage0 | stage1 | nomix | ablate | warm | docs | encode | kdocs" >&2
+        echo "usage: $0 tasks | stage0 | stage1 | nomix | ablate | warm | docs | encode | kdocs | tuned" >&2
         exit 1
         ;;
 esac
