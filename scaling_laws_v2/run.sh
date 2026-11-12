@@ -60,6 +60,9 @@ ZERO_INIT="${ZERO_INIT:-false}" WARM="${WARM:-false}" CENTER="${CENTER:-false}"
 #   pre     last-layer vectors precomputed once (encode_last_layer.py, data/docs_last_fp16.npy, 66 GB
 #           held in RAM), looked up by retrieved row: as fast as e0, so K can be large
 DOCS="${DOCS:-e0}" LAYER_STRIDE="${LAYER_STRIDE:-1}"
+# ACCUM=2 halves the batch and accumulates gradients over 2 batches: the same effective batch of 32
+# and the same optimizer steps, at half the memory (K 128 does not fit a 44 GB GPU otherwise).
+ACCUM="${ACCUM:-1}"
 [ "${CENTER}" = false ] || RETRIEVAL_DB=data/retrieval_db_centered
 
 if [ "$1" = tasks ]; then
@@ -127,7 +130,7 @@ ARGS=(
     "training.datamodule.num_tasks=${T}"
     training.datamodule.config.max_seq_len=256
     training.datamodule.config.seq_sampling_strategy=to_end
-    training.datamodule.batch_size=32
+    "training.datamodule.batch_size=$((32 / ACCUM))"
     training/trainer=lightning_wandb
     training.trainer.accelerator=gpu
     # Keep only the last checkpoint (Stage 0: best = last in every run); no progress snapshots.
@@ -193,6 +196,7 @@ TRAIN_K=()
 [ "${CONFIG}" = patient_only ] || TRAIN_K=("retriever.k=${K}")
 
 medrap-train "${ARGS[@]}" ${TRAIN_K[@]+"${TRAIN_K[@]}"} \
+    "+training.trainer.accumulate_grad_batches=${ACCUM}" \
     "training.trainer.max_epochs=${EPOCHS}" \
     "training.module.warmup_steps=${WARMUP}" \
     "training.module.lr=${LR}" \

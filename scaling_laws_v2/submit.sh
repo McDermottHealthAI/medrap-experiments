@@ -47,7 +47,7 @@ submit_train() {  # CONFIG W D LR DROPOUT
     [ "${#missing[@]}" -gt 0 ] || return 0
     sbatch "${SLURM[@]}" --time="${TIME:-12:00:00}" --mem="${MEM:-32G}" --partition="${GPU_PARTITION:-gpu,h100}" --gres=gpu:1 \
         --array="$(IFS=,; echo "${missing[*]}")" --job-name="${name}" \
-        --wrap="LR=${lr} DROPOUT=${dropout} K=${K:-4} NULL_DOC=${NULL_DOC:-true} ZERO_INIT=${ZERO_INIT:-false} WARM=${WARM:-false} CENTER=${CENTER:-false} DOCS=${DOCS:-e0} LAYER_STRIDE=${LAYER_STRIDE:-1} ./run.sh train ${config} ${w} ${d} \${SLURM_ARRAY_TASK_ID}"
+        --wrap="LR=${lr} DROPOUT=${dropout} K=${K:-4} NULL_DOC=${NULL_DOC:-true} ZERO_INIT=${ZERO_INIT:-false} WARM=${WARM:-false} CENTER=${CENTER:-false} DOCS=${DOCS:-e0} LAYER_STRIDE=${LAYER_STRIDE:-1} ACCUM=${ACCUM:-1} ./run.sh train ${config} ${w} ${d} \${SLURM_ARRAY_TASK_ID}"
 }
 
 case "${1:-}" in
@@ -133,7 +133,8 @@ case "${1:-}" in
         for k in ${K_LIST:-4 32 128}; do
             for config in v1_masked v1_random_docs_masked; do
                 for w in 64x2x4 256x4x8; do
-                    K="${k}" submit_train "${config}" "${w}" 153220 1e-3 0
+                    # K >= 128 needs half the batch with accumulation to fit the GPU (run.sh, ACCUM).
+                    K="${k}" ACCUM=$((k >= 128 ? 2 : 1)) submit_train "${config}" "${w}" 153220 1e-3 0
                 done
             done
         done
