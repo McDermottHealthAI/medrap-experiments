@@ -18,8 +18,10 @@ tuning) are in [`GOAL.md`](GOAL.md); each experiment round is logged in [`EXPERI
 2. **The documents don't help yet.** The model reads them (random documents at test make it worse
    in all 4 cells), but a model trained on random documents does just as well (G2 half met, G3 not
    met).
-3. **Next: richer documents**, as the advisor suggested: a frozen Qwen3 runs over each retrieved
-   passage and the fusion attends over every token of every layer. Built; smoke runs in progress.
+3. **Richer documents give the first positive signs**, as the advisor suggested. A frozen Qwen3 runs
+   over each retrieved passage, and the fusion attends over every token of every layer. Retrieved
+   passages now beat random ones, significantly at 256x4x8. Retrieval beats patient only at
+   64x2x4/153K (+0.36%, interval excludes 0). The effects are small (0.2–0.4%); D 10K is running.
 
 ## The advisor's comments: what we did
 
@@ -35,7 +37,7 @@ tuning) are in [`GOAL.md`](GOAL.md); each experiment round is logged in [`EXPERI
 | **Count compute and parameters accurately** | Designed: FLOPs measured with `FlopCounterMode`, FAISS search counted (~2.6 × 10⁸ FLOPs per patient), the frozen Qwen forward pass counted for contextual documents. Not yet applied to results; needed before the scaling grid. | [`design.md`](design.md) §9 | to do |
 | **Other law forms, loss scale only, drop poor fits** | Planned: the 7 law families of `simple-scaling-laws`, fitted on loss, with a fit-quality cutoff. All results so far are already in loss. No laws fitted yet: the scaling grid waits until retrieval helps. | [`design.md`](design.md) §10 | to do |
 | **Paired analyses**: (patient only − retrieval) as one number per shared split and seed | Every comparison is a paired difference per draw (same tasks, patients and seed), reported as a mean with a 95% t-interval. | [`ladder.py`](ladder.py) | done |
-| **Richer document value encodings** (all Qwen tokens; run Qwen over the documents, take all layers, attend through them) | New MedRAP encoder: a frozen Qwen3-Embedding-0.6B runs over each retrieved passage; fusion attends over all 256 tokens × 29 layers, with a learned layer embedding (`DOCS=attend`). Also last layer only (`DOCS=last`) and a learned layer mix (`DOCS=mix`). | MedRAP `feat/qwen-hidden-state-docs`; `run.sh` (`DOCS`) | built; smoke runs in progress |
+| **Richer document value encodings** (all Qwen tokens; run Qwen over the documents, take all layers, attend through them) | New MedRAP encoder: a frozen Qwen3-Embedding-0.6B runs over each retrieved passage; fusion attends over all 256 tokens × 29 layers, with a learned layer embedding (`DOCS=attend`). Also last layer only (`DOCS=last`) and a learned layer mix (`DOCS=mix`). | MedRAP `feat/qwen-hidden-state-docs`; `run.sh` (`DOCS`) | first results (Round 5): small, significant gains; D 10K running |
 
 ## Results so far
 
@@ -65,6 +67,8 @@ the best checkpoint is the last in every run):
 | 3 | **encoder warm-started from patient only** | **+2.5%** | **+2.0%** | the harm is gone, but see Round 4 |
 | 4 | the same, against patient only trained for the same extra epochs | +0.1% | −0.6% | even (G1 met); the +2% was the extra training |
 | 4 | the same model trained on random documents | +0.1% | −0.9% | as good as retrieved documents: they add no knowledge yet |
+| 5 | **contextual documents: all tokens of all 29 Qwen layers** (vs the same baseline) | **+0.36%** (3/3 draws, interval excludes 0) | −0.54% | first gain; retrieved beat random passages (significant at 256x4x8) |
+| 5 | the same, trained on random documents | +0.16% | −0.72% | retrieved passages now beat this control, by 0.2% |
 
 Also ruled out: the loss implementation, gradient clipping (never triggers), and overfitting (v1 is
 worse on training loss too).

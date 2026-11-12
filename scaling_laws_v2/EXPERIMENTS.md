@@ -64,3 +64,41 @@ patient only's test loss; positive means retrieval is better.
 - **G3 (helps)**: not met; `Δ` ≈ 0.
 - **Decision**: the warm start is the new default (and its baseline is `patient_only_warm`). The reader no
   longer harms; the question is now whether it *can* gain from a document. Next: the positive control.
+
+## Round 5: contextual documents, all tokens of all layers (D 153K, warm start, 3 draws)
+
+- **Hypothesis** (advisor): the documents add nothing because the fusion reads context-free word
+  pieces. Run Qwen over each document, take all layers, and attend through them.
+- **Change**: `DOCS=attend` (MedRAP `QwenHiddenStatesRetrievalEncoder`): a frozen Qwen3-Embedding-0.6B
+  runs over each retrieved passage; the fusion cross-attends over 256 tokens × 29 hidden states, each
+  layer-normalised, plus a learned layer embedding. Everything else as Round 4. About 7.5–9 h per run
+  on an L40S/H100, against about 2 h before.
+- **Result** (`Δ` ×1e-4 vs `patient_only_warm`, 95% interval; positive = retrieval better):
+
+  | | 64x2x4 | 256x4x8 |
+  |---|---|---|
+  | E0 (Round 4), topK | +0.30 ± 1.38 | −1.25 ± 2.47 |
+  | **all layers, topK** | **+0.77 ± 0.65** (3/3 draws; +0.36%) | −1.10 ± 2.93 (−0.54%) |
+  | all layers, random documents at test | −0.03 ± 1.19 | −3.39 ± 3.61 |
+  | all layers, trained on random documents | +0.33 ± 0.56 | −1.48 ± 2.97 |
+
+  | Uses the documents? (×1e-4, positive = retrieved better) | 64x2x4 | 256x4x8 |
+  |---|---|---|
+  | randomK − topK, same model, E0 | 0.69 ± 0.76 | 2.66 ± 3.06 |
+  | randomK − topK, same model, all layers | 0.80 ± 1.28 | **2.29 ± 2.02** |
+  | trained on random − trained on retrieved, all layers | 0.44 ± 0.88 (3/3) | **0.38 ± 0.21** (3/3) |
+
+  Share of test patients with the most common top passage: 0.51 / 0.48 (E0) → 0.35 / 0.38 (all layers).
+- **Reading**: the first positive signs, all small.
+  - **G1 (no harm):** still met.
+  - **G2 (uses the documents):** met at 256x4x8, where retrieved passages beat random ones at test and
+    beat a model trained on random passages, both with intervals excluding 0. At 64x2x4 both point
+    the same way (3/3 draws) but the intervals include 0.
+  - **G3 (helps):** at 64x2x4/153K, the first `Δ` with an interval excluding 0 (+0.36%). Most of that
+    comes from the architecture, since the random-documents model is +0.16%. Needs 2 of 4 cells.
+  - Retrieval is also more diverse.
+
+  The effects are about 0.2–0.4% of the loss: real, but far from useful yet.
+- **Decision**: keep the contextual documents. Run the D 10K cells (submitted) to complete the 4-cell
+  check. Then more documents per patient (the advisor's K 128/512); with all layers that is too
+  expensive to compute on the fly, so it needs precomputed last-layer vectors or fewer layers.
