@@ -140,6 +140,18 @@ case "${1:-}" in
             done
         done
         ;;
+    residual)
+        # Round 7: h + c_k (gated_doc fusion with no gate), precomputed documents, warm-started,
+        # against patient_only_warm at both D: ./submit.sh residual
+        export WARM=true DOCS=pre MEM="${MEM:-128G}"
+        for config in residual residual_random_docs; do
+            for w in 64x2x4 256x4x8; do
+                for d in 10000 153220; do
+                    submit_train "${config}" "${w}" "${d}" 1e-3 0
+                done
+            done
+        done
+        ;;
     tuned)
         # Each W at its Stage 0 learning rate (3e-3, 3e-4) instead of 1e-3, both arms warm-started
         # from that lr's checkpoint; precomputed documents, D 153K: [K=4] ./submit.sh tuned
@@ -152,7 +164,7 @@ case "${1:-}" in
         done
         ;;
     *)
-        echo "usage: $0 tasks | stage0 | stage1 | nomix | ablate | warm | docs | encode | kdocs | tuned" >&2
+        echo "usage: $0 tasks | stage0 | stage1 | nomix | ablate | warm | docs | encode | kdocs | tuned | residual" >&2
         exit 1
         ;;
 esac

@@ -142,7 +142,8 @@ case "${CONFIG}" in
         ARGS+=(fusion=passthrough "query_projector.in_dim=${WIDTH}" "head.in_dim=${WIDTH}"
             training/loss=multitask_binary_bce)
         ;;
-    v1_retrieval | v1_random_docs | v1_masked | v1_random_docs_masked | retrieval | random_docs | retrieval_only)
+    v1_retrieval | v1_random_docs | v1_masked | v1_random_docs_masked | retrieval | random_docs | retrieval_only \
+        | residual | residual_random_docs)
         case "${CONFIG}" in *random_docs*) ARGS+=(retriever.ablation_mode=random_docs) ;; esac
         ARGS+=(
             query_projector=sequence_mean_1024 "query_projector.in_dim=${WIDTH}"
@@ -171,6 +172,8 @@ case "${CONFIG}" in
             *) ARGS+=(fusion=gated_doc "fusion.dropout=${DROPOUT}" "head.in_dim=${WIDTH}") ;;
         esac
         [ "${CONFIG}" != retrieval_only ] || ARGS+=(fusion.mode=query)
+        # residual: the patient-only head input h plus each document's contribution, no gate.
+        case "${CONFIG}" in residual*) ARGS+=(fusion.gated=false) ;; esac
         ;;
     *) echo "unknown CONFIG ${CONFIG}" >&2; exit 1 ;;
 esac
