@@ -102,3 +102,24 @@ patient only's test loss; positive means retrieval is better.
 - **Decision**: keep the contextual documents. Run the D 10K cells (submitted) to complete the 4-cell
   check. Then more documents per patient (the advisor's K 128/512); with all layers that is too
   expensive to compute on the fly, so it needs precomputed last-layer vectors or fewer layers.
+- **D 10K cells** (same setup; `Δ` ×1e-4 vs `patient_only_warm`):
+
+  | | 64x2x4 / 10K | 256x4x8 / 10K |
+  |---|---|---|
+  | E0 (Round 4), topK | −0.63 ± 1.52 | −2.50 ± 3.13 |
+  | all layers, topK | −0.94 ± 2.40 (−0.36%) | −5.77 ± 19.16 (−2.2%) |
+  | all layers, random documents at test | −3.46 ± 2.92 | −11.21 ± 33.82 |
+  | all layers, trained on random documents | −0.84 ± 2.17 | −2.48 ± 2.12 |
+  | randomK − topK, same model | **2.52 ± 0.86** | 5.44 ± 14.72 |
+
+  At 256x4x8/10K one draw drives the wide interval: draw 3 is 5.5% worse than its baseline
+  (0.02777 against 0.02631), draws 1–2 are 0.4–0.8% worse. With 10K patients the larger model
+  overfits through the retrieved documents (it is worse than the same model on random documents in
+  that draw).
+- **Reading, all 4 cells**: G1 still met (every interval includes 0). G1+ not met: at 153K,
+  256x4x8 is −0.54%. G2 met only where the same-model swap excludes 0 (64x2x4/10K, 256x4x8/153K);
+  the model trained on random documents beats retrieval at D 10K. G3: 1 of 4 cells. Contextual
+  documents help at large `D` and small `W`, and hurt at small `D`.
+- **Decision**: the precomputed last-layer vectors (`DOCS=pre`, ~30 min per run, against 8 h) gave the
+  same result as all layers at K 4 (64x2x4/153K: +0.20 ± 1.43; 256x4x8: −1.81 ± 2.90, 2 draws), so
+  the K sweep (Round 6) uses them.
