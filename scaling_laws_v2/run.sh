@@ -30,7 +30,16 @@
 # database are v1's.
 
 set -euo pipefail
-cd "$(dirname "$0")"
+# Bash reads a script while running it, so a git pull mid-job breaks running jobs ("Stale file
+# handle"): run from a private copy.
+if [ -z "${RUN_SH_COPY:-}" ]; then
+    cd "$(dirname "$0")"
+    RUN_SH_COPY=$(mktemp)
+    cp run.sh "${RUN_SH_COPY}"
+    export RUN_SH_COPY
+    exec bash "${RUN_SH_COPY}" "$@"
+fi
+trap 'rm -f "${RUN_SH_COPY}"' EXIT
 VENV=.venv
 case "${1:-} ${2:-}" in "train v1_retrieval" | "train v1_random_docs") VENV=../scaling_laws/.venv ;; esac
 # shellcheck source=/dev/null
