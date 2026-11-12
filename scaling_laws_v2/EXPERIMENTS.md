@@ -123,3 +123,21 @@ patient only's test loss; positive means retrieval is better.
 - **Decision**: the precomputed last-layer vectors (`DOCS=pre`, ~30 min per run, against 8 h) gave the
   same result as all layers at K 4 (64x2x4/153K: +0.20 ± 1.43; 256x4x8: −1.81 ± 2.90, 2 draws), so
   the K sweep (Round 6) uses them.
+
+## Round 6: more documents per patient, and each W at its tuned lr (running)
+
+- **Hypothesis A** (advisor): with 4 candidates the retriever learns little about which passage
+  helps; K 32 and 128 give it more to compare. `./submit.sh kdocs`, precomputed last layer, D 153K.
+- **Hypothesis B**: 256x4x8 trails because lr 1e-3 is too high for it (its Stage 0 optimum is 3e-4);
+  both arms at each W's tuned lr, warm-started from that lr's checkpoint. `./submit.sh tuned`.
+
+## Round 7: start exactly at the patient-only model, add documents with no gate (running)
+
+- **Hypothesis**: the warm start copies only the encoder. `patient_only_warm`'s fresh head reads the
+  trained encoder's pooled vector `h` directly; the v1 fusion's head reads it only through a fresh
+  projection and two cross-attention layers, which have to relearn the patient signal. That costs
+  most where data is scarce (D 10K), and it explains why random documents train as well.
+- **Change**: `residual` (MedRAP `GatedDocFusion(gated=False)`): the output for document `k` is
+  `h + c_k`, where `c_k` is that document's cross-attention contribution. No gate or scalar can turn
+  the documents off; every document always changes the output. Control: `residual_random_docs`.
+  Precomputed last layer, K 4, lr 1e-3, both W and both D. `./submit.sh residual`.
