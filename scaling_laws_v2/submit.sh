@@ -179,7 +179,8 @@ case "${1:-}" in
                 submit_train patient_only "${w}" "${d}" 1e-3 0
                 DEP="${LAST_JOB}"
                 WARM=true DOCS=e0 submit_train patient_only "${w}" "${d}" 1e-3 0
-                for config in xres xres_random_docs; do
+                # CONFIGS="" submits the patient-only part only (the reader's settings come later).
+                for config in ${CONFIGS-xres xres_random_docs}; do
                     WARM=true DOCS=pre MEM=128G submit_train "${config}" "${w}" "${d}" 1e-3 0
                 done
                 DEP=""
