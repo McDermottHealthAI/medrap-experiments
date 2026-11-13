@@ -43,7 +43,10 @@ submit_train() {  # CONFIG W D LR DROPOUT; sets LAST_JOB to the job submitted (e
     [ "${LAYER_STRIDE:-1}" = 1 ] || run="${run}${LAYER_STRIDE}"
     [ "${FUSION_DROPOUT:-0}" = 0 ] || run="${run}_fd${FUSION_DROPOUT}"
     local name="v2-${run#outputs/}"
-    ! grep -qx "${name}" <<<"${QUEUED}" || return 0
+    if grep -qx "${name}" <<<"${QUEUED}"; then  # already queued: later runs can wait on it
+        LAST_JOB=$(squeue -u "${USER}" -h -n "${name}" -o %F | head -1)
+        return 0
+    fi
     for draw in "${DRAWS[@]}"; do
         compgen -G "${run}/draw${draw}/${last}/loggers/csv/*/metrics.csv" >/dev/null || missing+=("${draw}")
     done
