@@ -10,11 +10,17 @@ Arms (all warm-started from the same patient-only checkpoint, so every Δ is pai
 Writes, next to this file:
     results_grid.csv    one row per run: arm, W, N, D, draw, test loss, training compute
     grid_delta.csv      L(patient only) − L(arm) per W × D, mean over draws with a 95% t-interval
-    grid_fits.csv       every law form per arm: parameters, R² over cell means, leave-one-cell-out
+    grid_fits.csv       every law form per arm, fit on draw-centred loss (below): parameters, R² over cell means, leave-one-cell-out
                         RMSE, run-to-run SD, warnings, whether it passes the quality gate, and
                         which form is kept (lowest leave-one-cell-out RMSE)
     grid_compare.csv    simple_scaling_laws.compare of the kept laws against patient only, at the
                         trained cells and beyond them
+
+Each draw has its own 1,000 tasks, so loss levels differ between draws by far more than the arms
+differ. Every arm and cell of a draw shares its tasks (each D subsamples the same draw), so the laws
+are fit on draw-centred loss: each draw's mean over the cells present in every draw is subtracted
+and the overall mean added back. Differences between arms are unchanged; the paired Δ table uses
+the raw losses.
 
 N is the trained parameters without the code table, and training compute includes the patient-only
 checkpoint each run starts from, both from results_compute.csv (count_compute.py).
@@ -91,6 +97,15 @@ def deltas(df: pl.DataFrame) -> pl.DataFrame:
                      "delta_pct": float(((g["base"] - g["loss"]) / g["base"]).mean() * 100),
                      "draws_better": sum(v > 0 for v in x)})
     return pl.DataFrame(rows).sort("arm", "W", "D")
+
+
+def centre(df: pl.DataFrame) -> pl.DataFrame:
+    """Subtract each draw's mean loss over the (arm, W, D) cells that every draw has."""
+    n_draws = df["draw"].n_unique()
+    full = df.group_by("arm", "W", "D").agg(n=pl.col("draw").n_unique()).filter(pl.col("n") == n_draws)
+    balanced = df.join(full.select("arm", "W", "D"), on=["arm", "W", "D"])
+    offset = balanced.group_by("draw").agg(offset=pl.col("loss").mean() - balanced["loss"].mean())
+    return df.join(offset, on="draw").with_columns(loss=pl.col("loss") - pl.col("offset")).drop("offset")
 
 
 def table(df: pl.DataFrame) -> pl.DataFrame:
@@ -192,10 +207,11 @@ if __name__ == "__main__":
     d.write_csv(HERE / "grid_delta.csv")
     print("Paired Δ = L(patient only) − L(arm), ×1e-4 with 95% t-interval; positive: the arm is better")
     print(d)
-    f, kept = fits(df)
+    f, kept = fits(centre(df))
     f.write_csv(HERE / "grid_fits.csv")
-    print(f.drop("params", strict=False))
-    c = comparison(df, kept)
+    with pl.Config(fmt_str_lengths=120):
+        print(f.drop("params", strict=False))
+    c = comparison(centre(df), kept)
     if not c.is_empty():
         c.write_csv(HERE / "grid_compare.csv")
         print(c)
