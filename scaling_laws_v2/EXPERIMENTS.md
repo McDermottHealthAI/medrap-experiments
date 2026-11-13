@@ -229,10 +229,39 @@ patient only's test loss; positive means retrieval is better.
 - **Decision**: keep dropout 0. Run the scaling grid with xres as it is; it maps `Δ` against `D`
   (where retrieval starts to help) and against compute.
 
-## Round 11: the scaling grid (running)
+## Round 11: the scaling grid
 
-`./submit.sh grid`: `W` {64x2x4, 128x2x4, 256x4x8} × `D` {3K, 10K, 30K, 100K, 153K} × 3 draws; per
-cell patient only, `patient_only_warm`, xres and xres trained on random documents.
+`./submit.sh grid`: `W` {64x2x4, 128x2x4, 256x4x8} × `D` {3K, 10K, 30K, 100K, 153K} × 3 draws (6 at
+the Round 9 cells); per cell patient only, `patient_only_warm`, xres and xres trained on random
+documents. Analysis: `grid.py` → `grid_delta.csv`, `grid_fits.csv`, `grid_compare.csv`,
+`grid_delta.png`, `grid_compute.png`.
+
+- **Δ against D** (% of patient only's test loss, 95% t-interval; positive: retrieval better):
+
+  | `D` | 64x2x4 | 128x2x4 | 256x4x8 |
+  |---|---|---|---|
+  | 3K | −1.55 ± 0.40 | −2.85 ± 1.15 | −1.88 ± 1.89 |
+  | 10K | −0.30 ± 0.20 | −1.50 ± 1.32 | −0.48 ± 0.44 |
+  | 30K | −0.24 ± 0.58 | −0.65 ± 1.09 | −0.05 ± 2.15 |
+  | 100K | **+0.21 ± 0.23** (3/3) | −0.04 ± 0.58 | **+0.82 ± 0.37** (3/3) |
+  | 153K | **+0.27 ± 0.08** (6/6) | +0.13 ± 0.89 | **+0.79 ± 0.50** (6/6) |
+
+  Trained on random documents: −2.0 to −2.9% at 3K, rising to −0.02 / −0.01 / +0.31% at 153K.
+  The documents' own contribution (xres − random) grows with `D` too: about +0.3 to +0.5% at 100K
+  and 153K.
+- **Laws** (fit on draw-centred loss; one form for all arms): separable-power,
+  `L = E + A·N^−α + B·D^−β`, is kept. It passes the quality gate for patient only (R² over cell
+  means 0.994, leave-one-cell-out RMSE 2.2 × 10⁻⁴ < run SD 2.3 × 10⁻⁴) and xres (0.996; 2.2 < 2.4),
+  and narrowly fails it for the random-documents arm (2.20 vs 2.18). The other four forms fail on
+  `ill_conditioned_fit` or optimizer warnings. The arm comparison from the laws is inconclusive
+  (P(xres better) 0.5–0.6 at large `D`): unpaired laws cannot resolve a 0.3–0.8% difference, and an
+  additive law cannot represent a gain that grows with `D`. The paired cell table is the evidence.
+- **Compute**: at equal training compute patient only wins. Its best cell (128x2x4, 153K) reaches
+  0.02073 at 5.9 × 10¹⁴ FLOPs; xres's best (128x2x4, 153K) reaches 0.02071 at 3.8 × 10¹⁵, the same
+  loss for 6.5× the compute. Most of a retrieval step projects the 5 × 256 passage vectors.
+- **Reading**: retrieval is a large-data effect. It costs 1.5–3% at 3K patients, breaks even around
+  30K–100K and helps from 100K on, and the documents' own contribution grows with `D`. It is the
+  best model at a fixed amount of data, not at a fixed compute budget.
 
 Also finished: retrieval only (the patient reaches the prediction only through the documents):
 −5.5% / −7.0% at 10K and −15.7% / −13.9% at 153K (64x2x4 / 256x4x8) against patient only. xres at

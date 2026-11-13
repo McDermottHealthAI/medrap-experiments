@@ -34,7 +34,15 @@ tuning) are in [`GOAL.md`](GOAL.md); each experiment round is logged in [`EXPERI
 5. **The gain replicates on fresh draws** (Round 9: new tasks, patients and seeds; nothing was chosen
    on them): +0.3% and +0.8% at `D` 153K again. Over 6 draws, though, it is slightly worse than
    patient only at `D` 10K (−0.3%, −0.5%), where the reader overfits. Running: dropout in the
-   reader (Round 10), and the patient-only part of the scaling grid.
+   reader (Round 10; it did not help).
+6. **The scaling grid** (Round 11: 3 sizes × `D` 3K–153K × 3–6 draws) shows retrieval is a
+   large-data effect: 1.5–3% worse at 3K patients, even around 30K–100K, better from 100K on
+   (+0.2 to +0.8%), with the documents' own share growing with `D`. At equal training compute,
+   though, patient only wins: `xres` needs about 6.5× the compute for the same loss.
+
+![Δ against D](grid_delta.png)
+
+![Loss against compute](grid_compute.png)
 
 ## The advisor's comments: what we did
 
@@ -48,7 +56,7 @@ tuning) are in [`GOAL.md`](GOAL.md); each experiment round is logged in [`EXPERI
 | **More documents** (128, 512), since the loss learns "which retrieved document is best" | K 4, 32, 128 at `D` 153K with precomputed contextual passages (K 128 with half batches and gradient accumulation). The model reads more with more passages, but a model trained on random passages gains as much (Round 6). 512 not run. | `submit.sh kdocs` | done (128); no gain from knowledge |
 | **Retrieval-only models** at the same settings, especially for richer document encodings | Run with context-free documents (17% worse than patient only at `D` 153K) and with contextual (precomputed last-layer) passages: 5.5–7% worse at `D` 10K and 14–16% worse at 153K. The passages help only as an addition to the patient record. | `CONFIGS=retrieval_only ./submit.sh residual` | done |
 | **Count compute and parameters accurately** | Measured, not estimated: one real batch per configuration through forward and backward under `FlopCounterMode` (attention, cross-attention, and the frozen Qwen pass for on-the-fly documents), plus the FAISS search analytically (2.6 × 10⁸ FLOPs per patient). Parameters split into `N` (trained, without the code table), all trained, and frozen. Results below. | [`count_compute.py`](count_compute.py), [`results_compute.csv`](results_compute.csv) | done |
-| **Other law forms, loss scale only, drop poor fits** | Planned: the 7 law families of `simple-scaling-laws`, fitted on loss, with a fit-quality cutoff. All results so far are already in loss. No laws fitted yet: the scaling grid waits until retrieval helps. | [`design.md`](design.md) §10 | to do |
+| **Other law forms, loss scale only, drop poor fits** | Five law forms (separable, shifted-separable, Kaplan joint, Skaling joint, bounded rational) fitted on loss per arm. A form is kept only if R² over cell means ≥ 0.9, its leave-one-cell-out RMSE is below the run-to-run SD, and it has no ill-conditioning or non-convergence warning. Separable-power passes for patient only and `xres`; the others fail. | [`grid.py`](grid.py), [`grid_fits.csv`](grid_fits.csv) | done |
 | **Paired analyses**: (patient only − retrieval) as one number per shared split and seed | Every comparison is a paired difference per draw (same tasks, patients and seed), reported as a mean with a 95% t-interval. | [`ladder.py`](ladder.py) | done |
 | **Richer document value encodings** (all Qwen tokens; run Qwen over the documents, take all layers, attend through them) | New MedRAP encoder: a frozen Qwen3-Embedding-0.6B runs over each retrieved passage; fusion attends over all 256 tokens × 29 layers, with a learned layer embedding (`DOCS=attend`). Also last layer only (`DOCS=last`) and a learned layer mix (`DOCS=mix`). | MedRAP `feat/qwen-hidden-state-docs`; `run.sh` (`DOCS`) | done: precomputed last layer, read by the residual per-code reader (Round 8), helps at D 153K |
 
@@ -212,6 +220,7 @@ contextual-document encoder addresses.
 | [`run.sh`](run.sh) | one step: `tasks DRAW`, or `train CONFIG W D DRAW` (train, then test); switches `LR`, `DROPOUT`, `K`, `NULL_DOC`, `ZERO_INIT`, `WARM`, `CENTER`, `DOCS`, `LAYER_STRIDE` |
 | [`submit.sh`](submit.sh) | submits `tasks`, `stage0`, `stage1`, `nomix`, `ablate`, `warm`, `docs`, `encode`, `kdocs`, `tuned`, `residual`, `confirm`, `grid` to SLURM; skips finished and queued runs |
 | [`encode_last_layer.py`](encode_last_layer.py) | the precomputed last-layer passage vectors (`DOCS=pre`) |
+| [`grid.py`](grid.py) | the scaling-grid analysis: paired Δ per cell, law fits with the quality gate, `compare`, compute; plots |
 | [`count_compute.py`](count_compute.py) | measured training FLOPs and parameter counts per configuration → [`results_compute.csv`](results_compute.csv) |
 | [`ladder.py`](ladder.py) | collects test results into `results.csv`; paired differences with 95% intervals |
 | [`gaps.py`](gaps.py) | the paired v1 numbers in Appendix A |

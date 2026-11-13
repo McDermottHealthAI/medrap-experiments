@@ -20,6 +20,9 @@ retrieval is better.
 
 G1, G1+ and G2 are required before any scaling-law runs. G3 is the goal.
 
+**Status** (Round 11): G1+, G2 and G3 met with `xres`, replicated on fresh draws. G1 fails below
+about 30K patients (−0.3% to −2.9%); the scaling grid maps where retrieval starts to help.
+
 ## Rules (what counts as cheating)
 
 - **Documents are always read.** No gate, switch or path that lets the model turn retrieval off as
