@@ -215,9 +215,25 @@ patient only's test loss; positive means retrieval is better.
 - **Decision**: try regularising the reader (Round 10). Start the scaling grid's patient-only runs,
   which don't depend on the reader.
 
-## Round 10: dropout in the reader (running)
+## Round 10: dropout in the reader
 
 - **Hypothesis**: the D 10K harm is the reader overfitting; dropout in the reader alone (not the
   encoder, so the warm start is unchanged) fixes it without losing the 153K gain.
 - **Change**: `FUSION_DROPOUT` 0.1 and 0.3 for xres, both W and both D, draws 1–3.
   `FUSION_DROPOUT=0.1 CONFIGS=xres ./submit.sh residual`.
+- **Result** (`Δ` % vs `patient_only_warm`, draws 1–3; reader dropout 0 / 0.1 / 0.3):
+  64x2x4/10K −0.19 / −0.53 / −0.85; 64x2x4/153K +0.27 / +0.24 / +0.24; 256x4x8/10K −0.25 / −0.15 /
+  −0.52; 256x4x8/153K +0.75 / +0.68 / +0.71.
+- **Reading**: dropout does not fix D 10K and makes 64x2x4 worse, so the small-`D` cost is not the
+  reader overfitting.
+- **Decision**: keep dropout 0. Run the scaling grid with xres as it is; it maps `Δ` against `D`
+  (where retrieval starts to help) and against compute.
+
+## Round 11: the scaling grid (running)
+
+`./submit.sh grid`: `W` {64x2x4, 128x2x4, 256x4x8} × `D` {3K, 10K, 30K, 100K, 153K} × 3 draws; per
+cell patient only, `patient_only_warm`, xres and xres trained on random documents.
+
+Also finished: retrieval only (the patient reaches the prediction only through the documents):
+−5.5% / −7.0% at 10K and −15.7% / −13.9% at 153K (64x2x4 / 256x4x8) against patient only. xres at
+K 32: +0.34% at 64x2x4/153K (3/3, random-documents control +0.07%), +0.88% at 256x4x8 (1 draw so far).
