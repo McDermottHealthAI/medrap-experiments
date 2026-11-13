@@ -170,6 +170,21 @@ case "${1:-}" in
             done
         done
         ;;
+    grid)
+        # Stage 4: the scaling grid with the chosen reader. Per (W, D, draw): patient only, then from its
+        # checkpoint patient_only_warm, xres and xres_random_docs, so every Δ is paired. ./submit.sh grid
+        for w in ${W_LIST:-64x2x4 128x2x4 256x4x8}; do
+            for d in ${D_LIST:-3000 10000 30000 100000 153220}; do
+                submit_train patient_only "${w}" "${d}" 1e-3 0
+                DEP="${LAST_JOB}"
+                WARM=true DOCS=e0 submit_train patient_only "${w}" "${d}" 1e-3 0
+                for config in xres xres_random_docs; do
+                    WARM=true DOCS=pre MEM=128G submit_train "${config}" "${w}" "${d}" 1e-3 0
+                done
+                DEP=""
+            done
+        done
+        ;;
     tuned)
         # Each W at its Stage 0 learning rate (3e-3, 3e-4) instead of 1e-3, both arms warm-started
         # from that lr's checkpoint; precomputed documents, D 153K: [K=4] ./submit.sh tuned
@@ -182,7 +197,7 @@ case "${1:-}" in
         done
         ;;
     *)
-        echo "usage: $0 tasks | stage0 | stage1 | nomix | ablate | warm | docs | encode | kdocs | tuned | residual | confirm" >&2
+        echo "usage: $0 tasks | stage0 | stage1 | nomix | ablate | warm | docs | encode | kdocs | tuned | residual | confirm | grid" >&2
         exit 1
         ;;
 esac
