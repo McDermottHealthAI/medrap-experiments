@@ -24,9 +24,10 @@ esac
 # c0406's GPU reports uncorrectable ECC errors (FAISS cannot allocate on it); c0301 returned corrupt
 # parquet reads (polars errors in two runs). Override with EXCLUDE.
 SLURM=(--account=${ACCOUNT:-mm6677_gp} --exclude="${EXCLUDE-c0406,c0301}" --cpus-per-task=8 --output=logs/%x_%A_%a.out --error=logs/%x_%A_%a.err)
-DRAWS=(1 2 3)
+read -ra DRAWS <<<"${DRAW_LIST:-1 2 3}"
 
-submit_train() {  # CONFIG W D LR DROPOUT
+submit_train() {  # CONFIG W D LR DROPOUT; sets LAST_JOB to the job submitted (empty if none); DEP waits on a job
+    LAST_JOB=""
     local config=$1 w=$2 d=$3 lr=$4 dropout=$5 missing=() last=test_randomK
     local run="outputs/${config}_W${w}_D${d}_lr${lr}_do${dropout}"
     case "${config}" in
@@ -46,9 +47,10 @@ submit_train() {  # CONFIG W D LR DROPOUT
         compgen -G "${run}/draw${draw}/${last}/loggers/csv/*/metrics.csv" >/dev/null || missing+=("${draw}")
     done
     [ "${#missing[@]}" -gt 0 ] || return 0
-    sbatch "${SLURM[@]}" --time="${TIME:-12:00:00}" --mem="${MEM:-32G}" --partition="${GPU_PARTITION:-gpu,h100}" --gres=gpu:1 \
+    LAST_JOB=$(sbatch --parsable "${SLURM[@]}" ${DEP:+--dependency=afterok:${DEP}} --time="${TIME:-12:00:00}" --mem="${MEM:-32G}" --partition="${GPU_PARTITION:-gpu,h100}" --gres=gpu:1 \
         --array="$(IFS=,; echo "${missing[*]}")" --job-name="${name}" \
-        --wrap="LR=${lr} DROPOUT=${dropout} K=${K:-4} NULL_DOC=${NULL_DOC:-true} ZERO_INIT=${ZERO_INIT:-false} WARM=${WARM:-false} CENTER=${CENTER:-false} DOCS=${DOCS:-e0} LAYER_STRIDE=${LAYER_STRIDE:-1} ACCUM=${ACCUM:-1} ./run.sh train ${config} ${w} ${d} \${SLURM_ARRAY_TASK_ID}"
+        --wrap="LR=${lr} DROPOUT=${dropout} K=${K:-4} NULL_DOC=${NULL_DOC:-true} ZERO_INIT=${ZERO_INIT:-false} WARM=${WARM:-false} CENTER=${CENTER:-false} DOCS=${DOCS:-e0} LAYER_STRIDE=${LAYER_STRIDE:-1} ACCUM=${ACCUM:-1} ./run.sh train ${config} ${w} ${d} \${SLURM_ARRAY_TASK_ID}")
+    echo "Submitted batch job ${LAST_JOB} (${name})"
 }
 
 case "${1:-}" in
@@ -152,6 +154,21 @@ case "${1:-}" in
             done
         done
         ;;
+    confirm)
+        # Round 9: the chosen reader (xres) on fresh draws, nothing chosen on them. Run the tasks first:
+        # DRAW_LIST="4 5 6" ./submit.sh tasks; then DRAW_LIST="4 5 6" [AFTER=<tasks job>] ./submit.sh confirm
+        for w in 64x2x4 256x4x8; do
+            for d in 10000 153220; do
+                DEP="${AFTER:-}" submit_train patient_only "${w}" "${d}" 1e-3 0
+                DEP="${LAST_JOB:-${AFTER:-}}"
+                WARM=true DOCS=e0 submit_train patient_only "${w}" "${d}" 1e-3 0
+                for config in xres xres_random_docs; do
+                    WARM=true DOCS=pre MEM=128G submit_train "${config}" "${w}" "${d}" 1e-3 0
+                done
+                DEP=""
+            done
+        done
+        ;;
     tuned)
         # Each W at its Stage 0 learning rate (3e-3, 3e-4) instead of 1e-3, both arms warm-started
         # from that lr's checkpoint; precomputed documents, D 153K: [K=4] ./submit.sh tuned
@@ -164,7 +181,7 @@ case "${1:-}" in
         done
         ;;
     *)
-        echo "usage: $0 tasks | stage0 | stage1 | nomix | ablate | warm | docs | encode | kdocs | tuned | residual" >&2
+        echo "usage: $0 tasks | stage0 | stage1 | nomix | ablate | warm | docs | encode | kdocs | tuned | residual | confirm" >&2
         exit 1
         ;;
 esac
