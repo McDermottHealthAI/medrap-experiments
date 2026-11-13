@@ -12,7 +12,9 @@ Writes, next to this file:
     grid_delta.csv      L(patient only) − L(arm) per W × D, mean over draws with a 95% t-interval
     grid_fits.csv       every law form per arm, fit on draw-centred loss (below): parameters, R² over cell means, leave-one-cell-out
                         RMSE, run-to-run SD, warnings, whether it passes the quality gate, and
-                        which form is kept (lowest leave-one-cell-out RMSE)
+                        which form is kept: one form for every arm (compare() needs the same law),
+                        the one passing the gate for the most arms, then lowest mean
+                        leave-one-cell-out RMSE
     grid_compare.csv    simple_scaling_laws.compare of the kept laws against patient only, at the
                         trained cells and beyond them
 
@@ -126,12 +128,11 @@ def cell_means(frame: pl.DataFrame) -> pl.DataFrame:
 
 
 def fits(df: pl.DataFrame) -> tuple[pl.DataFrame, dict]:
-    rows, kept = [], {}
+    rows = []
     for arm, g in df.group_by("arm"):
         arm = arm[0]
         frame, cells = table(g), cell_means(table(g))
         run_sd = float(np.sqrt((cells["sd"] ** 2).mean()))
-        best = None
         for law in LAWS:
             try:
                 model = fit_quiet(frame, law, 200)
@@ -156,14 +157,11 @@ def fits(df: pl.DataFrame) -> tuple[pl.DataFrame, dict]:
             params = model.params(LOSS) if callable(model.params) else model.params
             rows.append({"arm": arm, "law": law, "r2_cells": r2, "loo_rmse": loo_rmse, "run_sd": run_sd,
                          "passes": passes, "warnings": ";".join(codes), "params": str(params)})
-            if best is None or loo_rmse < best[0]:
-                best = (loo_rmse, law, model)
-        if best is not None:
-            kept[arm] = fit_quiet(frame, best[1], 1000)
-            for r in rows:
-                if r["arm"] == arm and r.get("law") == best[1]:
-                    r["kept"] = True
-    return pl.DataFrame(rows, infer_schema_length=None), kept
+    out = pl.DataFrame(rows, infer_schema_length=None).filter(pl.col("loo_rmse").is_not_null())
+    law = (out.group_by("law").agg(n_pass=pl.col("passes").sum(), loo=pl.col("loo_rmse").mean())
+           .sort(["n_pass", "loo"], descending=[True, False])["law"][0])
+    kept = {arm[0]: fit_quiet(table(g), law, 1000) for arm, g in df.group_by("arm")}
+    return out.with_columns(kept=pl.col("law") == law), kept
 
 
 def comparison(df: pl.DataFrame, kept: dict) -> pl.DataFrame:
