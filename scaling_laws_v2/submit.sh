@@ -22,8 +22,8 @@ case "${1:-}" in
 esac
 
 # c0406's GPU reports uncorrectable ECC errors (FAISS cannot allocate on it); c0301 returned corrupt
-# parquet reads (polars errors in two runs). Override with EXCLUDE.
-SLURM=(--account=${ACCOUNT:-mm6677_gp} --exclude="${EXCLUDE-c0406,c0301}" --cpus-per-task=8 --output=logs/%x_%A_%a.out --error=logs/%x_%A_%a.err)
+# parquet reads (polars errors in two runs); c0108 hung a run at start. Override with EXCLUDE.
+SLURM=(--account=${ACCOUNT:-mm6677_gp} --exclude="${EXCLUDE-c0406,c0301,c0108}" --cpus-per-task=8 --output=logs/%x_%A_%a.out --error=logs/%x_%A_%a.err)
 read -ra DRAWS <<<"${DRAW_LIST:-1 2 3}"
 
 submit_train() {  # CONFIG W D LR DROPOUT; sets LAST_JOB to the job submitted (empty if none); DEP waits on a job
