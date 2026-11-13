@@ -23,7 +23,14 @@ tuning) are in [`GOAL.md`](GOAL.md); each experiment round is logged in [`EXPERI
    passages now beat random ones, significantly at 256x4x8. Retrieval beats patient only at
    64x2x4/153K (+0.36%, interval excludes 0). The effects are small (0.2–0.4%). At D 10K they turn
    negative (−0.4% and −2.2%, both intervals including 0), and 256x4x8 stays slightly worse at 153K
-   (−0.5%). Next: more documents per patient (K 4, 32, 128) with precomputed vectors, running.
+   (−0.5%).
+4. **A reader that starts at the patient-only model helps at large `D`** (Round 8, `xres`). Each
+   patient code reads the passage and adds an update to its own state, with no new projection, so
+   the head reads the patient-only input plus the documents' updates (no gate). At `D` 153K it beats
+   patient only for both sizes (+0.27% and +0.75%, intervals excluding 0), and it beats the same
+   model trained on random passages in 3 of 4 cells: the first sign the passages carry knowledge.
+   The 256x4x8 gain holds on validation loss too; the 64x2x4 one is fragile. More passages (K 32,
+   128) and per-size learning rates did not help. Running: a confirmation on fresh draws 4–6.
 
 ## The advisor's comments: what we did
 
@@ -34,16 +41,16 @@ tuning) are in [`GOAL.md`](GOAL.md); each experiment round is logged in [`EXPERI
 | **Minimal patient-only sweep first**, then seed retrieval from the good configuration | Stage 0: 3 `W` × 3 learning rates × 2 dropouts at `D` 153K, 3 draws (results below). Retrieval now starts its encoder from the patient-only checkpoint, and this turned out to be the fix for the harm. | `submit.sh stage0`, `WARM=true` | done |
 | **One task setting** (~1,000 tasks) | `T` = 1,000 everywhere. | `run.sh tasks` | done |
 | **3 draws** instead of 5 | 3 draws everywhere. | `submit.sh` | done |
-| **More documents** (128, 512), since the loss learns "which retrieved document is best" | `K` is a switch (`K=128 ./submit.sh …`), but every run so far uses `K` = 4. A `K` sweep is planned once a document encoding uses the documents; with contextual documents, memory grows with `K`, so it needs a smaller batch or fewer layers. | `run.sh` (`K`) | to do |
+| **More documents** (128, 512), since the loss learns "which retrieved document is best" | K 4, 32, 128 at `D` 153K with precomputed contextual passages (K 128 with half batches and gradient accumulation). The model reads more with more passages, but a model trained on random passages gains as much (Round 6). 512 not run. | `submit.sh kdocs` | done (128); no gain from knowledge |
 | **Retrieval-only models** at the same settings, especially for richer document encodings | Run once, with context-free documents: 17% worse than patient only at `D` 153K, so those documents carry little on their own. Not yet run with contextual documents. | `retrieval_only` in `run.sh` | partly done |
 | **Count compute and parameters accurately** | Designed: FLOPs measured with `FlopCounterMode`, FAISS search counted (~2.6 × 10⁸ FLOPs per patient), the frozen Qwen forward pass counted for contextual documents. Not yet applied to results; needed before the scaling grid. | [`design.md`](design.md) §9 | to do |
 | **Other law forms, loss scale only, drop poor fits** | Planned: the 7 law families of `simple-scaling-laws`, fitted on loss, with a fit-quality cutoff. All results so far are already in loss. No laws fitted yet: the scaling grid waits until retrieval helps. | [`design.md`](design.md) §10 | to do |
 | **Paired analyses**: (patient only − retrieval) as one number per shared split and seed | Every comparison is a paired difference per draw (same tasks, patients and seed), reported as a mean with a 95% t-interval. | [`ladder.py`](ladder.py) | done |
-| **Richer document value encodings** (all Qwen tokens; run Qwen over the documents, take all layers, attend through them) | New MedRAP encoder: a frozen Qwen3-Embedding-0.6B runs over each retrieved passage; fusion attends over all 256 tokens × 29 layers, with a learned layer embedding (`DOCS=attend`). Also last layer only (`DOCS=last`) and a learned layer mix (`DOCS=mix`). | MedRAP `feat/qwen-hidden-state-docs`; `run.sh` (`DOCS`) | Round 5: small gains at D 153K / 64x2x4, losses at D 10K |
+| **Richer document value encodings** (all Qwen tokens; run Qwen over the documents, take all layers, attend through them) | New MedRAP encoder: a frozen Qwen3-Embedding-0.6B runs over each retrieved passage; fusion attends over all 256 tokens × 29 layers, with a learned layer embedding (`DOCS=attend`). Also last layer only (`DOCS=last`) and a learned layer mix (`DOCS=mix`). | MedRAP `feat/qwen-hidden-state-docs`; `run.sh` (`DOCS`) | done: precomputed last layer, read by the residual per-code reader (Round 8), helps at D 153K |
 
 ## Results so far
 
-All at lr 1e-3, dropout 0, `K` 4, 3 draws. `Δ` = L(patient only) − L(retrieval) as a share of patient
+All at lr 1e-3, dropout 0, `K` 4, 3 draws unless the row says otherwise. From Round 4 on, the baseline is patient only trained for the same extra epochs. `Δ` = L(patient only) − L(retrieval) as a share of patient
 only's test loss, paired per draw; positive means retrieval is better. Full tables in
 [`results/scaling_laws_v2`](../results/scaling_laws_v2/README.md) and [`EXPERIMENTS.md`](EXPERIMENTS.md).
 
@@ -71,6 +78,11 @@ the best checkpoint is the last in every run):
 | 4 | the same model trained on random documents | +0.1% | −0.9% | as good as retrieved documents: they add no knowledge yet |
 | 5 | **contextual documents: all tokens of all 29 Qwen layers** (vs the same baseline) | **+0.36%** (3/3 draws, interval excludes 0) | −0.54% | first gain; retrieved beat random passages (significant at 256x4x8) |
 | 5 | the same, trained on random documents | +0.16% | −0.72% | retrieved passages now beat this control, by 0.2% |
+| 6 | precomputed last layer, K 4 / 32 / 128 | +0.10 / +0.32 / +0.45% | −0.64 / −0.40 / −0.52% | trained on random passages gains as much |
+| 6 | each size at its Stage 0 learning rate | −1.6% | −0.74% | worse; dropped |
+| 7 | `residual`: patient-only input + one-query reading of each passage | +0.14% (interval excludes 0) | −0.12% | better than v1, weak reader |
+| 8 | **`xres`: per-code reader on the encoder's own states** | **+0.27%** (excludes 0) | **+0.75%** (excludes 0) | not worse at large `D` (G1+) and helps in 2 cells (G3) |
+| 8 | the same, trained on random passages | +0.00% | +0.30% | retrieved passages beat this control (intervals exclude 0) |
 
 **Retrieval, `D` 10K** (`Δ` vs patient only trained for the same extra epochs):
 
@@ -79,6 +91,8 @@ the best checkpoint is the last in every run):
 | 4 | encoder warm-started, context-free documents | −0.25% | −1.0% | even (intervals include 0) |
 | 5 | contextual documents, all layers | −0.36% | −2.2% | worse, mostly one draw at 256x4x8 (overfitting) |
 | 5 | the same, trained on random documents | −0.34% | −1.0% | as good as or better than retrieved |
+| 8 | `xres` | −0.19% | −0.25% | even (intervals include 0) |
+| 8 | the same, trained on random passages | −0.77% | −0.39% | worse than retrieved (excludes 0 at 64x2x4) |
 
 Also ruled out: the loss implementation, gradient clipping (never triggers), and overfitting (v1 is
 worse on training loss too).

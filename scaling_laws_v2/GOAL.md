@@ -42,9 +42,9 @@ Cheapest first. Each step is kept only if it moves G1, G2 or G3. The order chang
 | 3 | The search finds the same passages for everyone | centered, unit-length keys | no effect |
 | 4 | **Positive control**: can the reader use documents at all? | a synthetic document per patient that states some of its labels (leaked on purpose); if the model can't exploit it, the reader is broken, whatever the corpus | next |
 | 5 | Cold-start retriever (REALM's ICT warm start) | pre-train the query to match the Qwen3 embedding of the patient's recent codes as text, then train end to end | |
-| 6 | Too few candidates for the retriever to learn from | K 4, 32, 128 with precomputed last-layer vectors | **running** (Round 6) |
+| 6 | Too few candidates for the retriever to learn from | K 4, 32, 128 with precomputed last-layer vectors | reads more, no knowledge gain (Round 6) |
 | 7 | **Context-free documents** | richer document vectors, below | **first gain** at 153K/64x2x4 (Round 5); worse at D 10K; kept, as precomputed last layer |
-| 8 | The reader is bolted on after the encoder | REALM-style joint reading: document vectors as extra tokens in the patient encoder's sequence | |
+| 8 | The reader is bolted on after the encoder | the reader adds updates to the encoder's own states, so training starts at the patient-only model (`xres`) | **G1+ and G3 met** (Round 8); confirming on fresh draws |
 | 9 | The textbooks are the wrong knowledge | documents describing the patient's own codes (code definitions), then PubMed | |
 
 ## Richer documents

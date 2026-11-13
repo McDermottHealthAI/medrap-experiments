@@ -124,14 +124,29 @@ patient only's test loss; positive means retrieval is better.
   same result as all layers at K 4 (64x2x4/153K: +0.20 ± 1.43; 256x4x8: −1.81 ± 2.90, 2 draws), so
   the K sweep (Round 6) uses them.
 
-## Round 6: more documents per patient, and each W at its tuned lr (running)
+## Round 6: more documents per patient, and each W at its tuned lr
 
 - **Hypothesis A** (advisor): with 4 candidates the retriever learns little about which passage
   helps; K 32 and 128 give it more to compare. `./submit.sh kdocs`, precomputed last layer, D 153K.
 - **Hypothesis B**: 256x4x8 trails because lr 1e-3 is too high for it (its Stage 0 optimum is 3e-4);
   both arms at each W's tuned lr, warm-started from that lr's checkpoint. `./submit.sh tuned`.
+- **Result A** (D 153K, v1 reader, `Δ` % vs `patient_only_warm`; in brackets the same model trained
+  on random documents):
 
-## Round 7: start exactly at the patient-only model, add documents with no gate (running)
+  | K | 64x2x4 | 256x4x8 |
+  |---|---|---|
+  | 4 | +0.10 (−0.05) | −0.64 (−0.85) |
+  | 32 | +0.32 (+0.33) | −0.40 (−0.39) |
+  | 128 | +0.45 (+0.43) | −0.52 (−0.73) |
+
+  The model reads more with more documents (randomK − topK at K 32: 0.84 ± 0.36 and 3.0 ± 3.1 ×1e-4),
+  but the model trained on random documents gains just as much: the gain is capacity, not knowledge.
+- **Result B**: worse at the tuned lr: 64x2x4 at 3e-3 −1.6%, 256x4x8 at 3e-4 −0.74% (random documents
+  −1.56% and −0.88%).
+- **Decision**: drop both. K stays 4 and lr 1e-3 (the gap at 256x4x8 is not the number of documents
+  or the learning rate).
+
+## Round 7: start exactly at the patient-only model, add documents with no gate
 
 - **Hypothesis**: the warm start copies only the encoder. `patient_only_warm`'s fresh head reads the
   trained encoder's pooled vector `h` directly; the v1 fusion's head reads it only through a fresh
@@ -141,8 +156,12 @@ patient only's test loss; positive means retrieval is better.
   `h + c_k`, where `c_k` is that document's cross-attention contribution. No gate or scalar can turn
   the documents off; every document always changes the output. Control: `residual_random_docs`.
   Precomputed last layer, K 4, lr 1e-3, both W and both D. `./submit.sh residual`.
+- **Result** (`Δ` % vs `patient_only_warm`): −0.22 (64/10K), **+0.14** (64/153K, 0.28 ± 0.20 ×1e-4,
+  3/3 draws), −0.35 (256/10K), −0.12 (256/153K). Trained on random documents is worse in every cell
+  (by 0.2–1.4 ×1e-4; interval excludes 0 at 64/153K).
+- **Reading**: better than v1 at 256x4x8/153K (−0.12% against −0.64%), but this one-query reader is weak.
 
-## Round 8: the per-code reader in residual form (running)
+## Round 8: the per-code reader in residual form
 
 - **Hypothesis**: Round 7's `residual` reads each passage with one pooled query vector, a weaker
   reader than v1's, where every patient code cross-attends to the passage. Keep v1's reader, but on
@@ -151,3 +170,28 @@ patient only's test loss; positive means retrieval is better.
 - **Change**: `xres` (MedRAP `PerDocCrossAttentionFusion(residual=True)`, `d_model` = W, the
   encoder's head count, `ff_dim` 2W, 2 layers). Control: `xres_random_docs`. Precomputed last layer,
   K 4, lr 1e-3, both W and both D. `CONFIGS="xres xres_random_docs" ./submit.sh residual`.
+- **Result** (`Δ` ×1e-4 vs `patient_only_warm`, 95% interval):
+
+  | | 64/10K | 64/153K | 256/10K | 256/153K |
+  |---|---|---|---|---|
+  | **xres, topK** | −0.48 ± 0.86 (−0.19%) | **+0.58 ± 0.54** (+0.27%, 3/3) | −0.62 ± 3.15 (−0.25%) | **+1.61 ± 1.41** (+0.75%, 3/3) |
+  | xres trained on random documents | −1.92 ± 0.44 | +0.01 ± 0.75 | −0.93 ± 2.23 | +0.67 ± 1.69 |
+  | trained on random − retrieved | **1.43 ± 0.42** | **0.57 ± 0.23** | 0.31 ± 2.69 | **0.94 ± 0.76** |
+  | randomK − topK, same model | **3.01 ± 0.88** | **1.95 ± 1.23** | 0.90 ± 2.39 | 1.24 ± 1.51 |
+
+- **Goals**: G1 met (every interval includes 0 or is positive). **G1+ met** (both W positive at
+  153K). **G3 met** (intervals exclude 0 at 64/153K and 256/153K). G2: retrieved documents beat the
+  random-documents model in 3 of 4 cells, the first sign they carry knowledge; the same-model swap
+  excludes 0 at 64x2x4 only.
+- **Validation check** (settings must be chosen on validation, and xres was picked after seeing test
+  results for several readers): on validation loss xres is the best reader at 256x4x8 (+0.80% at
+  153K, interval excludes 0; −0.04% at 10K), but at 64x2x4 it is middling (+0.13% at 153K, interval
+  includes 0). So the 256x4x8/153K gain is solid; the 64x2x4/153K one is fragile.
+- **Decision**: xres is the reader. Confirm it on fresh draws 4–6 (Round 9), on which nothing has been
+  chosen, before building on it.
+
+## Round 9: xres on fresh draws (running)
+
+- **Hypothesis**: Round 8's gain is real, not a choice made on draws 1–3.
+- **Change**: new tasks, patients and seeds (draws 4–6); patient only (cold, then warm), xres and
+  xres trained on random documents, both W and both D. `DRAW_LIST="4 5 6" ./submit.sh confirm`.
