@@ -43,7 +43,7 @@ tuning) are in [`GOAL.md`](GOAL.md); each experiment round is logged in [`EXPERI
 | **3 draws** instead of 5 | 3 draws everywhere. | `submit.sh` | done |
 | **More documents** (128, 512), since the loss learns "which retrieved document is best" | K 4, 32, 128 at `D` 153K with precomputed contextual passages (K 128 with half batches and gradient accumulation). The model reads more with more passages, but a model trained on random passages gains as much (Round 6). 512 not run. | `submit.sh kdocs` | done (128); no gain from knowledge |
 | **Retrieval-only models** at the same settings, especially for richer document encodings | Run once, with context-free documents: 17% worse than patient only at `D` 153K, so those documents carry little on their own. Not yet run with contextual documents. | `retrieval_only` in `run.sh` | partly done |
-| **Count compute and parameters accurately** | Designed: FLOPs measured with `FlopCounterMode`, FAISS search counted (~2.6 × 10⁸ FLOPs per patient), the frozen Qwen forward pass counted for contextual documents. Not yet applied to results; needed before the scaling grid. | [`design.md`](design.md) §9 | to do |
+| **Count compute and parameters accurately** | Measured, not estimated: one real batch per configuration through forward and backward under `FlopCounterMode` (attention, cross-attention, and the frozen Qwen pass for on-the-fly documents), plus the FAISS search analytically (2.6 × 10⁸ FLOPs per patient). Parameters split into `N` (trained, without the code table), all trained, and frozen. Results below. | [`count_compute.py`](count_compute.py), [`results_compute.csv`](results_compute.csv) | done |
 | **Other law forms, loss scale only, drop poor fits** | Planned: the 7 law families of `simple-scaling-laws`, fitted on loss, with a fit-quality cutoff. All results so far are already in loss. No laws fitted yet: the scaling grid waits until retrieval helps. | [`design.md`](design.md) §10 | to do |
 | **Paired analyses**: (patient only − retrieval) as one number per shared split and seed | Every comparison is a paired difference per draw (same tasks, patients and seed), reported as a mean with a 95% t-interval. | [`ladder.py`](ladder.py) | done |
 | **Richer document value encodings** (all Qwen tokens; run Qwen over the documents, take all layers, attend through them) | New MedRAP encoder: a frozen Qwen3-Embedding-0.6B runs over each retrieved passage; fusion attends over all 256 tokens × 29 layers, with a learned layer embedding (`DOCS=attend`). Also last layer only (`DOCS=last`) and a learned layer mix (`DOCS=mix`). | MedRAP `feat/qwen-hidden-state-docs`; `run.sh` (`DOCS`) | done: precomputed last layer, read by the residual per-code reader (Round 8), helps at D 153K |
@@ -93,6 +93,24 @@ the best checkpoint is the last in every run):
 | 5 | the same, trained on random documents | −0.34% | −1.0% | as good as or better than retrieved |
 | 8 | `xres` | −0.19% | −0.25% | even (intervals include 0) |
 | 8 | the same, trained on random passages | −0.77% | −0.39% | worse than retrieved (excludes 0 at 64x2x4) |
+
+**Compute and parameters** ([`count_compute.py`](count_compute.py); training FLOPs per patient per step, forward
+and backward, including the search; ratio to patient only of the same `W`):
+
+| Configuration | 64x2x4 FLOPs | × patient only | 256x4x8 FLOPs | × patient only | `N` (64 / 256) | frozen |
+|---|---|---|---|---|---|---|
+| patient only | 2.2 × 10⁸ | 1 | 4.2 × 10⁹ | 1 | 136K / 2.4M | 0 |
+| v1 reader, word-piece or precomputed passages | 1.7 × 10¹⁰ | 78 | 2.1 × 10¹⁰ | 5.1 | 2.3M / 4.5M | 155M (E0) / 0 |
+| v1 reader, all layers on the fly | 1.5 × 10¹² | 6,900 | 1.5 × 10¹² | 364 | 2.3M / 4.6M | 596M |
+| `residual` (Round 7) | 1.5 × 10⁹ | 6.8 | 8.5 × 10⁹ | 2.0 | 361K / 3.6M | 0 |
+| **`xres`** (Round 8) | 3.5 × 10⁹ | 16 | 2.1 × 10¹⁰ | 5.0 | 515K / 4.5M | 0 |
+
+Training compute of a warm-started run includes its patient-only checkpoint. At 256x4x8/153K, `xres`
+costs 1.2 × 10¹⁶ FLOPs in total against 3.8 × 10¹⁵ for `patient_only_warm`, about 3×, for its +0.75%.
+Most of a retrieval step is projecting the 5 × 256 document vectors (1024-wide) into the reader, and
+the search alone (2.6 × 10⁸) costs as much as a 64x2x4 patient-only step. Whether the gain survives
+at equal compute is what the scaling grid answers. Encoding the corpus once (precomputed passages)
+costs 3.9 × 10¹⁶ FLOPs, shared by all runs.
 
 Also ruled out: the loss implementation, gradient clipping (never triggers), and overfitting (v1 is
 worse on training loss too).
@@ -188,7 +206,9 @@ contextual-document encoder addresses.
 | [`EXPERIMENTS.md`](EXPERIMENTS.md) | each round: hypothesis, change, numbers, decision |
 | [`design.md`](design.md) | the full v2 design: configurations, stages, compute counting, analysis |
 | [`run.sh`](run.sh) | one step: `tasks DRAW`, or `train CONFIG W D DRAW` (train, then test); switches `LR`, `DROPOUT`, `K`, `NULL_DOC`, `ZERO_INIT`, `WARM`, `CENTER`, `DOCS`, `LAYER_STRIDE` |
-| [`submit.sh`](submit.sh) | submits `tasks`, `stage0`, `stage1`, `nomix`, `ablate`, `warm`, `docs` to SLURM; skips finished and queued runs |
+| [`submit.sh`](submit.sh) | submits `tasks`, `stage0`, `stage1`, `nomix`, `ablate`, `warm`, `docs`, `encode`, `kdocs`, `tuned`, `residual`, `confirm`, `grid` to SLURM; skips finished and queued runs |
+| [`encode_last_layer.py`](encode_last_layer.py) | the precomputed last-layer passage vectors (`DOCS=pre`) |
+| [`count_compute.py`](count_compute.py) | measured training FLOPs and parameter counts per configuration → [`results_compute.csv`](results_compute.csv) |
 | [`ladder.py`](ladder.py) | collects test results into `results.csv`; paired differences with 95% intervals |
 | [`gaps.py`](gaps.py) | the paired v1 numbers in Appendix A |
 | [`center_keys.py`](center_keys.py) | the centered-keys retrieval database (Round 3) |
