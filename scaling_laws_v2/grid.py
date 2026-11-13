@@ -17,6 +17,9 @@ Writes, next to this file:
                         leave-one-cell-out RMSE
     grid_compare.csv    simple_scaling_laws.compare of the kept laws against patient only, at the
                         trained cells and beyond them
+    grid_delta.png      Δ (% of patient only's loss) against D per W, with 95% intervals (Q3)
+    grid_compute.png    draw-centred test loss against training compute, every run and each arm's
+                        lower envelope (Q1)
 
 Each draw has its own 1,000 tasks, so loss levels differ between draws by far more than the arms
 differ. Every arm and cell of a draw shares its tasks (each D subsamples the same draw), so the laws
@@ -195,6 +198,52 @@ def comparison(df: pl.DataFrame, kept: dict) -> pl.DataFrame:
     return pl.concat(rows, how="diagonal_relaxed") if rows else pl.DataFrame()
 
 
+def plots(d: pl.DataFrame, df: pl.DataFrame) -> None:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    widths = sorted(d["W"].unique(), key=lambda w: int(w.split("x")[0]))
+    colours = dict(zip(widths, ["#2a78d6", "#1f9e89", "#e8853a"]))
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4), sharey=True)
+    for ax, arm in zip(axes, ("xres", "xres random")):
+        for w in widths:
+            g = d.filter((pl.col("arm") == arm) & (pl.col("W") == w)).sort("D")
+            pct = g["delta_pct"].to_numpy()
+            err = (g["ci_e4"] / g["delta_e4"].abs().clip(1e-9) * g["delta_pct"].abs()).fill_nan(0).to_numpy()
+            ax.errorbar(g["D"], pct, yerr=err, marker="o", ms=5, lw=2, capsize=3, color=colours[w], label=w)
+        ax.axhline(0, color="#888", lw=1)
+        ax.set_xscale("log")
+        ax.set_xlabel("training patients D")
+        ax.set_title(f"{arm} vs patient only")
+        ax.grid(alpha=0.3)
+    axes[0].set_ylabel("Δ, % of patient-only test loss (positive: retrieval better)")
+    axes[0].legend(title="W")
+    fig.tight_layout()
+    fig.savefig(HERE / "grid_delta.png", dpi=150)
+
+    c = centre(df)
+    fig, ax = plt.subplots(figsize=(6.5, 4.5))
+    for arm, colour in (("patient only", "#555"), ("xres", "#2a78d6"), ("xres random", "#e8853a")):
+        g = c.filter(pl.col("arm") == arm).group_by("W", "D").agg(C=pl.col("C").first(), loss=pl.col("loss").mean())
+        ax.scatter(g["C"], g["loss"], s=18, color=colour, alpha=0.6)
+        pts = sorted(zip(g["C"].to_list(), g["loss"].to_list()))
+        env, best = [], float("inf")
+        for x, y in pts:
+            if y < best:
+                best = y
+                env.append((x, y))
+        ax.plot(*zip(*env), color=colour, lw=2, label=arm)
+    ax.set_xscale("log")
+    ax.set_xlabel("training compute (FLOPs, including the patient-only checkpoint)")
+    ax.set_ylabel("test loss (draw-centred, cell mean)")
+    ax.legend()
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(HERE / "grid_compute.png", dpi=150)
+
+
 if __name__ == "__main__":
     outputs = Path(sys.argv[1]) if len(sys.argv) > 1 else HERE / "outputs"
     df = collect(outputs)
@@ -203,6 +252,7 @@ if __name__ == "__main__":
     pl.Config.set_tbl_width_chars(200)
     d = deltas(df)
     d.write_csv(HERE / "grid_delta.csv")
+    plots(d, df)
     print("Paired Δ = L(patient only) − L(arm), ×1e-4 with 95% t-interval; positive: the arm is better")
     print(d)
     f, kept = fits(centre(df))
