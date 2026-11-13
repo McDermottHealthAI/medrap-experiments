@@ -98,9 +98,9 @@ def deltas(df: pl.DataFrame) -> pl.DataFrame:
     rows = []
     for (arm, w, d), g in paired.group_by("arm", "W", "D"):
         x = ((g["base"] - g["loss"]) * 1e4).to_list()
+        pct = ((g["base"] - g["loss"]) / g["base"] * 100).to_list()
         rows.append({"arm": arm, "W": w, "D": d, "n": len(x), "delta_e4": np.mean(x), "ci_e4": t_interval(x),
-                     "delta_pct": float(((g["base"] - g["loss"]) / g["base"]).mean() * 100),
-                     "draws_better": sum(v > 0 for v in x)})
+                     "delta_pct": np.mean(pct), "ci_pct": t_interval(pct), "draws_better": sum(v > 0 for v in x)})
     return pl.DataFrame(rows).sort("arm", "W", "D")
 
 
@@ -210,9 +210,7 @@ def plots(d: pl.DataFrame, df: pl.DataFrame) -> None:
     for ax, arm in zip(axes, ("xres", "xres random")):
         for w in widths:
             g = d.filter((pl.col("arm") == arm) & (pl.col("W") == w)).sort("D")
-            pct = g["delta_pct"].to_numpy()
-            err = (g["ci_e4"] / g["delta_e4"].abs().clip(1e-9) * g["delta_pct"].abs()).fill_nan(0).to_numpy()
-            ax.errorbar(g["D"], pct, yerr=err, marker="o", ms=5, lw=2, capsize=3, color=colours[w], label=w)
+            ax.errorbar(g["D"], g["delta_pct"], yerr=g["ci_pct"].fill_nan(0), marker="o", ms=5, lw=2, capsize=3, color=colours[w], label=w)
         ax.axhline(0, color="#888", lw=1)
         ax.set_xscale("log")
         ax.set_xlabel("training patients D")
