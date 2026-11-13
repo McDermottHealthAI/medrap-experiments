@@ -190,8 +190,34 @@ patient only's test loss; positive means retrieval is better.
 - **Decision**: xres is the reader. Confirm it on fresh draws 4–6 (Round 9), on which nothing has been
   chosen, before building on it.
 
-## Round 9: xres on fresh draws (running)
+## Round 9: xres on fresh draws
 
 - **Hypothesis**: Round 8's gain is real, not a choice made on draws 1–3.
 - **Change**: new tasks, patients and seeds (draws 4–6); patient only (cold, then warm), xres and
   xres trained on random documents, both W and both D. `DRAW_LIST="4 5 6" ./submit.sh confirm`.
+- **Result** (`Δ` % vs `patient_only_warm`; ×1e-4 with 95% interval for draws 1–6 pooled):
+
+  | | draws 1–3 | draws 4–6 | **draws 1–6** |
+  |---|---|---|---|
+  | 64x2x4 / 10K | −0.19% | −0.41% | **−0.73 ± 0.46** (−0.30%) |
+  | 64x2x4 / 153K | +0.27% | +0.30% | **+0.60 ± 0.20** (+0.28%, 5/5; one draw re-running) |
+  | 256x4x8 / 10K | −0.25% | −0.71% | **−1.17 ± 1.12** (−0.48%) |
+  | 256x4x8 / 153K | +0.75% | +0.83% | **+1.72 ± 1.21** (+0.79%, 6/6) |
+
+  Uses the documents, draws 1–6 (×1e-4): trained on random − retrieved 1.40 ± 0.36, 0.64 ± 0.16,
+  0.60 ± 1.16, 1.03 ± 0.67 (same cell order); randomK − topK 3.63 ± 1.04, 1.96 ± 0.54, 1.03 ± 0.70,
+  1.19 ± 0.50.
+- **Reading**: the large-`D` gain replicates on fresh draws with the same size (+0.3% and +0.8%).
+  G1+ and G3 hold. The documents carry knowledge in every cell (G2: the swap excludes 0 in all 4,
+  the random-documents control in 3). But with 6 draws the D 10K harm is significant: G1 fails at
+  10K. There the random-documents model is worse still (−0.9% and −0.7%), so the reader itself
+  overfits with little data.
+- **Decision**: try regularising the reader (Round 10). Start the scaling grid's patient-only runs,
+  which don't depend on the reader.
+
+## Round 10: dropout in the reader (running)
+
+- **Hypothesis**: the D 10K harm is the reader overfitting; dropout in the reader alone (not the
+  encoder, so the warm start is unchanged) fixes it without losing the 153K gain.
+- **Change**: `FUSION_DROPOUT` 0.1 and 0.3 for xres, both W and both D, draws 1–3.
+  `FUSION_DROPOUT=0.1 CONFIGS=xres ./submit.sh residual`.

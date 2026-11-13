@@ -30,7 +30,11 @@ tuning) are in [`GOAL.md`](GOAL.md); each experiment round is logged in [`EXPERI
    patient only for both sizes (+0.27% and +0.75%, intervals excluding 0), and it beats the same
    model trained on random passages in 3 of 4 cells: the first sign the passages carry knowledge.
    The 256x4x8 gain holds on validation loss too; the 64x2x4 one is fragile. More passages (K 32,
-   128) and per-size learning rates did not help. Running: a confirmation on fresh draws 4–6.
+   128) and per-size learning rates did not help.
+5. **The gain replicates on fresh draws** (Round 9: new tasks, patients and seeds; nothing was chosen
+   on them): +0.3% and +0.8% at `D` 153K again. Over 6 draws, though, it is slightly worse than
+   patient only at `D` 10K (−0.3%, −0.5%), where the reader overfits. Running: dropout in the
+   reader (Round 10), and the patient-only part of the scaling grid.
 
 ## The advisor's comments: what we did
 

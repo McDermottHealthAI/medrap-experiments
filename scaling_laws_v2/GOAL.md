@@ -44,7 +44,7 @@ Cheapest first. Each step is kept only if it moves G1, G2 or G3. The order chang
 | 5 | Cold-start retriever (REALM's ICT warm start) | pre-train the query to match the Qwen3 embedding of the patient's recent codes as text, then train end to end | |
 | 6 | Too few candidates for the retriever to learn from | K 4, 32, 128 with precomputed last-layer vectors | reads more, no knowledge gain (Round 6) |
 | 7 | **Context-free documents** | richer document vectors, below | **first gain** at 153K/64x2x4 (Round 5); worse at D 10K; kept, as precomputed last layer |
-| 8 | The reader is bolted on after the encoder | the reader adds updates to the encoder's own states, so training starts at the patient-only model (`xres`) | **G1+ and G3 met** (Round 8); confirming on fresh draws |
+| 8 | The reader is bolted on after the encoder | the reader adds updates to the encoder's own states, so training starts at the patient-only model (`xres`) | **G1+, G2, G3 met**, replicated on fresh draws (Round 9); G1 fails at D 10K (−0.3%, −0.5%) |
 | 9 | The textbooks are the wrong knowledge | documents describing the patient's own codes (code definitions), then PubMed | |
 
 ## Richer documents
