@@ -144,11 +144,12 @@ case "${1:-}" in
         ;;
     residual)
         # Round 7: h + c_k (gated_doc fusion with no gate), precomputed documents, warm-started,
-        # against patient_only_warm at both D: [CONFIGS="xres xres_random_docs"] ./submit.sh residual
-        export WARM=true DOCS=pre MEM="${MEM:-128G}"
+        # against patient_only_warm: [CONFIGS="xres xres_random_docs"] [DOCS=attend] [K=32] [D_LIST=153220]
+        # ./submit.sh residual
+        export WARM=true DOCS="${DOCS:-pre}" MEM="${MEM:-128G}"
         for config in ${CONFIGS:-residual residual_random_docs}; do
             for w in 64x2x4 256x4x8; do
-                for d in 10000 153220; do
+                for d in ${D_LIST:-10000 153220}; do
                     submit_train "${config}" "${w}" "${d}" 1e-3 0
                 done
             done
