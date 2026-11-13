@@ -18,7 +18,7 @@ from pathlib import Path
 import polars as pl
 import torch
 
-RUN = re.compile(r"(?P<config>.+)_W(?P<W>[^_]+)_D(?P<D>\d+)_lr(?P<lr>[^_]+)_do(?P<dropout>[^_/]+)(_K(?P<K>\d+))?(?P<suffix>(_nonull|_z|_warm|_c|_last|_mix|_attend\d*|_pre)*)")
+RUN = re.compile(r"(?P<config>.+)_W(?P<W>[^_]+)_D(?P<D>\d+)_lr(?P<lr>[^_]+)_do(?P<dropout>[^_/]+)(_K(?P<K>\d+))?(?P<suffix>(_nonull|_z|_warm|_c|_last|_mix|_attend\d*|_pre|_fd[0-9.]+)*)")
 T_975 = 4.303  # t quantile, 2 degrees of freedom (3 draws)
 
 

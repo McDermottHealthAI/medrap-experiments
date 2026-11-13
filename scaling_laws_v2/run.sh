@@ -63,6 +63,8 @@ ZERO_INIT="${ZERO_INIT:-false}" WARM="${WARM:-false}" CENTER="${CENTER:-false}"
 #   pre     last-layer vectors precomputed once (encode_last_layer.py, data/docs_last_fp16.npy, 66 GB
 #           held in RAM), looked up by retrieved row: as fast as e0, so K can be large
 DOCS="${DOCS:-e0}" LAYER_STRIDE="${LAYER_STRIDE:-1}"
+# FUSION_DROPOUT: dropout in the document reader only (default DROPOUT); suffix _fd<value>
+FUSION_DROPOUT="${FUSION_DROPOUT:-${DROPOUT}}"
 # ACCUM=2 halves the batch and accumulates gradients over 2 batches: the same effective batch of 32
 # and the same optimizer steps, at half the memory (K 128 does not fit a 44 GB GPU otherwise).
 ACCUM="${ACCUM:-1}"
@@ -112,6 +114,7 @@ RUN="${OUTPUT_DIR}/${CONFIG}_W${W}_D${D}_lr${LR}_do${DROPOUT}"
 [ "${CENTER}" = false ] || RUN="${RUN}_c"
 [ "${DOCS}" = e0 ] || RUN="${RUN}_${DOCS}"
 [ "${LAYER_STRIDE}" = 1 ] || RUN="${RUN}${LAYER_STRIDE}"
+[ "${FUSION_DROPOUT}" = "${DROPOUT}" ] || RUN="${RUN}_fd${FUSION_DROPOUT}"
 RUN="${RUN}/draw${DRAW}"
 
 ARGS=(
@@ -170,14 +173,14 @@ case "${CONFIG}" in
             *) echo "unknown DOCS ${DOCS}" >&2; exit 1 ;;
         esac
         case "${CONFIG}" in
-            v1_*) ARGS+=(fusion=cross_attention_perdoc_medium "fusion.dropout=${DROPOUT}" head.in_dim=256)
+            v1_*) ARGS+=(fusion=cross_attention_perdoc_medium "fusion.dropout=${FUSION_DROPOUT}" head.in_dim=256)
                 [ "${ZERO_INIT}" = false ] || ARGS+=(fusion.zero_init_attn_out=true) ;;
             # xres: v1's per-code reader on the encoder's own states (no projection or output norm),
             # so the head reads the patient-only input plus the documents' updates.
             xres*) ARGS+=(fusion=cross_attention_perdoc_medium fusion.residual=true "fusion.d_model=${WIDTH}"
-                "fusion.num_heads=${HEADS:-1}" "fusion.ff_dim=$((2 * WIDTH))" "fusion.dropout=${DROPOUT}"
+                "fusion.num_heads=${HEADS:-1}" "fusion.ff_dim=$((2 * WIDTH))" "fusion.dropout=${FUSION_DROPOUT}"
                 "head.in_dim=${WIDTH}") ;;
-            *) ARGS+=(fusion=gated_doc "fusion.dropout=${DROPOUT}" "head.in_dim=${WIDTH}") ;;
+            *) ARGS+=(fusion=gated_doc "fusion.dropout=${FUSION_DROPOUT}" "head.in_dim=${WIDTH}") ;;
         esac
         [ "${CONFIG}" != retrieval_only ] || ARGS+=(fusion.mode=query)
         # residual: the patient-only head input h plus each document's contribution, no gate.

@@ -41,6 +41,7 @@ submit_train() {  # CONFIG W D LR DROPOUT; sets LAST_JOB to the job submitted (e
     [ "${CENTER:-false}" = false ] || run="${run}_c"
     [ "${DOCS:-e0}" = e0 ] || run="${run}_${DOCS}"
     [ "${LAYER_STRIDE:-1}" = 1 ] || run="${run}${LAYER_STRIDE}"
+    [ "${FUSION_DROPOUT:-0}" = 0 ] || run="${run}_fd${FUSION_DROPOUT}"
     local name="v2-${run#outputs/}"
     ! grep -qx "${name}" <<<"${QUEUED}" || return 0
     for draw in "${DRAWS[@]}"; do
@@ -49,7 +50,7 @@ submit_train() {  # CONFIG W D LR DROPOUT; sets LAST_JOB to the job submitted (e
     [ "${#missing[@]}" -gt 0 ] || return 0
     LAST_JOB=$(sbatch --parsable "${SLURM[@]}" ${DEP:+--dependency=afterok:${DEP}} --time="${TIME:-12:00:00}" --mem="${MEM:-32G}" --partition="${GPU_PARTITION:-gpu,h100}" --gres=gpu:1 \
         --array="$(IFS=,; echo "${missing[*]}")" --job-name="${name}" \
-        --wrap="LR=${lr} DROPOUT=${dropout} K=${K:-4} NULL_DOC=${NULL_DOC:-true} ZERO_INIT=${ZERO_INIT:-false} WARM=${WARM:-false} CENTER=${CENTER:-false} DOCS=${DOCS:-e0} LAYER_STRIDE=${LAYER_STRIDE:-1} ACCUM=${ACCUM:-1} ./run.sh train ${config} ${w} ${d} \${SLURM_ARRAY_TASK_ID}")
+        --wrap="LR=${lr} DROPOUT=${dropout} K=${K:-4} NULL_DOC=${NULL_DOC:-true} ZERO_INIT=${ZERO_INIT:-false} WARM=${WARM:-false} CENTER=${CENTER:-false} DOCS=${DOCS:-e0} LAYER_STRIDE=${LAYER_STRIDE:-1} FUSION_DROPOUT=${FUSION_DROPOUT:-${dropout}} ACCUM=${ACCUM:-1} ./run.sh train ${config} ${w} ${d} \${SLURM_ARRAY_TASK_ID}")
     echo "Submitted batch job ${LAST_JOB} (${name})"
 }
 
