@@ -30,16 +30,10 @@
 # database are v1's.
 
 set -euo pipefail
-# Bash reads a script while running it, so a git pull mid-job breaks running jobs ("Stale file
-# handle"): run from a private copy.
-if [ -z "${RUN_SH_COPY:-}" ]; then
-    cd "$(dirname "$0")"
-    RUN_SH_COPY=$(mktemp)
-    cp run.sh "${RUN_SH_COPY}"
-    export RUN_SH_COPY
-    exec bash "${RUN_SH_COPY}" "$@"
-fi
-trap 'rm -f "${RUN_SH_COPY}"' EXIT
+# Bash reads a script while running it, so a git pull mid-job broke running jobs ("Stale file
+# handle"). The braces make bash read the whole script before running any of it.
+{
+cd "$(dirname "$0")"
 VENV=.venv
 case "${1:-} ${2:-}" in "train v1_retrieval" | "train v1_random_docs") VENV=../scaling_laws/.venv ;; esac
 # shellcheck source=/dev/null
@@ -255,3 +249,5 @@ fi
 # medrap-train also copies the best checkpoint to train/best_model.ckpt; the last one is kept instead.
 rm -f "${RUN}/train/best_model.ckpt"
 python slim_checkpoint.py "${RUN}/train/checkpoints/last.ckpt"
+exit
+}
