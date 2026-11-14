@@ -42,6 +42,7 @@ submit_train() {  # CONFIG W D LR DROPOUT; sets LAST_JOB to the job submitted (e
     [ "${DOCS:-e0}" = e0 ] || run="${run}_${DOCS}"
     [ "${LAYER_STRIDE:-1}" = 1 ] || run="${run}${LAYER_STRIDE}"
     [ "${FUSION_DROPOUT:-0}" = 0 ] || run="${run}_fd${FUSION_DROPOUT}"
+    [ "${SAMPLE_POOL:-0}" = 0 ] || run="${run}_sp${SAMPLE_POOL}"
     local name="v2-${run#outputs/}"
     if grep -qx "${name}" <<<"${QUEUED}"; then  # already queued: later runs can wait on it
         LAST_JOB=$(squeue -u "${USER}" -h -n "${name}" -o %F | head -1)
@@ -53,7 +54,7 @@ submit_train() {  # CONFIG W D LR DROPOUT; sets LAST_JOB to the job submitted (e
     [ "${#missing[@]}" -gt 0 ] || return 0
     LAST_JOB=$(sbatch --parsable "${SLURM[@]}" ${DEP:+--dependency=afterok:${DEP}} --time="${TIME:-12:00:00}" --mem="${MEM:-32G}" --partition="${GPU_PARTITION:-gpu,h100}" --gres=gpu:1 \
         --array="$(IFS=,; echo "${missing[*]}")" --job-name="${name}" \
-        --wrap="LR=${lr} DROPOUT=${dropout} K=${K:-4} NULL_DOC=${NULL_DOC:-true} ZERO_INIT=${ZERO_INIT:-false} WARM=${WARM:-false} CENTER=${CENTER:-false} DOCS=${DOCS:-e0} LAYER_STRIDE=${LAYER_STRIDE:-1} FUSION_DROPOUT=${FUSION_DROPOUT:-${dropout}} ACCUM=${ACCUM:-1} ./run.sh train ${config} ${w} ${d} \${SLURM_ARRAY_TASK_ID}")
+        --wrap="LR=${lr} DROPOUT=${dropout} K=${K:-4} NULL_DOC=${NULL_DOC:-true} ZERO_INIT=${ZERO_INIT:-false} WARM=${WARM:-false} CENTER=${CENTER:-false} DOCS=${DOCS:-e0} LAYER_STRIDE=${LAYER_STRIDE:-1} FUSION_DROPOUT=${FUSION_DROPOUT:-${dropout}} SAMPLE_POOL=${SAMPLE_POOL:-0} ACCUM=${ACCUM:-1} ./run.sh train ${config} ${w} ${d} \${SLURM_ARRAY_TASK_ID}")
     echo "Submitted batch job ${LAST_JOB} (${name})"
 }
 
@@ -149,7 +150,7 @@ case "${1:-}" in
     residual)
         # Round 7: h + c_k (gated_doc fusion with no gate), precomputed documents, warm-started,
         # against patient_only_warm: [CONFIGS="xres xres_random_docs"] [DOCS=attend] [K=32] [D_LIST=153220]
-        # ./submit.sh residual
+        # [SAMPLE_POOL=16] ./submit.sh residual
         export WARM=true DOCS="${DOCS:-pre}" MEM="${MEM:-128G}"
         for config in ${CONFIGS:-residual residual_random_docs}; do
             for w in 64x2x4 256x4x8; do

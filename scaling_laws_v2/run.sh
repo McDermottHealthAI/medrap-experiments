@@ -14,6 +14,8 @@
 #           retrieval        fixed #2: gated fusion, starts as #1, MedRAP#124 (A3)
 #           random_docs      fixed #2 with random documents (A4)
 #           retrieval_only   fixed #R: the documents read with the retrieval query, no patient (A5)
+#           retrieval_only_learned  #R with one learned query shared by all patients: the patient
+#                            reaches the prediction only through which documents are retrieved
 #   W       WIDTHxLAYERSxHEADS, e.g. 128x2x4
 #   D       training patients: 3000 10000 30000 100000 153220
 #   DRAW    1-3 (task seed 101 * DRAW, training seed DRAW)
@@ -63,6 +65,9 @@ ZERO_INIT="${ZERO_INIT:-false}" WARM="${WARM:-false}" CENTER="${CENTER:-false}"
 #   pre     last-layer vectors precomputed once (encode_last_layer.py, data/docs_last_fp16.npy, 66 GB
 #           held in RAM), looked up by retrieved row: as fast as e0, so K can be large
 DOCS="${DOCS:-e0}" LAYER_STRIDE="${LAYER_STRIDE:-1}"
+# SAMPLE_POOL=N (> K): in training, draw K of the top N documents in proportion to their search
+# scores (Gumbel-top-K, design.md "Sampled K"); the tests use the top K. Suffix _sp<N>.
+SAMPLE_POOL="${SAMPLE_POOL:-0}"
 # FUSION_DROPOUT: dropout in the document reader only (default DROPOUT); suffix _fd<value>
 FUSION_DROPOUT="${FUSION_DROPOUT:-${DROPOUT}}"
 # ACCUM=2 halves the batch and accumulates gradients over 2 batches: the same effective batch of 32
@@ -115,6 +120,7 @@ RUN="${OUTPUT_DIR}/${CONFIG}_W${W}_D${D}_lr${LR}_do${DROPOUT}"
 [ "${DOCS}" = e0 ] || RUN="${RUN}_${DOCS}"
 [ "${LAYER_STRIDE}" = 1 ] || RUN="${RUN}${LAYER_STRIDE}"
 [ "${FUSION_DROPOUT}" = "${DROPOUT}" ] || RUN="${RUN}_fd${FUSION_DROPOUT}"
+[ "${SAMPLE_POOL}" = 0 ] || RUN="${RUN}_sp${SAMPLE_POOL}"
 RUN="${RUN}/draw${DRAW}"
 
 ARGS=(
@@ -148,7 +154,7 @@ case "${CONFIG}" in
         ARGS+=(fusion=passthrough "query_projector.in_dim=${WIDTH}" "head.in_dim=${WIDTH}"
             training/loss=multitask_binary_bce)
         ;;
-    v1_retrieval | v1_random_docs | v1_masked | v1_random_docs_masked | retrieval | random_docs | retrieval_only \
+    v1_retrieval | v1_random_docs | v1_masked | v1_random_docs_masked | retrieval | random_docs | retrieval_only* \
         | residual | residual_random_docs | xres | xres_random_docs)
         case "${CONFIG}" in *random_docs*) ARGS+=(retriever.ablation_mode=random_docs) ;; esac
         ARGS+=(
@@ -160,6 +166,7 @@ case "${CONFIG}" in
             retriever.device=0
             retriever.cache_payloads=true
             retriever.payload_cache_device=cuda
+            "retriever.sample_pool=${SAMPLE_POOL}"
             marginalized_retrieval=true
             marginalized_output_mode=binary
             training/loss=multitask_binary_bce_marginalized
@@ -183,6 +190,7 @@ case "${CONFIG}" in
             *) ARGS+=(fusion=gated_doc "fusion.dropout=${FUSION_DROPOUT}" "head.in_dim=${WIDTH}") ;;
         esac
         [ "${CONFIG}" != retrieval_only ] || ARGS+=(fusion.mode=query)
+        [ "${CONFIG}" != retrieval_only_learned ] || ARGS+=(fusion.mode=learned)
         # residual: the patient-only head input h plus each document's contribution, no gate.
         case "${CONFIG}" in residual*) ARGS+=(fusion.gated=false) ;; esac
         ;;
