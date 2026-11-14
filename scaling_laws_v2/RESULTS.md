@@ -1,18 +1,52 @@
 # scaling_laws_v2: results
 
-One section per point of the experimental-design review. The full log of every round is in
-[`EXPERIMENTS.md`](EXPERIMENTS.md), and the working notes are in [`README.md`](README.md).
+The full log of every round is in [`EXPERIMENTS.md`](EXPERIMENTS.md); the design is in
+[`design.md`](design.md).
 
-**Setup.**
-- **Task:** 1,000 random 30-day prediction tasks from MEDS patient records.
-- **Corpus:** textbook passages (125,848 passages of 256 tokens).
-- **Model:** a patient transformer of size `W` (width × layers × heads) that retrieves K passages,
-  reads them, and marginalizes over them (REALM-style).
+## What we are doing
 
-**Metric.** Every number is a **paired** difference on the test set: Δ = L(patient only) − L(retrieval),
-as a % of patient only's test loss. **Positive means retrieval is better.** Values are means over 3
-draws (6 where noted), each draw sharing tasks, patients and seed, with a 95% t-interval. "3/3" means
-retrieval was better in all three draws.
+**Question.** Does a patient model predict better if it also retrieves and reads medical textbook
+passages for each patient? And how does the answer change with model size and the amount of
+training data?
+
+**Data.**
+- **Patients:** MEDS records. Each patient is a sequence of up to 256 medical codes.
+- **Tasks:** 1,000 binary tasks, each "does code X occur in the next 30 days?", with X drawn at
+  random. One model predicts all 1,000 at once.
+- **Corpus:** 125,848 medical textbook passages of 256 tokens each.
+
+**The models.**
+
+- **#1 patient only.** A transformer encoder reads the patient's codes. The mean of its output
+  states, `h`, goes to a linear head with 1,000 outputs.
+- **#2 retrieval.** The same encoder, plus four steps:
+  1. **Query.** `h` is projected to a 1,024-dimensional query.
+  2. **Search.** An exact inner-product search over the passages' Qwen3-Embedding vectors returns
+     the top K passages. An empty "null" passage is always added, so the model can rely on the
+     patient alone for a given patient.
+  3. **Read.** A *reader* combines the patient's encoder states with each passage's token vectors
+     and makes one prediction per passage. Which reader to use is the main architectural question
+     (next section).
+  4. **Combine.** The K + 1 predictions are averaged, weighted by the softmax of the search scores
+     (REALM-style marginalization). The query gets its gradient through these weights, so the
+     search learns which passages help.
+- **#4 random passages.** #2 trained and tested with K random passages instead of the retrieved
+  ones. This is the control: #2 − #4 is the value of what the passages *say*, and #4 − #1 is the
+  value of the extra layers alone.
+- **#R retrieval only.** The patient reaches the head *only* through the passages it retrieved.
+- **#3** (a frozen Qwen query from the last 32 codes) was dropped, as requested.
+
+**Settings varied.**
+- `W` is the encoder size, written width × layers × heads: 64x2x4, 128x2x4 or 256x4x8.
+- `D` is the number of training patients, from 3K to 153K.
+- `K` is the number of passages per patient, from 4 to 512. K is the same in training and at test.
+
+**How results are reported.**
+- Each result is a **paired** test-set difference, Δ = L(#1) − L(#2), as a % of #1's test loss.
+  **Positive means retrieval is better.**
+- A *draw* is one random set of tasks, patients and training seed, shared by every model.
+- Each number is the mean over 3 draws (6 where noted), with a 95% t-interval. "3/3" means
+  retrieval was better in all three draws.
 
 ## Bottom line
 
@@ -23,17 +57,62 @@ retrieval was better in all three draws.
 3. **It hurts with little data:** −0.3% to −3% below about 30K patients.
 4. **At equal training compute, patient only wins.** Retrieval needs about 6.5× the compute to
    reach the same loss.
-5. **Two architectural fixes made this possible:**
+5. **Two changes made this possible, both added during the experiments (neither is from the design
+   review):**
    - *Warm start:* the encoder starts from the trained patient-only model. This removed v1's
      12–18% harm.
-   - *Residual per-code reader (`xres`):* each patient code adds what it reads from the passages
-     to its own state, so training starts at the patient-only model and the passages can only
-     add to it.
+   - *The `xres` reader* (next section).
    - Neither is a gate: every model always reads its passages.
 
 ![Δ against D](grid_delta.png)
 
 ---
+
+## The readers we tried
+
+v1's retrieval was 12–18% worse than patient only, so most of the work went into finding out why
+and changing the reader. Four readers were tried, all with the same encoder, search and
+marginalization. **Only v1's reader came with the original design. The gated reader is from our v2 design, and
+the other two were designed during these experiments, each to fix a problem found in the one before.** None of them was
+suggested in the design review.
+
+| Reader | What it does | Problem it addresses | Origin |
+|---|---|---|---|
+| **v1 per-passage cross-attention** | Projects the encoder states to width 256. Two cross-attention layers let every patient code attend to the passage's tokens, then a LayerNorm and the head. | – | v1 design |
+| **gated** | The head reads `h + tanh(g)·c_k`, where `c_k` is one query's reading of passage k, and `g` is a learned scalar starting at 0. Training starts exactly at #1. | v1 starts away from #1 and can't ignore passages | our v2 design, written before these runs |
+| **residual** | The same without the gate: `h + c_k`. | The gate closed (tanh(g) ≈ 0.001–0.02), switching retrieval off. That counts as cheating here. | added (Round 7) |
+| **`xres`** | v1's reader applied in place to the encoder's own states: each patient code cross-attends to the passage and adds the result to its own state, with no new projection or LayerNorm. The head then reads the patient-only input plus the passage updates. | `residual` reads each passage with a single query, which is too weak a reader. v1 reads with every code but starts away from #1. | added (Round 8) |
+
+**Results** (Δ vs patient only. From the warm-start rows on, the baseline is patient only
+continued for the same extra epochs.)
+
+| Reader | Encoder start | Passages | 64x2x4, 10K | 64x2x4, 153K | 256x4x8, 10K | 256x4x8, 153K |
+|---|---|---|---|---|---|---|
+| v1 | cold | word pieces | −3.4% | −12.1% | −6.5% | −18.1% |
+| gated | cold | word pieces | −0.45% | −0.16% | +1.3% | −0.3% |
+| v1 | warm | word pieces | −0.25% | +0.1% | −1.0% | −0.6% |
+| v1 | warm | Qwen, all layers | −0.36% | **+0.36%** | −2.2% | −0.54% |
+| v1 | warm | Qwen, last layer | | +0.10% | | −0.64% |
+| residual | warm | Qwen, last layer | −0.22% | **+0.14%** | −0.35% | −0.12% |
+| **`xres`** | warm | Qwen, last layer | −0.30% (6 draws) | **+0.27%** (6/6) | −0.48% (6 draws) | **+0.79%** (6/6) |
+
+- **The gated reader looks fine but doesn't use the passages.** Its gate closes, so the
+  retrieved-passage, top-1 and random-passage tests all give the same loss.
+- **v1 becomes even with patient only once warm-started**, but #4 does just as well. So the
+  passages add nothing with v1.
+- **`xres` is the only reader that is ahead at 153K for both sizes**, and it beats its own #4
+  control, so part of its gain comes from what the passages say.
+- **Caveat on choosing it:** `xres` was chosen after seeing draws 1–3. Draws 4–6 were then run
+  fresh, with nothing chosen on them, and gave the same result (+0.3% and +0.8% at 153K).
+
+**Warm start** is also our addition. The review asked for the good patient-only *configuration*
+to be used as the seed for retrieval. We went further and start the retrieval model's encoder from
+the trained patient-only *weights*. That is what removed the 12–18% harm. The fair baseline is
+then patient only continued from the same checkpoint for the same extra epochs.
+
+---
+
+## The review's points, one by one
 
 ## Reduce runs / increase speed
 
@@ -59,12 +138,11 @@ Three sizes: **64x2x4, 128x2x4, 256x4x8**. The single-layer sizes (W 4–128) ar
 - Retrieval at each size's tuned lr was *worse* than at 1e-3, so all runs use lr 1e-3. The
   baseline always gets the same lr.
 
-**Seeding retrieval from that configuration was the single most important fix.**
-- v1 trained the patient encoder and the passage reader together from scratch, and retrieval
-  ended up 12–18% worse than patient only.
-- Starting the encoder from the patient-only checkpoint removes the harm.
-- The fair baseline is patient only continued from the same checkpoint for the same extra
-  epochs. Without it, warm start looks like +2%, but that is just more training.
+**Seeding retrieval:** retrieval uses the same configuration, and in addition its encoder starts
+from the trained patient-only weights (see Warm start above).
+- That removes the harm.
+- Measured against patient only continued for the same extra epochs, so that extra training isn't
+  counted as a retrieval gain. Without that fair baseline, warm start looks like +2%.
 
 | D 153K, Δ vs patient only | 64x2x4 | 256x4x8 |
 |---|---|---|
@@ -123,29 +201,35 @@ K = 4, 32, 128 at D 153K, each with a control trained on random passages (bracke
 | contextual passages (Qwen last layer) | −5.5% | −15.7% | −7.0% | −13.9% |
 | all Qwen layers | *running* | *running* | *running* | *running* |
 
-**Earlier in training?** The curves below show validation loss over training, for each passage
-encoding.
+**Does it get there with less training?** Validation loss against the number of patients seen in
+training.
+- **Training length:** a cold run sees D × epochs patients, which is 50K at D 10K and 460K at
+  153K.
+- **Warm runs:** they start from a patient-only checkpoint, so their curves begin where that run
+  ended. Everything is compared at the same total training.
+- **The jump at the start of each warm curve:** only the encoder is copied, so the head and reader
+  start fresh.
 
-![Validation loss during training](curves.png)
+![Validation loss against patients seen](curves.png)
 
-| Validation loss above patient only's final loss | at ¼ of training | at ½ | at the end |
+| D 153K (64x2x4 / 256x4x8) | Patients seen at the end | Final validation loss vs #1's final | Patients seen until it first reaches #1's final loss |
 |---|---|---|---|
-| retrieval only, word pieces (64x2x4 / 256x4x8, D 153K) | +23.5% / +25.8% | +19.9% / +21.0% | +16.3% / +17.3% |
-| retrieval only, last layer | +17.6% / +18.6% | +16.3% / +14.6% | +12.9% / +11.0% |
-| `xres`, last layer | +1.6% / +2.1% | −1.1% / −0.8% | −2.3% / −3.2% |
-| `xres`, all layers | +0.9% / +1.8% | −1.0% / −1.1% | −2.4% / −3.0% |
+| #1 patient only | 460K | 0 | 460K |
+| #R, word pieces (cold) | 460K | +16.3% / +17.3% | never |
+| #R, last layer (warm) | 919K | +12.9% / +11.0% | never |
+| #1 continued (warm) | 919K | −2.2% / −2.4% | 613K / 674K |
+| `xres`, last layer | 919K | −2.3% / −3.2% | 644K / 674K |
+| `xres`, all layers | 919K | −2.4% / −3.0% | 674K / 674K |
 
-- **Richer encodings lower the retrieval-only curve at every point in training**, by about 3–7
-  points, but it never comes near patient only. The gap even *grows* with D: about 5% at 10K and
-  11–13% at 153K.
-  - Caveat: the word-piece retrieval-only runs start cold, while the last-layer runs start from
-    the patient-only checkpoint. Warm start affects only the query here, since the head reads
-    passages alone.
-- **All layers vs last layer, inside `xres`:** all layers are slightly ahead in the first quarter
-  of training, then the curves meet.
-- **Takeaway:** the passages work only as an *addition* to the patient record. On their own they
-  are a lossy description of the patient. Richer encodings speed up learning a little but don't
-  change where it ends.
+- **Retrieval only never reaches patient only**, even with twice the training. The gap is about
+  5% at D 10K and 11–13% at 153K, so it grows with data. The passages work only as an *addition*
+  to the patient record; on their own they describe the patient poorly.
+- **Word pieces vs last layer in #R:** the last-layer runs are 3–6 points better, but they also
+  trained twice as long (warm). The all-layer #R runs now running are warm too, so they give the
+  clean comparison against last layer.
+- **Inside `xres`, richer encodings don't get there sooner.** `xres` with either encoding reaches
+  #1's loss after about the same amount of training as #1 continued. All layers are slightly
+  lower at the first evaluations, then the curves meet.
 
 ### Richer document value encodings (all Qwen tokens; run Qwen over the documents, take all layers)
 
