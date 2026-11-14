@@ -39,6 +39,9 @@ tuning) are in [`GOAL.md`](GOAL.md); each experiment round is logged in [`EXPERI
    large-data effect: 1.5–3% worse at 3K patients, even around 30K–100K, better from 100K on
    (+0.2 to +0.8%), with the documents' own share growing with `D`. At equal training compute,
    though, patient only wins: `xres` needs about 6.5× the compute for the same loss.
+7. **All layers of every passage token add nothing over the last layer** (Round 12). `xres` reading
+   on-the-fly Qwen states of all 29 layers beats patient only at `D` 153K (+0.3%, +0.5%) but not
+   the precomputed last layer (+0.05%, −0.25%), at 12–18× the run time.
 
 ![Δ against D](grid_delta.png)
 
@@ -58,7 +61,7 @@ tuning) are in [`GOAL.md`](GOAL.md); each experiment round is logged in [`EXPERI
 | **Count compute and parameters accurately** | Measured, not estimated: one real batch per configuration through forward and backward under `FlopCounterMode` (attention, cross-attention, and the frozen Qwen pass for on-the-fly documents), plus the FAISS search analytically (2.6 × 10⁸ FLOPs per patient). Parameters split into `N` (trained, without the code table), all trained, and frozen. Results below. | [`count_compute.py`](count_compute.py), [`results_compute.csv`](results_compute.csv) | done |
 | **Other law forms, loss scale only, drop poor fits** | Five law forms (separable, shifted-separable, Kaplan joint, Skaling joint, bounded rational) fitted on loss per arm. A form is kept only if R² over cell means ≥ 0.9, its leave-one-cell-out RMSE is below the run-to-run SD, and it has no ill-conditioning or non-convergence warning. Separable-power passes for patient only and `xres`; the others fail. | [`grid.py`](grid.py), [`grid_fits.csv`](grid_fits.csv) | done |
 | **Paired analyses**: (patient only − retrieval) as one number per shared split and seed | Every comparison is a paired difference per draw (same tasks, patients and seed), reported as a mean with a 95% t-interval. | [`ladder.py`](ladder.py) | done |
-| **Richer document value encodings** (all Qwen tokens; run Qwen over the documents, take all layers, attend through them) | New MedRAP encoder: a frozen Qwen3-Embedding-0.6B runs over each retrieved passage; fusion attends over all 256 tokens × 29 layers, with a learned layer embedding (`DOCS=attend`). Also last layer only (`DOCS=last`) and a learned layer mix (`DOCS=mix`). | MedRAP `feat/qwen-hidden-state-docs`; `run.sh` (`DOCS`) | done: precomputed last layer, read by the residual per-code reader (Round 8), helps at D 153K |
+| **Richer document value encodings** (all Qwen tokens; run Qwen over the documents, take all layers, attend through them) | New MedRAP encoder: a frozen Qwen3-Embedding-0.6B runs over each retrieved passage; fusion attends over all 256 tokens × 29 layers, with a learned layer embedding (`DOCS=attend`). Also last layer only (`DOCS=last`) and a learned layer mix (`DOCS=mix`). | MedRAP `feat/qwen-hidden-state-docs`; `run.sh` (`DOCS`) | done: precomputed last layer, read by the residual per-code reader (Round 8), helps at D 153K; all layers with the same reader no better (Round 12) |
 
 ## Results so far
 

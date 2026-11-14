@@ -266,3 +266,24 @@ documents. Analysis: `grid.py` → `grid_delta.csv`, `grid_fits.csv`, `grid_comp
 Also finished: retrieval only (the patient reaches the prediction only through the documents):
 −5.5% / −7.0% at 10K and −15.7% / −13.9% at 153K (64x2x4 / 256x4x8) against patient only. xres at
 K 32: +0.34% at 64x2x4/153K (3/3, random-documents control +0.07%), +0.88% at 256x4x8 (1 draw so far).
+
+## Round 12: xres reading all layers of every passage token
+
+- **Hypothesis**: xres helps with precomputed last-layer passage vectors; reading every layer of
+  every token (the advisor's richest encoding, `DOCS=attend`) gives the reader more to use.
+- **Change**: `CONFIGS=xres DOCS=attend` at `D` 153K, both `W`, draws 1–3. Otherwise identical to the
+  Round 8 xres runs (K 4, lr 1e-3, warm start).
+- **Results** (paired by draw, % of the first loss, 95% t-interval, 3 draws):
+
+  | | 64x2x4 | 256x4x8 |
+  |---|---|---|
+  | attend vs patient only | +0.32 ± 0.40 (3/3) | +0.51 ± 0.21 (3/3) |
+  | precomputed vs patient only, same draws | +0.27 ± 0.23 (3/3) | +0.75 ± 0.59 (3/3) |
+  | **attend vs precomputed** | +0.05 ± 0.19 (2/3) | −0.25 ± 0.38 (0/3) |
+  | attend: random passages at test vs retrieved | +0.49 ± 0.35 | +0.88 ± 1.67 |
+  | attend vs trained on random passages | +0.32 ± 0.12 (3/3) | +0.20 ± 0.57 (2/3) |
+
+- **Cost**: 6–9 GPU-hours per run against about 0.5 for precomputed vectors (the frozen Qwen pass
+  over 5 × 256 tokens each step).
+- **Decision**: all-layer passages help as much as the last layer at 64x2x4 and slightly less at
+  256x4x8, for 12–18× the time. Keep the precomputed last layer.
