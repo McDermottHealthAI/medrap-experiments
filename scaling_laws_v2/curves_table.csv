@@ -1,0 +1,23 @@
+arm,W,D,at_25,at_50,at_100,n
+patient only,256x4x8,10000,6.86,2.99,0.0,3
+"patient only, warm",256x4x8,10000,1.97,0.3,-1.2,3
+"retrieval only, last layer",256x4x8,10000,10.67,7.94,4.97,3
+"retrieval only, word pieces (cold)",256x4x8,10000,14.33,15.5,9.36,3
+"xres, last layer",256x4x8,10000,3.08,0.59,-1.16,3
+patient only,256x4x8,153220,7.27,2.47,0.0,3
+"patient only, warm",256x4x8,153220,1.42,-0.82,-2.43,3
+"retrieval only, last layer",256x4x8,153220,18.59,14.6,10.95,3
+"retrieval only, word pieces (cold)",256x4x8,153220,25.84,20.99,17.25,3
+"xres, all layers",256x4x8,153220,1.78,-1.09,-3.03,3
+"xres, last layer",256x4x8,153220,2.12,-0.77,-3.22,3
+patient only,64x2x4,10000,4.45,1.86,0.0,3
+"patient only, warm",64x2x4,10000,0.46,-0.53,-1.03,3
+"retrieval only, last layer",64x2x4,10000,6.82,6.55,4.18,3
+"retrieval only, word pieces (cold)",64x2x4,10000,11.77,11.01,7.71,3
+"xres, last layer",64x2x4,10000,1.97,-0.56,-0.65,3
+patient only,64x2x4,153220,6.86,1.97,0.0,3
+"patient only, warm",64x2x4,153220,1.06,-1.2,-2.19,3
+"retrieval only, last layer",64x2x4,153220,17.55,16.28,12.91,3
+"retrieval only, word pieces (cold)",64x2x4,153220,23.54,19.88,16.31,3
+"xres, all layers",64x2x4,153220,0.88,-1.0,-2.43,3
+"xres, last layer",64x2x4,153220,1.62,-1.11,-2.33,3

@@ -8,6 +8,8 @@ goes wrong, fixes it, and redesigns the experiment around the advisor's comments
 The goal and its rules (no gate or switch that turns retrieval off, paired runs, no test-set
 tuning) are in [`GOAL.md`](GOAL.md); each experiment round is logged in [`EXPERIMENTS.md`](EXPERIMENTS.md).
 
+**For a short, per-comment summary of the results, see [`advisor/README.md`](advisor/README.md).**
+
 ## Where we are
 
 1. **The harm is fixed.** Retrieval was 12–18% worse than patient only because of a **cold start**:
