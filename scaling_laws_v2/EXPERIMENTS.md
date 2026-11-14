@@ -265,7 +265,10 @@ documents. Analysis: `grid.py` → `grid_delta.csv`, `grid_fits.csv`, `grid_comp
 
 Also finished: retrieval only (the patient reaches the prediction only through the documents):
 −5.5% / −7.0% at 10K and −15.7% / −13.9% at 153K (64x2x4 / 256x4x8) against patient only. xres at
-K 32: +0.34% at 64x2x4/153K (3/3, random-documents control +0.07%), +0.88% at 256x4x8 (1 draw so far).
+K 32 (3 draws, 153K): +0.34 ± 0.04% at 64x2x4 and +0.86 ± 0.10% at 256x4x8 against patient only
+(3/3 each), the tightest intervals so far; it beats the same model trained on random passages by
++0.26% and +0.30% (3/3), but is only +0.07% / +0.10% better than K 4 (intervals include 0). More
+passages make the gain steadier, not larger.
 
 ## Round 12: xres reading all layers of every passage token
 
