@@ -8,7 +8,7 @@ goes wrong, fixes it, and redesigns the experiment around the advisor's comments
 The goal and its rules (no gate or switch that turns retrieval off, paired runs, no test-set
 tuning) are in [`GOAL.md`](GOAL.md); each experiment round is logged in [`EXPERIMENTS.md`](EXPERIMENTS.md).
 
-**For a short, per-comment summary of the results, see [`advisor/README.md`](advisor/README.md).**
+**For a short, per-comment summary of the results, see [`RESULTS.md`](RESULTS.md).**
 
 ## Where we are
 

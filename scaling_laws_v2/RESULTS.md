@@ -1,7 +1,7 @@
-# Retrieval-augmented MedRAP: results for each of your comments
+# scaling_laws_v2: results
 
-One section per comment, in the order you wrote them. The full log of every round is in
-[`EXPERIMENTS.md`](../EXPERIMENTS.md), and the working notes are in [`README.md`](../README.md).
+One section per point of the experimental-design review. The full log of every round is in
+[`EXPERIMENTS.md`](EXPERIMENTS.md), and the working notes are in [`README.md`](README.md).
 
 **Setup.**
 - **Task:** 1,000 random 30-day prediction tasks from MEDS patient records.
@@ -31,7 +31,7 @@ retrieval was better in all three draws.
      add to it.
    - Neither is a gate: every model always reads its passages.
 
-![Δ against D](../grid_delta.png)
+![Δ against D](grid_delta.png)
 
 ---
 
@@ -126,7 +126,7 @@ K = 4, 32, 128 at D 153K, each with a control trained on random passages (bracke
 **Earlier in training?** The curves below show validation loss over training, for each passage
 encoding.
 
-![Validation loss during training](../curves.png)
+![Validation loss during training](curves.png)
 
 | Validation loss above patient only's final loss | at ¼ of training | at ½ | at the end |
 |---|---|---|---|
@@ -177,7 +177,7 @@ encoding.
   per patient).
 - **Parameters:** `N` counts trained parameters without the code embedding table. Frozen
   parameters are listed separately.
-- **Script:** [`count_compute.py`](../count_compute.py).
+- **Script:** [`count_compute.py`](count_compute.py).
 
 | Per patient per step (fwd + bwd) | 64x2x4 | × patient only | 256x4x8 | × patient only | `N` (64 / 256) | frozen |
 |---|---|---|---|---|---|---|
@@ -191,7 +191,7 @@ encoding.
 - **At equal training compute, patient only wins:** its best model reaches test loss 0.02073 at
   5.9 × 10¹⁴ FLOPs, while `xres` reaches 0.02071 at 3.8 × 10¹⁵ (6.5×).
 
-![Loss against training compute](../grid_compute.png)
+![Loss against training compute](grid_compute.png)
 
 ### Scaling laws: other law forms, loss scale only, drop poor fits
 
@@ -218,9 +218,9 @@ only, patient only warm, `xres`, and `xres` trained on random passages.
   forms fail on ill-conditioning or optimizer warnings.
 - **Comparing arms through the laws is inconclusive** (P(`xres` better) 0.5–0.6). Laws fitted
   separately per arm can't resolve a 0.3–0.8% difference, and an additive law can't represent a
-  gain that grows with D. Following your rule, we don't lean on the law comparison: **the paired
+  gain that grows with D. As the design rules say, we don't lean on the law comparison: **the paired
   table above is the evidence.**
-- **Script:** [`grid.py`](../grid.py). Fits are in [`grid_fits.csv`](../grid_fits.csv).
+- **Script:** [`grid.py`](grid.py). Fits are in [`grid_fits.csv`](grid_fits.csv).
 
 ---
 
