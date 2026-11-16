@@ -290,3 +290,48 @@ passages make the gain steadier, not larger.
   over 5 × 256 tokens each step).
 - **Decision**: all-layer passages help as much as the last layer at 64x2x4 and slightly less at
   256x4x8, for 12–18× the time. Keep the precomputed last layer.
+
+## Round 13: sampled K in training
+
+- **Hypothesis** (review: "choose random K instead of top K"): the query only learns from the
+  passages it is shown, so always showing it the top 4 locks it into a few passages. Drawing the 4
+  from a wider pool lets it learn from others.
+- **Change**: `SAMPLE_POOL=16` (MedRAP `HFDatasetRetriever(sample_pool=16)`): in training, 4 of the
+  top 16 drawn in proportion to softmax(score / √1024) by Gumbel-top-K; at test, the top 4. `xres`,
+  precomputed last layer, both W and both D, draws 1–3. `CONFIGS=xres SAMPLE_POOL=16 ./submit.sh residual`.
+- **Result** (paired, % of loss, sampled vs top K): −0.32 ± 0.95 (64/10K), −0.13 ± 0.22 (64/153K),
+  −0.48 ± 0.33 (256/10K), −0.09 ± 0.20 (256/153K); worse in all 12 draws. Against patient only:
+  −0.51, +0.14, −0.72, +0.66. Distinct top passages per test batch rise from 0.32 to 0.42 / 0.54;
+  the cost of random passages at test falls (0.4–0.5% against 0.6–0.9%).
+- **Decision**: drop. Sampling changes which passages are retrieved, not how useful they are.
+
+## Round 14: retrieval only, with all layers and with a learned query
+
+- **Hypothesis A** (review: retrieval only with richer encodings): all Qwen layers carry more for a
+  model that sees the patient only through its passages.
+- **Hypothesis B** (review: "change fusion to use a learned query instead of patient"): read every
+  passage with one learned query shared by all patients, so the patient reaches the prediction only
+  through which passages are retrieved and their weights. MedRAP `GatedDocFusion(mode="learned")`;
+  `CONFIGS=retrieval_only_learned ./submit.sh residual`.
+- **Result A** (all layers vs last layer, paired): +2.43 ± 5.38, −1.34 ± 3.44, −2.48 ± 2.05,
+  −2.40 ± 7.79 (64/10K, 64/153K, 256/10K, 256/153K). No better; −2.9% to −17.3% against patient only.
+- **Result B** (learned vs patient-dependent query, paired): **+2.07 ± 3.41, +8.38 ± 3.54,
+  +2.47 ± 3.90, +6.26 ± 5.70**, 3/3 draws in every cell. Against patient only: −3.3%, −6.0%, −4.4%,
+  −6.7%. Final validation loss 3.6% / 3.9% above patient only at 153K, against 12.9% / 11.0% with
+  the patient-dependent query. Its mixing weights are the most concentrated of any model (2.9–3.8
+  passages effectively weighted of 5, against 4.3–4.7 for the others).
+- **Reading**: with a fixed reading per passage, the library acts as a set of learned prediction
+  profiles that the search picks from. Why that beats a patient-dependent reading is not
+  established. Retrieval only still cannot replace the patient record.
+- **Also**: the retrieval statistics MedRAP logs at test (per batch of 32) show that cold v1 had
+  collapsed (71–82% of patients sharing a top passage), that the warm start broke this (35–52%),
+  and that every reader weights its passages almost uniformly.
+
+## K 512, rerun
+
+Ten of the twelve K 512 runs (`xres` and `xres_random_docs`, D 153K) were killed at the same
+minute on Nov 15 (exit 120 or 1, no traceback, memory well under the limit), some after 19 h,
+before writing a checkpoint. Two finished (`xres`, 64x2x4, draws 2–3); one more finished training
+and crashed with a segmentation fault after `Trainer.fit` (`xres`, 64x2x4, draw 1). Resubmitted
+unchanged; draw 1 with `TEST_ONLY=true`.
+

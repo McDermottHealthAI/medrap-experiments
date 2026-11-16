@@ -15,6 +15,10 @@ same checkpoint for the same epochs (patient_only_warm). Writes into figures/:
     compute.png         test loss against training compute, every grid cell, per W and arm
     isoflop.png         IsoFLOP curves and the compute-optimal frontier from the fitted laws
     delta.png           Δ between the grid's models against D: xres vs #1, #4 vs #1, xres vs #4
+    delta_scale.png     xres vs #1 against model size N (one line per D) and against training compute
+    sampled_k.png       xres with K drawn from the top 16 in training (Gumbel-top-K) against top K
+    retrieval.png       how the retriever behaves at test: shared top passage, distinct top passages,
+                        effective number of passages weighted
 
 Needs results_grid.csv and results_compute.csv (grid.py, count_compute.py).
 """
@@ -206,7 +210,66 @@ def retrieval_only(df):
             ("last layer, retrieval query", "retrieval_only_K4_warm_pre", None),
             ("all layers, retrieval query", "retrieval_only_K4_warm_attend", None),
             ("last layer, learned query", "retrieval_only_learned_K4_warm_pre", None)]
-    dot_panels(df, rows, "Retrieval only (#R): Δ vs patient only", "retrieval_only.png", missing="running")
+    dot_panels(df, rows, "Retrieval only (#R): Δ vs patient only", "retrieval_only.png")
+
+
+def sampled_k(df):
+    rows = [("xres, top 4 (as before)", "xres_K4_warm_pre", "xres_random_docs_K4_warm_pre"),
+            ("xres, 4 sampled from the top 16", "xres_K4_warm_pre_sp16", None)]
+    dot_panels(df, rows, "Random K instead of top K in training: Δ vs patient only (K 4 at test)", "sampled_k.png",
+               "Sampled: in training, 4 of the top 16 passages drawn in proportion to softmax(score / √1024) "
+               "(Gumbel-top-K); at test, the top 4.")
+
+
+RETRIEVAL_ROWS = [
+    ("v1, cold, word pieces", "v1_masked_K4"), ("v1, warm, word pieces", "v1_masked_K4_warm"),
+    ("v1, warm, last layer", "v1_masked_K4_warm_pre"), ("v1, warm, all layers", "v1_masked_K4_warm_attend"),
+    ("residual, last layer", "residual_K4_warm_pre"), ("xres, last layer", "xres_K4_warm_pre"),
+    ("xres, all layers", "xres_K4_warm_attend"), ("xres, 4 sampled from 16", "xres_K4_warm_pre_sp16"),
+    ("retrieval only, last layer", "retrieval_only_K4_warm_pre"),
+    ("retrieval only, learned query", "retrieval_only_learned_K4_warm_pre"),
+]
+RETRIEVAL_METRICS = [
+    ("retrieval/test/top1_mode_frac", "share of patients whose top passage\nis the batch's most common one", (0, 1)),
+    ("retrieval/test/top1_unique_ratio", "distinct top passages\nper patient", (0, 1)),
+    ("retrieval/test/differentiable/effective_k_mean", "passages effectively weighted\n(exp entropy of the weights, of 5)", (1, 5)),
+]
+
+
+def retrieval(outputs: Path):
+    """Test-set retrieval statistics (MedRAP retrieval_logging; per batch of 32 test patients, mean over
+    batches), K 4, D 153K, mean over draws 1-3."""
+    rows = []
+    for f in outputs.glob("*/draw[1-3]/test_topK/loggers/csv/*/metrics.csv"):
+        m = RUN.fullmatch(f.parts[-7])
+        if not m or m["D"] != "153220" or m["lr"] != "1e-3" or m["dropout"] != "0":
+            continue
+        name = m["config"] + "_K" + (m["K"] or "0") + (m["suffix"] or "")
+        t = pl.read_csv(f)
+        rows.append({"name": name, "W": m["W"], **{k: t[k].drop_nulls().mean() for k, _, _ in RETRIEVAL_METRICS if k in t.columns}})
+    df = pl.DataFrame(rows).group_by("name", "W").agg(pl.all().mean())
+    fig, axes = plt.subplots(1, 3, figsize=(15, 0.45 * len(RETRIEVAL_ROWS) + 1.8), sharey=True)
+    y = np.arange(len(RETRIEVAL_ROWS))[::-1]
+    for ax, (col, title, lim) in zip(axes, RETRIEVAL_METRICS):
+        for w, off in (("64x2x4", 0.12), ("256x4x8", -0.12)):
+            for yi, (_, run) in zip(y, RETRIEVAL_ROWS):
+                v = df.filter((pl.col("name") == run) & (pl.col("W") == w))
+                if v.height and v[col][0] is not None:
+                    ax.plot(v[col][0], yi + off, "o", ms=7, color=W_COLOUR[w])
+                    ax.annotate(f"{v[col][0]:.2f}", (v[col][0], yi + off), textcoords="offset points", xytext=(6, -3),
+                                fontsize=7, color="#333")
+        ax.set_xlim(*lim)
+        ax.set_title(title, fontsize=10)
+        ax.grid(axis="x", alpha=0.3)
+    axes[0].set_yticks(y, [r[0] for r in RETRIEVAL_ROWS])
+    handles = [Line2D([], [], color=W_COLOUR[w], marker="o", ls="", label=f"W {w}") for w in ("64x2x4", "256x4x8")]
+    fig.legend(handles=handles, loc="lower center", ncol=2, frameon=False, bbox_to_anchor=(0.5, -0.05))
+    fig.suptitle("How the retriever behaves on test patients (K 4 + null passage, D 153K)", x=0.01, ha="left")
+    fig.text(0.01, -0.1, "Per batch of 32 test patients, averaged over batches and 3 draws. Left: collapse (1 = everyone "
+             "retrieves the same top passage). Middle: 1 = every patient has a different top passage. Right: 5 = equal "
+             "weight on the 4 passages and the null passage, 1 = all weight on one.", fontsize=8, color="#555")
+    fig.tight_layout()
+    save(fig, "retrieval.png")
 
 
 def stage0(df):
@@ -331,6 +394,56 @@ def isoflop(grid: pl.DataFrame):
     save(fig, "isoflop.png")
 
 
+def grid_pair(grid: pl.DataFrame, a: str, b: str, w: str, d: int) -> tuple[float, float] | None:
+    """Paired Δ% (b − a) / b over draws between grid arms a and b at (w, d), with its t-interval."""
+    x = grid.filter((pl.col("arm") == a) & (pl.col("W") == w) & (pl.col("D") == d)).select("draw", "loss")
+    y = grid.filter((pl.col("arm") == b) & (pl.col("W") == w) & (pl.col("D") == d)).select("draw", base="loss")
+    p = x.join(y, on="draw")
+    if not p.height:
+        return None
+    pct = ((p["base"] - p["loss"]) / p["base"] * 100).to_list()
+    return float(np.mean(pct)), t_interval(pct)
+
+
+def delta_scale(grid: pl.DataFrame):
+    """xres vs patient only against model size N (one line per D) and against xres's training compute."""
+    fig, axes = plt.subplots(1, 2, figsize=(13, 4.4), sharey=True)
+    ds = sorted(grid["D"].unique())
+    d_colour = {d: plt.get_cmap("Blues")(0.35 + 0.65 * i / (len(ds) - 1)) for i, d in enumerate(ds)}
+    per = grid.filter(pl.col("arm") == "xres").group_by("W", "D").agg(N=pl.col("N").first(), C=pl.col("C").first())
+    for d in ds:
+        pts = []
+        for w in W_COLOUR:
+            r = grid_pair(grid, "xres", "patient only", w, d)
+            n = per.filter((pl.col("W") == w) & (pl.col("D") == d))["N"]
+            if r and n.len():
+                pts.append((n[0], *r))
+        n, m, ci = zip(*sorted(pts))
+        axes[0].errorbar(n, m, yerr=np.nan_to_num(ci), color=d_colour[d], marker="o", capsize=3, lw=2, label=f"D {D_LABEL[d]}")
+    for w, colour in W_COLOUR.items():
+        pts = []
+        for d in ds:
+            r = grid_pair(grid, "xres", "patient only", w, d)
+            c = per.filter((pl.col("W") == w) & (pl.col("D") == d))["C"]
+            if r and c.len():
+                pts.append((c[0], *r))
+        c, m, ci = zip(*sorted(pts))
+        axes[1].errorbar(c, m, yerr=np.nan_to_num(ci), color=colour, marker="o", capsize=3, lw=2, label=f"W {w}")
+    for ax in axes:
+        zero_line(ax)
+        ax.set_xscale("log")
+        ax.grid(alpha=0.3)
+    axes[0].set_xlabel("model size N (trained parameters of the xres model, without the code table)")
+    axes[0].set_ylabel("xres vs patient only, % of loss (positive: xres better)")
+    axes[0].set_title("Against model size (one line per D)", loc="left", fontsize=10)
+    axes[0].legend(fontsize=8)
+    axes[1].set_xlabel("xres training compute, FLOPs (including its patient-only checkpoint)")
+    axes[1].set_title("Against training compute (one line per W, points D 3K → 153K)", loc="left", fontsize=10)
+    axes[1].legend(fontsize=8)
+    fig.tight_layout()
+    save(fig, "delta_scale.png")
+
+
 def delta_grid(grid: pl.DataFrame):
     pairs = [("xres", "patient only", "xres vs patient only (#2 − #1)"),
              ("xres random", "patient only", "trained on random passages vs patient only (#4 − #1)"),
@@ -338,14 +451,7 @@ def delta_grid(grid: pl.DataFrame):
     fig, axes = plt.subplots(1, 3, figsize=(15, 4), sharey=True)
     for ax, (a, b, title) in zip(axes, pairs):
         for w, colour in W_COLOUR.items():
-            pts = []
-            for d in sorted(grid["D"].unique()):
-                x = grid.filter((pl.col("arm") == a) & (pl.col("W") == w) & (pl.col("D") == d)).select("draw", "loss")
-                y = grid.filter((pl.col("arm") == b) & (pl.col("W") == w) & (pl.col("D") == d)).select("draw", base="loss")
-                p = x.join(y, on="draw")
-                if p.height:
-                    pct = ((p["base"] - p["loss"]) / p["base"] * 100).to_list()
-                    pts.append((d, np.mean(pct), t_interval(pct)))
+            pts = [(d, *r) for d in sorted(grid["D"].unique()) if (r := grid_pair(grid, a, b, w, d))]
             d, m, ci = zip(*pts)
             ax.errorbar(d, m, yerr=np.nan_to_num(ci), color=colour, marker="o", capsize=3, lw=2, label=f"W {w}")
         zero_line(ax)
@@ -366,6 +472,7 @@ if __name__ == "__main__":
     compute(grid)
     isoflop(grid)
     delta_grid(grid)
+    delta_scale(grid)
     if outputs.exists():
         df = load(outputs)
         readers(df)
@@ -373,3 +480,5 @@ if __name__ == "__main__":
         encodings(df)
         retrieval_only(df)
         stage0(df)
+        sampled_k(df)
+        retrieval(outputs)

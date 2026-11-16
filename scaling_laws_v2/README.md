@@ -45,9 +45,9 @@ tuning) are in [`GOAL.md`](GOAL.md); each experiment round is logged in [`EXPERI
    on-the-fly Qwen states of all 29 layers beats patient only at `D` 153K (+0.3%, +0.5%) but not
    the precomputed last layer (+0.05%, −0.25%), at 12–18× the run time.
 
-![Δ against D](grid_delta.png)
+![Δ against D](figures/delta.png)
 
-![Loss against compute](grid_compute.png)
+![Loss against compute](figures/compute.png)
 
 ## The advisor's comments: what we did
 

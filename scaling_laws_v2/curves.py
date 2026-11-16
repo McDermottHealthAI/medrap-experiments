@@ -22,6 +22,7 @@ ARMS = {  # label: run-name suffix after _W{W}_D{D}_lr1e-3_do0
     "retrieval only, word pieces (cold)": ("retrieval_only", "_K4"),
     "retrieval only, last layer": ("retrieval_only", "_K4_warm_pre"),
     "retrieval only, all layers": ("retrieval_only", "_K4_warm_attend"),
+    "retrieval only, learned query": ("retrieval_only_learned", "_K4_warm_pre"),
     "xres, last layer": ("xres", "_K4_warm_pre"),
     "xres, all layers": ("xres", "_K4_warm_attend"),
 }
@@ -31,6 +32,7 @@ STYLE = {
     "retrieval only, word pieces (cold)": ("#c44e52", ":"),
     "retrieval only, last layer": ("#c44e52", "--"),
     "retrieval only, all layers": ("#c44e52", "-"),
+    "retrieval only, learned query": ("#c44e52", "-."),
     "xres, last layer": ("#4c72b0", "--"),
     "xres, all layers": ("#4c72b0", "-"),
 }

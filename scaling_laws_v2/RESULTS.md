@@ -55,7 +55,8 @@ training data?
 ## Bottom line
 
 1. **Retrieval helps with enough data.** At 100K–153K training patients it beats patient only by
-   **+0.3% to +0.9%**, for every model size, and the gain replicated on fresh draws.
+   **+0.3% to +0.9%** at 64x2x4 and 256x4x8 (128x2x4: +0.13%, interval includes 0), and the gain
+   replicated on fresh draws.
 2. **The passages themselves carry part of that gain.** The same model trained on *random* passages
    gains less. Passage knowledge accounts for about +0.2% to +0.5%; the rest is extra capacity.
 3. **It hurts with little data:** −0.3% to −3% below about 30K patients.
@@ -65,8 +66,15 @@ training data?
    review):**
    - *Warm start:* the encoder starts from the trained patient-only model. This removed v1's
      4–18% harm.
-   - *The `xres` reader* (next section).
+   - *The `xres` reader* ("The readers", and "Architecture changes in detail").
    - Neither is a gate: every model always reads its passages.
+6. **The newest experiments didn't change this.**
+   - Drawing K passages at random in training is slightly worse than the top K.
+   - All Qwen layers are no better than the last layer, with either reader.
+   - Retrieval only with a learned query is much better than the previous retrieval only (by 2–8%)
+     but still 3–7% worse than patient only.
+7. **The retriever barely weights its passages.** Every reader puts almost equal weight on the 4
+   retrieved passages and the null passage ("How the retriever behaves").
 
 ![Paired differences between the models against D](figures/delta.png)
 
@@ -106,6 +114,139 @@ suggested in the design review.**
   control, so part of its gain comes from what the passages say.
 - **Caveat on choosing it:** `xres` was chosen after seeing draws 1–3. Draws 4–6 were then run
   fresh, with nothing chosen on them, and gave the same result (+0.3% and +0.8% at 153K).
+
+---
+
+## Architecture changes in detail
+
+Every change made to the retrieval model during these experiments: what it does, where it is in MedRAP,
+why it was made, and what it did. All are off by default in MedRAP and switched on by `run.sh`. The
+MedRAP code is on PRs #123–#125.
+
+### The model they change
+
+Shapes for one batch: `B` = 32 patients, `S` = 256 codes per patient, `W` = encoder width, `K` passages
+plus the null passage, 256 tokens per passage, `T` = 1,000 tasks.
+
+```mermaid
+flowchart LR
+    P[["codes<br/>B × S"]] --> E["patient encoder<br/>(RoPE transformer)"]
+    E -->|"states B × S × W"| Q["query: masked mean →<br/>linear W → 1024"]
+    Q --> F["exact search over<br/>125,848 passage keys<br/>top K + null"]
+    F -->|"B × (K+1) × 256 × 1024"| R["reader"]
+    E -->|"states B × S × W"| R
+    R -->|"B × (K+1) × W"| H["head: linear W → T"]
+    H -->|"B × (K+1) × T"| M["Σ_k w_k σ(z_k)<br/>w = softmax(scores)"]
+    F -.->|"scores"| M
+```
+
+The reader is the only part that differs between the models below. Patient only skips the search
+and the reader: the head reads the masked mean `h` of the encoder states.
+
+### Summary
+
+| # | Change | MedRAP switch | Why | Effect | Kept |
+|---|---|---|---|---|---|
+| 1 | Masked mean in the reader | `PerDocCrossAttentionFusion` pools valid codes only | v1 averaged over padding: a 50-code patient's vector was 80% padding positions, which after cross-attention hold mostly passage content | small | yes (bug fix) |
+| 2 | Same K in training and at test | `run.sh`: `retriever.k=K` for both | v1 trained on 4 + null and tested on 1 + null, doubling the null passage's weight at test | about a third of v1's harm | yes |
+| 3 | Reader output starts at zero | `zero_init_attn_out=true` | stop random passages drowning the patient at the start | none | no |
+| 4 | Centred search keys | `center_keys.py` | patients all retrieved the same passages | none | no |
+| 5 | **Warm start** | `training.module.init_encoder_from` | the encoder learned while being fed passage noise | **removed the 13–18% harm** | yes |
+| 6 | **Contextual passages** | `PrecomputedTokenStatesRetrievalEncoder` (last layer), `QwenHiddenStatesRetrievalEncoder` (all layers) | word pieces have no context | **first real gains** | last layer |
+| 7 | `residual` reader | `GatedDocFusion(gated=False)` | v1's head sees the patient only through new layers | better than v1, still weak | no |
+| 8 | **`xres` reader** | `PerDocCrossAttentionFusion(residual=True)` | combine v1's per-code reading with an untouched patient path | **+0.3% / +0.8% at 153K** | yes |
+| 9 | Sampled K | `HFDatasetRetriever(sample_pool=16)` | let the query learn from passages outside its top K | slightly worse | no |
+| 10 | Learned query, retrieval only | `GatedDocFusion(mode="learned")` | the patient may affect the prediction only through retrieval | much better than the previous retrieval only | experiment |
+
+### Warm start (5)
+
+- **What:** before training, the patient encoder (code embeddings and transformer layers) is copied
+  from the trained patient-only checkpoint of the same `W`, `D` and draw. Only `model.encoder.*` is
+  copied. The query projection, the reader and the head start fresh.
+- **Why:** in v1 the encoder and the reader trained together from random weights. Early on the
+  passages are noise, and the encoder learned to work with that noise instead of learning the
+  patient. v1 was worse even on *training* loss, so it was not overfitting.
+- **Fair baseline:** a warm run trains for more epochs in total. It is compared with
+  `patient_only_warm`, which is patient only continued from the same checkpoint for the same epochs,
+  also with a fresh head. That baseline alone is 1.5–2.6% better than the original patient only.
+- **Effect:** −13.4% → +0.1% (64x2x4) and −18.1% → −0.6% (256x4x8) at D 153K with v1's reader
+  (Rounds 3–4).
+
+### Contextual passages (6)
+
+What the reader sees for each passage, 256 vectors of width 1,024:
+
+| Encoding | How it is built | Runtime cost |
+|---|---|---|
+| word pieces (v1) | Qwen3's input embedding of each token, a table lookup; no context | none |
+| last layer (`DOCS=pre`) | Qwen3-Embedding-0.6B run once over the whole library; the last-layer state of each of the 256 tokens, stored as fp16 (66 GB, `encode_last_layer.py`). At training time the retrieved rows are read and cached on the GPU | a lookup |
+| all layers (`DOCS=attend`) | the frozen Qwen3-Embedding runs over each retrieved passage at every step; all 29 hidden states (embeddings + 28 layers) of each token, each LayerNorm-ed, plus a learned embedding per layer, so the reader attends over 29 × 256 vectors | the Qwen pass, 6–9 GPU-h per run |
+
+The search keys stay the same in all three: one Qwen3-Embedding vector per passage.
+
+### The `xres` reader (8)
+
+For each patient and each of its K + 1 passages separately:
+
+```
+x = encoder states of the patient                     S × W   (no projection: d_model = W)
+p = LN(passage token vectors)                         256 × 1024
+repeat 2 times:
+    x = x + Attention(query = LN(x), keys = values = p)   each code reads the passage
+    x = x + FFN(LN(x))                                     W → 2W → W, GELU
+v_k = masked mean of x over the patient's codes      W       (no output LayerNorm)
+z_k = head(v_k)                                       T logits
+```
+
+- **Heads:** the attention uses the encoder's own head count (4 or 8). The keys and values are
+  projected 1,024 → W inside the attention.
+- **What v1 does differently:** v1 first projects the states to width 256 (`patient_proj`) and
+  applies a LayerNorm at the end (`out_norm`). `residual=True` replaces both with the identity.
+- **Why that matters:** with the identity, `v_k` = (the patient-only head input `h`) + (the mean of
+  the updates from passage k). The head is fitted on the same kind of vector as in patient only,
+  and passages enter only as additions. In v1, the head saw the patient only after a fresh random
+  projection, two layers and a LayerNorm, so it started far from the patient-only model and had to
+  relearn it.
+- **Not a gate:** the attention output is not initialised at zero and nothing can scale the
+  passages away. Every passage changes every prediction from step 1.
+- **Size:** 379K (64x2x4) and 2.1M (256x4x8) extra trained parameters. Without the code table that
+  is N = 515K and 4.5M, against 136K and 2.4M for patient only.
+- **Compute:** 16× and 5× patient only's FLOPs per training step. Most of it is projecting the
+  5 × 256 passage vectors from 1,024 to W.
+
+### The `residual` reader (7)
+
+```
+h   = masked mean of the encoder states               W
+q   = linear(h)                                        one query vector
+c_k = Attention(q, passage k) then FFN                 W
+z_k = head(h + c_k)
+```
+
+It starts at the patient-only head input, like `xres`. But the whole patient asks one question of
+each passage, which is too little: random-passage models were worse than it, but it gained only
++0.14% / −0.12%.
+
+### Sampled K (9)
+
+- **What:** in training, the search returns the top 16 passages and K = 4 are drawn from them
+  without replacement, in proportion to `softmax(score / √1024)` (Gumbel-top-K). At test the top 4
+  are used.
+- **How:** `HFDatasetRetriever(sample_pool=16)` adds Gumbel noise `−log(−log u)` to the scaled
+  scores and keeps the 4 largest. The mixing weights still use the unperturbed scores of the
+  passages drawn.
+- **Why:** the query only gets a learning signal from the passages it is shown. Always showing it
+  its top 4 can lock it into the same few passages.
+
+### Learned query for retrieval only (10)
+
+- **Before** (`GatedDocFusion(mode="query")`): passage k is read by a query vector computed from
+  the patient's retrieval query, and the head sees only that reading, `z_k = head(c_k(patient, k))`.
+- **Now** (`mode="learned"`): one learned vector, the same for every patient, reads every passage.
+  So `c_k` depends on passage k only, and `z_k = head(c_k(k))`.
+- **What that means:** every passage carries a fixed prediction profile over the 1,000 tasks, read
+  from its text. The patient chooses which 4 profiles to mix, and with what weights, through the
+  search alone.
 
 **Warm start** is also our addition. The review asked for the good patient-only *configuration*
 to be used as the seed for retrieval. We went further and start the retrieval model's encoder from
@@ -149,15 +290,17 @@ Patient only at D 153K: 3 sizes × 3 learning rates × 2 dropouts, 3 draws each.
 |---|---|---|---|---|
 | v1, 64x2x4 (random-trained) | +0.10 (−0.05) | +0.32 (+0.33) | +0.45 (+0.43) | |
 | v1, 256x4x8 (random-trained) | −0.64 (−0.85) | −0.40 (−0.39) | −0.52 (−0.73) | |
-| `xres`, 64x2x4 (random-trained) | +0.27 (−0.02) | **+0.34** (+0.07) | | running |
-| `xres`, 256x4x8 (random-trained) | **+0.79** (+0.31) | **+0.86** (+0.55) | | running |
+| `xres`, 64x2x4 (random-trained) | +0.27 (−0.02) | **+0.34** (+0.07) | | rerunning |
+| `xres`, 256x4x8 (random-trained) | **+0.79** (+0.31) | **+0.86** (+0.55) | | rerunning |
 
 - **Performance rises a little with K, but the random-passage control (#4) rises about as much.**
   More passages add capacity, not knowledge.
 - With `xres`, K 32 beats K 4 by only +0.07% / +0.10% (intervals include 0). It mainly makes the
   gain steadier: ±0.04% and ±0.10%, the tightest intervals of any setting.
-- **K 512** (`xres` and its #4 control, both sizes, 3 draws) is running, about 14 h per run at
-  64x2x4.
+- **K 512** (`xres` and its #4 control, both sizes, 3 draws): two of the twelve runs finished
+  (`xres`, 64x2x4, draws 2–3). The other ten were killed at the same minute on the cluster on
+  Nov 15, some after 19 h, before saving a checkpoint. All are running again, about 15 h (64x2x4)
+  to 22 h (256x4x8) each. One run had finished training and is only being re-tested.
 - **Annealing K** during training is not done. No K beats its random control, so there is no
   number to anneal towards yet.
 
@@ -168,8 +311,24 @@ random, in proportion to softmax(score / √1024) (Gumbel-top-K). At test, the t
 usual. The query then also gets a learning signal from passages it would not have ranked first.
 Uniformly random passages are #4, already in every figure.
 
-**Status:** running. `xres` with K 4 drawn from the top 16, at D 10K and 153K, both sizes, 3 draws.
-MedRAP: `HFDatasetRetriever(sample_pool=16)`.
+**Run:** `xres` with K 4 drawn from the top 16, at D 10K and 153K, both sizes, 3 draws. MedRAP:
+`HFDatasetRetriever(sample_pool=16)`.
+
+![Sampled K](figures/sampled_k.png)
+
+| Paired, % of loss | 64x2x4, 10K | 64x2x4, 153K | 256x4x8, 10K | 256x4x8, 153K |
+|---|---|---|---|---|
+| sampled vs patient only | −0.51 | +0.14 | −0.72 | +0.66 |
+| **sampled vs top K** | −0.32 ± 0.95 (0/3) | −0.13 ± 0.22 (0/3) | −0.48 ± 0.33 (0/3) | −0.09 ± 0.20 (0/3) |
+| sampled vs trained on random passages | +0.25 ± 0.94 | +0.14 ± 0.36 (3/3) | −0.33 ± 0.85 | +0.36 ± 0.48 (3/3) |
+
+- **Sampling is slightly worse than top K in every draw of every cell** (0.1–0.5%), though only
+  256x4x8 at 10K excludes 0.
+- **It does spread retrieval out:** more distinct top passages (0.42 / 0.54 per patient, against
+  0.32 / 0.32 with top K; see "How the retriever behaves"). But the model leans less on its
+  passages: swapping in random passages at test costs it 0.4–0.5%, against 0.6–0.9% for top K.
+- **Decision:** not kept. Exploration changes *which* passages are retrieved, not how useful they
+  are.
 
 ### Retrieval-only models, at the same settings and with richer encodings
 
@@ -179,15 +338,26 @@ MedRAP: `HFDatasetRetriever(sample_pool=16)`.
 |---|---|---|---|---|
 | word pieces, retrieval query (cold) | −8.0% | −16.7% | −9.7% | −17.2% |
 | Qwen last layer, retrieval query | −5.5% | −15.7% | −7.0% | −13.9% |
-| Qwen all layers, retrieval query | running | running | running | running |
-| Qwen last layer, **learned query** | running | running | running | running |
+| Qwen all layers, retrieval query | −2.9% | −17.3% | −9.7% | −16.6% |
+| Qwen last layer, **learned query** | **−3.3%** | **−6.0%** | **−4.4%** | **−6.7%** |
 
 - **Retrieval only is 5–17% worse than patient only, and the gap grows with D.** The passages work
   only as an *addition* to the patient record; on their own they describe the patient poorly.
-- **Learned query** (requested). The passages were read with a query computed from the patient.
-  Now one learned query vector, the same for every patient, reads every passage. The patient then
-  affects the prediction *only* through which passages are retrieved and how they are weighted.
-  MedRAP: `GatedDocFusion(mode="learned")`.
+- **All layers don't help retrieval only either:** against the last layer, −1.3% to −2.5% at three
+  of the four cells (+2.4% at 64x2x4/10K); no interval excludes 0.
+- **Learned query** (requested): one learned vector, the same for every patient, reads every
+  passage, so the patient affects the prediction *only* through which passages are retrieved and
+  how they are weighted (details in "Architecture changes in detail").
+  - **It is much better than the patient-dependent query:** +2.1%, +8.4%, +2.5% and +6.3% (paired,
+    3/3 draws in every cell; the interval excludes 0 at 64x2x4/153K).
+  - **It is still worse than patient only:** 3–7% on test.
+  - **What this suggests:** with a fixed reading per passage, the 125,848 passages act as a large
+    library of learned prediction profiles, and the search learns to pick the patient's nearest
+    ones. It is also the model that concentrates its mixing weights most (see "How the retriever
+    behaves"): the weights are its only channel for the patient.
+  - **Why it beats the patient-dependent query is not established.** One guess: there the query
+    both searches and reads, and the reading gives it an easier route to the loss than learning to
+    search. Not tested.
 
 **Does it get there with less training?** Validation loss against patients seen in training.
 - **Training length:** a cold run sees D × epochs patients, which is 50K at D 10K and 460K at
@@ -204,11 +374,14 @@ MedRAP: `HFDatasetRetriever(sample_pool=16)`.
 | #1 patient only | 460K | 0 | 460K |
 | #R, word pieces (cold) | 460K | +16.3% / +17.3% | never |
 | #R, last layer (warm) | 919K | +12.9% / +11.0% | never |
+| #R, all layers (warm) | 919K | +14.2% / +13.8% | never |
+| #R, last layer, learned query (warm) | 919K | **+3.6% / +3.9%** | never |
 | #1 continued (warm) | 919K | −2.2% / −2.4% | 613K / 674K |
 | `xres`, last layer | 919K | −2.3% / −3.2% | 644K / 674K |
 | `xres`, all layers | 919K | −2.4% / −3.0% | 674K / 674K |
 
-- **Retrieval only never reaches patient only**, even with twice the training.
+- **Retrieval only never reaches patient only**, even with twice the training. The learned query
+  comes closest (3.6–3.9% above it at the end).
 - **Inside `xres`, richer encodings don't get there sooner.** `xres` with either encoding reaches
   #1's loss after about the same amount of training as #1 continued.
 
@@ -289,9 +462,37 @@ then warm), `xres`, and `xres` trained on random passages (#4).
   narrows as the budget grows, but the curves don't cross within the range shown.
 - **Caveat:** the laws are fitted on 3 model sizes, so the curves are extrapolation outside the
   shaded range.
+![Δ against model size and compute](figures/delta_scale.png)
+
+- **Δ against model size (left):** at each D the gain is largest at 256x4x8 and smallest at
+  128x2x4. Model size matters less than data: the lines are ordered by D, not by N.
+- **Δ against compute (right):** 64x2x4 crosses 0 near 10¹⁵ FLOPs, 128x2x4 near 3 × 10¹⁵ and
+  256x4x8 between 3 and 7 × 10¹⁵, each at 30K–100K patients. Larger models need more compute
+  before retrieval pays off.
 - **Comparing the models through their laws is inconclusive** (P(`xres` better) 0.5–0.6). Laws
   fitted separately per model can't resolve a 0.3–0.8% difference, and an additive law can't
   represent a gain that grows with D. The paired table above is the evidence.
+
+### How the retriever behaves
+
+Statistics MedRAP logs on every test batch (32 patients) from the retrieved passages, averaged
+over batches and draws, K 4, D 153K. No new runs were needed.
+
+![Retrieval behaviour](figures/retrieval.png)
+
+- **Cold v1 collapsed.** In a batch of 32, 71–82% of patients shared the same top passage, and
+  only 13% of top passages were distinct. Its retrieval was close to a constant.
+- **Warm start broke the collapse.** With the trained encoder, 35–52% share the top passage and
+  29–46% of top passages are distinct, for every reader.
+- **`xres` retrieves about as diversely as the other warm readers** (42% shared, 32% distinct). Its
+  gain comes from reading the passages better, not from finding different ones.
+- **The mixing weights are nearly uniform for every reader:** 4.3–4.7 of 5 passages effectively
+  weighted. The model reads all 4 retrieved passages and the null passage almost equally, so the
+  search scores do little beyond choosing the 4. A sharper retriever is the most obvious unused
+  lever.
+- **Sampled K retrieves more diversely** (up to 54% distinct), with no gain (above).
+- **Learned-query retrieval only concentrates its weights the most** (2.9–3.8 of 5): it is the
+  only model whose patient information must flow through the weights.
 
 ---
 
@@ -309,16 +510,20 @@ then warm), `xres`, and `xres` trained on random passages (#4).
 |---|---|
 | Test loss vs training compute | [`figures/compute.png`](figures/compute.png) |
 | IsoFLOP curves | [`figures/isoflop.png`](figures/isoflop.png) |
-| Difference between models | [`figures/delta.png`](figures/delta.png), [`figures/readers.png`](figures/readers.png) |
+| Difference between models | [`figures/delta.png`](figures/delta.png), [`figures/delta_scale.png`](figures/delta_scale.png), [`figures/readers.png`](figures/readers.png), [`figures/sampled_k.png`](figures/sampled_k.png) |
+| Qwen over the passages, all layers | [`figures/encodings.png`](figures/encodings.png), [`figures/retrieval_only.png`](figures/retrieval_only.png) |
+| Random K instead of top K | [`figures/sampled_k.png`](figures/sampled_k.png) |
+| Retrieval only with a learned query | [`figures/retrieval_only.png`](figures/retrieval_only.png), [`curves.png`](curves.png) |
+| Retrieval behaviour (collapse, weights) | [`figures/retrieval.png`](figures/retrieval.png) |
 
 ## Still running
 
 | What | Runs | Expected |
 |---|---|---|
-| K 512: `xres` and its #4 control, D 153K, both sizes | 12 | ~14 h (64x2x4) to ~1 day (256x4x8) each |
-| Sampled K (K 4 drawn from the top 16): `xres`, D 10K and 153K, both sizes | 12 | ~0.5 h each |
-| Retrieval only with a learned query, D 10K and 153K, both sizes | 12 | ~0.5–2 h each |
-| Retrieval only with all Qwen layers, D 10K and 153K, both sizes | 12 | 1–9 h each |
+| K 512: `xres` and its #4 control, D 153K, both sizes (rerun after the cluster failure) | 10 | ~15 h (64x2x4) to ~22 h (256x4x8) each |
+
+Finished since the last update: sampled K, retrieval only with a learned query, and retrieval only
+with all Qwen layers (36 runs; results above).
 
 ## Next
 
@@ -328,3 +533,9 @@ then warm), `xres`, and `xres` trained on random passages (#4).
   where the patient data is thin.
 - **Code-aligned passages.** One definition per diagnosis or drug code, retrieved for the
   patient's own codes, instead of generic textbook chunks.
+- **A cheaper `xres`.** Most of its compute projects 256 vectors per passage. Reading 16 chunk
+  means per passage (already built) cuts that about 16×, the most direct attack on the 6.5× compute
+  gap.
+- **A sharper retriever.** The mixing weights are nearly uniform, so the search scores do little.
+  A lower softmax temperature, or more weight on the retrieval loss, would test whether better
+  weighting adds to the gain.

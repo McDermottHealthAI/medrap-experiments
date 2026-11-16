@@ -2,22 +2,30 @@ arm,W,D,seen_at_end_K,final_gap_pct,seen_to_reach_po_K,n
 patient only,256x4x8,10000,50.0,0.0,50.0,3
 "retrieval only, word pieces (cold)",256x4x8,10000,50.0,9.36,,3
 "patient only, warm",256x4x8,10000,100.0,-1.2,78.0,3
+"retrieval only, all layers",256x4x8,10000,100.0,7.97,,3
 "retrieval only, last layer",256x4x8,10000,100.0,4.97,,3
+"retrieval only, learned query",256x4x8,10000,100.0,2.88,,3
 "xres, last layer",256x4x8,10000,100.0,-1.16,80.0,3
 patient only,256x4x8,153220,460.0,0.0,460.0,3
 "retrieval only, word pieces (cold)",256x4x8,153220,460.0,17.25,,3
 "patient only, warm",256x4x8,153220,919.0,-2.43,674.0,3
+"retrieval only, all layers",256x4x8,153220,919.0,13.8,,3
 "retrieval only, last layer",256x4x8,153220,919.0,10.95,,3
+"retrieval only, learned query",256x4x8,153220,919.0,3.93,,3
 "xres, all layers",256x4x8,153220,919.0,-3.03,674.0,3
 "xres, last layer",256x4x8,153220,919.0,-3.22,674.0,3
 patient only,64x2x4,10000,50.0,0.0,44.0,3
 "retrieval only, word pieces (cold)",64x2x4,10000,50.0,7.71,,3
 "patient only, warm",64x2x4,10000,100.0,-1.03,68.0,3
+"retrieval only, all layers",64x2x4,10000,100.0,1.89,,3
 "retrieval only, last layer",64x2x4,10000,100.0,4.18,,3
+"retrieval only, learned query",64x2x4,10000,100.0,2.04,,3
 "xres, last layer",64x2x4,10000,100.0,-0.65,76.0,3
 patient only,64x2x4,153220,460.0,0.0,460.0,3
 "retrieval only, word pieces (cold)",64x2x4,153220,460.0,16.31,,3
 "patient only, warm",64x2x4,153220,919.0,-2.19,613.0,3
+"retrieval only, all layers",64x2x4,153220,919.0,14.22,,3
 "retrieval only, last layer",64x2x4,153220,919.0,12.91,,3
+"retrieval only, learned query",64x2x4,153220,919.0,3.61,,3
 "xres, all layers",64x2x4,153220,919.0,-2.43,674.0,3
 "xres, last layer",64x2x4,153220,919.0,-2.33,644.0,3
